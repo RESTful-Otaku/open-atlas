@@ -78,6 +78,16 @@ pub struct SpacetimeGateway {
     pub state: OpenAtlasState,
 }
 
+pub trait ProjectionQueryService {
+    fn region_source_summary_dto(&self, region_id: &GridRegionId) -> Vec<SourceSummaryDto>;
+    fn country_source_summary_dto(&self, country_code: &CountryCode) -> Vec<SourceSummaryDto>;
+    fn region_evidence_feed_dto(
+        &self,
+        region_id: &GridRegionId,
+        now: DateTime<Utc>,
+    ) -> Vec<EvidenceFeedDto>;
+}
+
 impl SpacetimeGateway {
     pub fn submit_generation(&mut self, event: EnergyGenerationEvent) -> Result<()> {
         ingest_generation_event(&mut self.state, event)
@@ -203,7 +213,7 @@ impl SpacetimeGateway {
         rows
     }
 
-    pub fn region_source_summary_dto(&self, region_id: &GridRegionId) -> Vec<SourceSummaryDto> {
+    fn region_source_summary_dto_impl(&self, region_id: &GridRegionId) -> Vec<SourceSummaryDto> {
         self.region_source_summary(region_id)
             .into_iter()
             .map(|row| SourceSummaryDto {
@@ -218,7 +228,7 @@ impl SpacetimeGateway {
             .collect()
     }
 
-    pub fn country_source_summary_dto(&self, country_code: &CountryCode) -> Vec<SourceSummaryDto> {
+    fn country_source_summary_dto_impl(&self, country_code: &CountryCode) -> Vec<SourceSummaryDto> {
         self.country_source_summary(country_code)
             .into_iter()
             .map(|row| SourceSummaryDto {
@@ -233,7 +243,7 @@ impl SpacetimeGateway {
             .collect()
     }
 
-    pub fn region_evidence_feed_dto(
+    fn region_evidence_feed_dto_impl(
         &self,
         region_id: &GridRegionId,
         now: DateTime<Utc>,
@@ -252,6 +262,24 @@ impl SpacetimeGateway {
                 freshness: row.freshness.as_str().to_string(),
             })
             .collect()
+    }
+}
+
+impl ProjectionQueryService for SpacetimeGateway {
+    fn region_source_summary_dto(&self, region_id: &GridRegionId) -> Vec<SourceSummaryDto> {
+        self.region_source_summary_dto_impl(region_id)
+    }
+
+    fn country_source_summary_dto(&self, country_code: &CountryCode) -> Vec<SourceSummaryDto> {
+        self.country_source_summary_dto_impl(country_code)
+    }
+
+    fn region_evidence_feed_dto(
+        &self,
+        region_id: &GridRegionId,
+        now: DateTime<Utc>,
+    ) -> Vec<EvidenceFeedDto> {
+        self.region_evidence_feed_dto_impl(region_id, now)
     }
 }
 
@@ -516,7 +544,8 @@ mod tests {
             })
             .expect("event should be accepted");
 
-        let summary_dto = gateway.region_source_summary_dto(&GridRegionId("de-central".into()));
+        let query: &dyn ProjectionQueryService = &gateway;
+        let summary_dto = query.region_source_summary_dto(&GridRegionId("de-central".into()));
         assert_eq!(summary_dto.len(), 1);
         assert_eq!(summary_dto[0].source_id, "source-test");
         assert!(summary_dto[0].last_event_time.contains('T'));
