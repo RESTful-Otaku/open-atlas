@@ -88,6 +88,24 @@ pub trait ProjectionQueryService {
     ) -> Vec<EvidenceFeedDto>;
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProjectionSubscriptionEvent {
+    RegionEvidenceUpdated { region_id: String },
+    RegionSourceSummaryUpdated { region_id: String },
+    CountrySourceSummaryUpdated { country_code: String },
+}
+
+pub trait ProjectionSubscriptionService {
+    fn subscribe_region_projections(
+        &self,
+        region_id: &GridRegionId,
+    ) -> Vec<ProjectionSubscriptionEvent>;
+    fn subscribe_country_projections(
+        &self,
+        country_code: &CountryCode,
+    ) -> Vec<ProjectionSubscriptionEvent>;
+}
+
 impl SpacetimeGateway {
     pub fn submit_generation(&mut self, event: EnergyGenerationEvent) -> Result<()> {
         ingest_generation_event(&mut self.state, event)
@@ -280,6 +298,31 @@ impl ProjectionQueryService for SpacetimeGateway {
         now: DateTime<Utc>,
     ) -> Vec<EvidenceFeedDto> {
         self.region_evidence_feed_dto_impl(region_id, now)
+    }
+}
+
+impl ProjectionSubscriptionService for SpacetimeGateway {
+    fn subscribe_region_projections(
+        &self,
+        region_id: &GridRegionId,
+    ) -> Vec<ProjectionSubscriptionEvent> {
+        vec![
+            ProjectionSubscriptionEvent::RegionEvidenceUpdated {
+                region_id: region_id.0.clone(),
+            },
+            ProjectionSubscriptionEvent::RegionSourceSummaryUpdated {
+                region_id: region_id.0.clone(),
+            },
+        ]
+    }
+
+    fn subscribe_country_projections(
+        &self,
+        country_code: &CountryCode,
+    ) -> Vec<ProjectionSubscriptionEvent> {
+        vec![ProjectionSubscriptionEvent::CountrySourceSummaryUpdated {
+            country_code: country_code.0.clone(),
+        }]
     }
 }
 
@@ -549,5 +592,26 @@ mod tests {
         assert_eq!(summary_dto.len(), 1);
         assert_eq!(summary_dto[0].source_id, "source-test");
         assert!(summary_dto[0].last_event_time.contains('T'));
+    }
+
+    #[test]
+    fn subscription_contract_exposes_mvp_projection_topics() {
+        let gateway = SpacetimeGateway::default();
+        let subscriptions: &dyn ProjectionSubscriptionService = &gateway;
+
+        let region_topics =
+            subscriptions.subscribe_region_projections(&GridRegionId("de-central".into()));
+        assert_eq!(region_topics.len(), 2);
+        assert!(matches!(
+            region_topics[0],
+            ProjectionSubscriptionEvent::RegionEvidenceUpdated { .. }
+        ));
+
+        let country_topics = subscriptions.subscribe_country_projections(&CountryCode("DE".into()));
+        assert_eq!(country_topics.len(), 1);
+        assert!(matches!(
+            country_topics[0],
+            ProjectionSubscriptionEvent::CountrySourceSummaryUpdated { .. }
+        ));
     }
 }
