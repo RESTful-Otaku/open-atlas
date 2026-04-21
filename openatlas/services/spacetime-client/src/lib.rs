@@ -76,6 +76,7 @@ pub struct EvidenceFeedDto {
 #[derive(Default)]
 pub struct SpacetimeGateway {
     pub state: OpenAtlasState,
+    projection_events: Vec<ProjectionSubscriptionEvent>,
 }
 
 pub trait ProjectionQueryService {
@@ -108,15 +109,28 @@ pub trait ProjectionSubscriptionService {
 
 impl SpacetimeGateway {
     pub fn submit_generation(&mut self, event: EnergyGenerationEvent) -> Result<()> {
-        ingest_generation_event(&mut self.state, event)
+        let region_id = event.region_id.clone();
+        ingest_generation_event(&mut self.state, event)?;
+        self.emit_region_projection_events(&region_id);
+        Ok(())
     }
 
     pub fn submit_consumption(&mut self, event: EnergyConsumptionEvent) -> Result<()> {
-        ingest_consumption_event(&mut self.state, event)
+        let region_id = event.region_id.clone();
+        ingest_consumption_event(&mut self.state, event)?;
+        self.emit_region_projection_events(&region_id);
+        Ok(())
     }
 
     pub fn submit_carbon(&mut self, event: CarbonEmissionEvent) -> Result<()> {
-        ingest_carbon_event(&mut self.state, event)
+        let region_id = event.region_id.clone();
+        ingest_carbon_event(&mut self.state, event)?;
+        self.emit_region_projection_events(&region_id);
+        Ok(())
+    }
+
+    pub fn drain_projection_events(&mut self) -> Vec<ProjectionSubscriptionEvent> {
+        std::mem::take(&mut self.projection_events)
     }
 
     pub fn region_generation_sources(
@@ -280,6 +294,15 @@ impl SpacetimeGateway {
                 freshness: row.freshness.as_str().to_string(),
             })
             .collect()
+    }
+
+    fn emit_region_projection_events(&mut self, region_id: &GridRegionId) {
+        self.projection_events
+            .extend(self.subscribe_region_projections(region_id));
+        if let Some(region) = self.state.regions.get(region_id) {
+            self.projection_events
+                .extend(self.subscribe_country_projections(&region.country_code));
+        }
     }
 }
 
@@ -611,6 +634,66 @@ mod tests {
         assert_eq!(country_topics.len(), 1);
         assert!(matches!(
             country_topics[0],
+            ProjectionSubscriptionEvent::CountrySourceSummaryUpdated { .. }
+        ));
+    }
+
+    #[test]
+    fn reducer_writes_emit_projection_events_for_hub_consumers() {
+        let mut gateway = SpacetimeGateway::default();
+        gateway.state.countries.insert(
+            CountryCode("DE".into()),
+            Country {
+                code: CountryCode("DE".into()),
+                name: "Germany".into(),
+            },
+        );
+        gateway.state.regions.insert(
+            GridRegionId("de-central".into()),
+            GridRegion {
+                id: GridRegionId("de-central".into()),
+                country_code: CountryCode("DE".into()),
+                name: "Germany Central".into(),
+            },
+        );
+        gateway.state.source_registry.insert(
+            "source-test".into(),
+            DataSource {
+                source_id: "source-test".into(),
+                publisher: "Publisher".into(),
+                dataset_name: "Dataset".into(),
+                source_url: "https://example.org/open-energy-dataset".into(),
+                license: "CC-BY-4.0".into(),
+                credibility: SourceCredibility::OfficialBody,
+            },
+        );
+
+        gateway
+            .submit_generation(EnergyGenerationEvent {
+                event_id: Uuid::new_v4(),
+                asset_id: EnergyAssetId("asset-1".into()),
+                region_id: GridRegionId("de-central".into()),
+                generated_mwh: 10.0,
+                event_time: Utc::now(),
+                source: "test".into(),
+                ingest_batch_id: "b1".into(),
+                ingested_at: Utc::now(),
+                source_reference: SourceReference {
+                    source_id: "source-test".into(),
+                    source_url: "https://example.org/open-energy-dataset".into(),
+                    methodology_url: None,
+                },
+            })
+            .expect("event should be accepted");
+
+        let events = gateway.drain_projection_events();
+        assert_eq!(events.len(), 3);
+        assert!(matches!(
+            events[0],
+            ProjectionSubscriptionEvent::RegionEvidenceUpdated { .. }
+        ));
+        assert!(matches!(
+            events[2],
             ProjectionSubscriptionEvent::CountrySourceSummaryUpdated { .. }
         ));
     }
