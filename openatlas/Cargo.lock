@@ -2579,6 +2579,7 @@ dependencies = [
  "chrono",
  "openatlas-core",
  "openatlas-reducers",
+ "serde",
  "uuid",
 ]
 

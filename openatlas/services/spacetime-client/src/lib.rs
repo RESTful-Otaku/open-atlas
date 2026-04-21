@@ -5,6 +5,7 @@ use openatlas_core::{
     OpenAtlasState, SourceReference,
 };
 use openatlas_reducers::{ingest_carbon_event, ingest_consumption_event, ingest_generation_event};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,6 +13,16 @@ pub enum Freshness {
     Fresh,
     Aging,
     Stale,
+}
+
+impl Freshness {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Freshness::Fresh => "fresh",
+            Freshness::Aging => "aging",
+            Freshness::Stale => "stale",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +47,30 @@ pub struct EvidenceFeedRow {
     pub source_url: String,
     pub methodology_url: Option<String>,
     pub freshness: Freshness,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceSummaryDto {
+    pub source_id: String,
+    pub publisher: String,
+    pub dataset_name: String,
+    pub source_url: String,
+    pub event_count: usize,
+    pub total_generated_mwh: f64,
+    pub last_event_time: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvidenceFeedDto {
+    pub event_time: String,
+    pub region_id: String,
+    pub generated_mwh: f64,
+    pub source_id: String,
+    pub publisher: String,
+    pub dataset_name: String,
+    pub source_url: String,
+    pub methodology_url: Option<String>,
+    pub freshness: String,
 }
 
 #[derive(Default)]
@@ -166,6 +201,57 @@ impl SpacetimeGateway {
         }
         rows.sort_by_key(|row| std::cmp::Reverse(row.event_time));
         rows
+    }
+
+    pub fn region_source_summary_dto(&self, region_id: &GridRegionId) -> Vec<SourceSummaryDto> {
+        self.region_source_summary(region_id)
+            .into_iter()
+            .map(|row| SourceSummaryDto {
+                source_id: row.source_id,
+                publisher: row.publisher,
+                dataset_name: row.dataset_name,
+                source_url: row.source_url,
+                event_count: row.event_count,
+                total_generated_mwh: row.total_generated_mwh,
+                last_event_time: row.last_event_time.to_rfc3339(),
+            })
+            .collect()
+    }
+
+    pub fn country_source_summary_dto(&self, country_code: &CountryCode) -> Vec<SourceSummaryDto> {
+        self.country_source_summary(country_code)
+            .into_iter()
+            .map(|row| SourceSummaryDto {
+                source_id: row.source_id,
+                publisher: row.publisher,
+                dataset_name: row.dataset_name,
+                source_url: row.source_url,
+                event_count: row.event_count,
+                total_generated_mwh: row.total_generated_mwh,
+                last_event_time: row.last_event_time.to_rfc3339(),
+            })
+            .collect()
+    }
+
+    pub fn region_evidence_feed_dto(
+        &self,
+        region_id: &GridRegionId,
+        now: DateTime<Utc>,
+    ) -> Vec<EvidenceFeedDto> {
+        self.region_evidence_feed(region_id, now)
+            .into_iter()
+            .map(|row| EvidenceFeedDto {
+                event_time: row.event_time.to_rfc3339(),
+                region_id: row.region_id.0,
+                generated_mwh: row.generated_mwh,
+                source_id: row.source_id,
+                publisher: row.publisher,
+                dataset_name: row.dataset_name,
+                source_url: row.source_url,
+                methodology_url: row.methodology_url,
+                freshness: row.freshness.as_str().to_string(),
+            })
+            .collect()
     }
 }
 
@@ -376,5 +462,63 @@ mod tests {
             feed[0].source_url,
             "https://example.org/open-energy-dataset"
         );
+
+        let feed_dto = gateway.region_evidence_feed_dto(&GridRegionId("de-central".into()), now);
+        assert_eq!(feed_dto.len(), 3);
+        assert_eq!(feed_dto[0].region_id, "de-central");
+        assert_eq!(feed_dto[0].freshness, "fresh");
+    }
+
+    #[test]
+    fn source_summary_dto_uses_stable_string_fields() {
+        let mut gateway = SpacetimeGateway::default();
+        gateway.state.countries.insert(
+            CountryCode("DE".into()),
+            Country {
+                code: CountryCode("DE".into()),
+                name: "Germany".into(),
+            },
+        );
+        gateway.state.regions.insert(
+            GridRegionId("de-central".into()),
+            GridRegion {
+                id: GridRegionId("de-central".into()),
+                country_code: CountryCode("DE".into()),
+                name: "Germany Central".into(),
+            },
+        );
+        gateway.state.source_registry.insert(
+            "source-test".into(),
+            DataSource {
+                source_id: "source-test".into(),
+                publisher: "Publisher".into(),
+                dataset_name: "Dataset".into(),
+                source_url: "https://example.org/open-energy-dataset".into(),
+                license: "CC-BY-4.0".into(),
+                credibility: SourceCredibility::OfficialBody,
+            },
+        );
+        gateway
+            .submit_generation(EnergyGenerationEvent {
+                event_id: Uuid::new_v4(),
+                asset_id: EnergyAssetId("asset-1".into()),
+                region_id: GridRegionId("de-central".into()),
+                generated_mwh: 10.0,
+                event_time: Utc::now(),
+                source: "test".into(),
+                ingest_batch_id: "b1".into(),
+                ingested_at: Utc::now(),
+                source_reference: SourceReference {
+                    source_id: "source-test".into(),
+                    source_url: "https://example.org/open-energy-dataset".into(),
+                    methodology_url: None,
+                },
+            })
+            .expect("event should be accepted");
+
+        let summary_dto = gateway.region_source_summary_dto(&GridRegionId("de-central".into()));
+        assert_eq!(summary_dto.len(), 1);
+        assert_eq!(summary_dto[0].source_id, "source-test");
+        assert!(summary_dto[0].last_event_time.contains('T'));
     }
 }

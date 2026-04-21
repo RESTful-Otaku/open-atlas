@@ -9,4 +9,5 @@ anyhow.workspace = true
 chrono.workspace = true
 openatlas-core = { path = "../../crates/openatlas-core" }
 openatlas-reducers = { path = "../../crates/openatlas-reducers" }
+serde.workspace = true
 uuid.workspace = true
