@@ -1,0 +1,27 @@
+[workspace]
+members = [
+  "crates/openatlas-core",
+  "crates/openatlas-reducers",
+  "crates/openatlas-ingest",
+  "crates/openatlas-analytics",
+  "crates/openatlas-viz",
+  "crates/openatlas-ai",
+  "services/spacetime-client",
+  "services/ingest-worker",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+authors = ["OpenAtlas Contributors"]
+
+[workspace.dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+polars = { version = "0.51", features = ["lazy", "csv"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "v5", "serde"] }

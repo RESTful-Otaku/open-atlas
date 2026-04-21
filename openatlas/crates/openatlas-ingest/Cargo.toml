@@ -1,0 +1,13 @@
+[package]
+name = "openatlas-ingest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+openatlas-analytics = { path = "../openatlas-analytics" }
+openatlas-core = { path = "../openatlas-core" }
+polars.workspace = true
+uuid.workspace = true

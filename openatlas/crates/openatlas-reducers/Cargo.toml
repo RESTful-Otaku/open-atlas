@@ -1,0 +1,11 @@
+[package]
+name = "openatlas-reducers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+openatlas-core = { path = "../openatlas-core" }
+uuid.workspace = true
