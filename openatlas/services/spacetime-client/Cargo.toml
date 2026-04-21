@@ -6,5 +6,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 openatlas-core = { path = "../../crates/openatlas-core" }
 openatlas-reducers = { path = "../../crates/openatlas-reducers" }
+uuid.workspace = true
