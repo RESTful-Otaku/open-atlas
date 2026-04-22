@@ -1,0 +1,11 @@
+node_modules
+dist
+.svelte-kit
+.env
+.env.*
+!.env.example
+*.local
+# npm/yarn are not used in this project — bun owns dependency management.
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
