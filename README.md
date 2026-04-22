@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="web/public/logo.png" alt="OpenAtlas logo" width="720" />
+</div>
+
 # OpenAtlas
 
 OpenAtlas is a real-time global data intelligence system built as a
