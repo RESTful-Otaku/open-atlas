@@ -1,0 +1,9 @@
+/target
+dist
+node_modules
+.DS_Store
+
+# Local dev / toolchain caches (dev.sh, CI agents — do not publish)
+.dev/
+.cargo-local/
+.rustup-local/

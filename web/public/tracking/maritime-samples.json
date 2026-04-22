@@ -1,0 +1,17 @@
+{
+  "note": "Illustrative AIS-style positions (open/commercial/military-tagged) for areas with heavy shipping; not a live government feed. Replace with a licensed AIS or marine API in production.",
+  "vessels": [
+    { "id": "m1", "name": "Pacific Trader", "class": "cargo", "lat": 35.0, "lon": 139.8 },
+    { "id": "m2", "name": "Europa Line", "class": "cargo", "lat": 51.9, "lon": 4.2 },
+    { "id": "m3", "name": "Great Lakes Bulk", "class": "cargo", "lat": 42.3, "lon": -83.0 },
+    { "id": "m4", "name": "Gulf Service", "class": "com", "lat": 29.3, "lon": -94.7 },
+    { "id": "m5", "name": "Med Express", "class": "com", "lat": 36.1, "lon": 14.0 },
+    { "id": "m6", "name": "Cape Feeder", "class": "cargo", "lat": -33.9, "lon": 18.4 },
+    { "id": "m7", "name": "Malacca Run", "class": "cargo", "lat": 1.2, "lon": 103.5 },
+    { "id": "m8", "name": "North Sea Relay", "class": "com", "lat": 55.0, "lon": 2.0 },
+    { "id": "m9", "name": "Panama Liner", "class": "cargo", "lat": 9.0, "lon": -79.5 },
+    { "id": "m10", "name": "Strait South", "class": "com", "lat": -1.0, "lon": 105.0 },
+    { "id": "m11", "name": "Training Unit A", "class": "mil", "lat": 32.7, "lon": -117.2 },
+    { "id": "m12", "name": "Joint Exercise B", "class": "mil", "lat": 26.0, "lon": 127.5 }
+  ]
+}

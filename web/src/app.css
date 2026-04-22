@@ -1,0 +1,240 @@
+/* =========================================================================
+   OpenAtlas — Design system + global styles.
+   Minimalist, dark-first, token-driven. Every component reads from
+   these custom properties so the product identity (cyan → violet
+   gradient + per-domain colour pops) stays consistent.
+   ========================================================================= */
+
+:root {
+  color-scheme: dark;
+
+  /* Surface hierarchy. */
+  --bg-0: #09090b;
+  --bg-1: #101013;
+  --bg-2: #17171b;
+  --bg-3: #1f1f24;
+  --bg-glass: rgba(17, 17, 20, 0.72);
+
+  /* Borders. */
+  --border-1: rgba(255, 255, 255, 0.06);
+  --border-2: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --overlay-weak: rgba(255, 255, 255, 0.03);
+  --overlay: rgba(255, 255, 255, 0.05);
+
+  /* Text. */
+  --text-1: #f4f4f5;
+  --text-2: #a1a1aa;
+  --text-3: #71717a;
+  --text-muted: #52525b;
+
+  /* Brand identity. */
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, 0.14);
+  --accent-strong: #06b6d4;
+  --accent-violet: #a78bfa;
+  --accent-violet-soft: rgba(167, 139, 250, 0.14);
+
+  /* Severity scale. */
+  --sev-low: #22c55e;
+  --sev-mid: #f59e0b;
+  --sev-high: #ef4444;
+  --sev-critical: #f43f5e;
+
+  /* Status. */
+  --status-ok: #22c55e;
+  --status-warn: #f59e0b;
+  --status-err: #ef4444;
+
+  /* Domain palette (mirror DOMAIN_CATALOG in lib/colors.ts). */
+  --domain-energy: #f59e0b;
+  --domain-finance: #22c55e;
+  --domain-climate: #3b82f6;
+  --domain-seismic: #ef4444;
+  --domain-transport: #14b8a6;
+  --domain-health: #e11d48;
+  --domain-geospatial: #a855f7;
+  --domain-economy: #84cc16;
+  --domain-geopolitics: #f97316;
+  --domain-cyber: #ec4899;
+  --domain-space: #6366f1;
+  --domain-demographics: #fb7185;
+  --domain-infrastructure: #0ea5e9;
+
+  /* Typography. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo,
+    Consolas, monospace;
+
+  /* Radius. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Spacing (4px grid). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Shadows. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow:
+    0 0 0 1px var(--border-1), 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 24px -4px rgba(34, 211, 238, 0.35);
+
+  /* Motion. */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-fast: 120ms;
+  --motion-med: 220ms;
+}
+
+/* ---- Reset ---- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+#app {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+#app :global(.app-shell) {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+html {
+  height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-0);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+body {
+  min-height: 100%;
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      1200px 600px at 50% -200px,
+      rgba(34, 211, 238, 0.08),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 400px at 100% 10%,
+      rgba(167, 139, 250, 0.05),
+      transparent 60%
+    ),
+    var(--bg-0);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(34, 211, 238, 0.35);
+  transition: color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+a:hover {
+  color: #67e8f9;
+  border-bottom-color: #67e8f9;
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+}
+p {
+  margin: 0;
+  color: var(--text-2);
+}
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Scrollbar. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Utility. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.spacer {
+  flex: 1;
+}

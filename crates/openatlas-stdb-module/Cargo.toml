@@ -1,0 +1,28 @@
+[package]
+name = "openatlas-stdb-module"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenAtlas SpacetimeDB module — tables, reducers, and the single authoritative state."
+publish = false
+
+# SpacetimeDB modules compile to `wasm32-unknown-unknown` as a cdylib.
+# `cargo build` inside the workspace will silently skip this crate unless the
+# wasm target is selected; `spacetime build` picks it up by this signature.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+spacetimedb = "2.1"
+
+# Intentionally avoid depending on `openatlas-core`. Core pulls in `chrono`,
+# `serde_json`, and other host-only crates that pull in crates incompatible
+# with `wasm32-unknown-unknown`. The module owns a small, closed value-type
+# surface instead; the canonical shapes still live in `openatlas-core` for
+# host-side code (ingest, CLI, tests) and the two are kept in sync by the
+# conversion helpers in `crates/openatlas-ingest/src/module_bridge.rs`.
+
+# `serde_json` is host-only. Behind `cfg(test)` it's fine because module-side
+# tests compile against the host target, not the wasm cdylib.
+[dev-dependencies]
+serde_json = { workspace = true }

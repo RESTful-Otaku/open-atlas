@@ -1,0 +1,44 @@
+[workspace]
+members = [
+    "crates/openatlas-core",
+    "crates/openatlas-cli",
+    "crates/openatlas-ingest",
+    "crates/openatlas-stdb-module",
+    "crates/openatlas-llm-bridge",
+]
+# The historical `openatlas-ui-wasm` crate was removed in favour of a full
+# Svelte + SpacetimeDB dashboard. SpacetimeDB is now the authoritative state;
+# the browser subscribes to it directly via the TypeScript SDK.
+exclude = ["crates/openatlas-ui-wasm"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["ws", "json"] }
+chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+tower-http = { version = "0.6", features = ["cors", "fs", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["serde", "v4", "v5"] }
+wasm-bindgen = "0.2"
+web-sys = "0.3"
+serde-wasm-bindgen = "0.6"
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+ratatui = "0.29"
+crossterm = "0.29"
+tokio-tungstenite = "0.29"
+spacetimedb-sdk = "2.1"
+log = "0.4"

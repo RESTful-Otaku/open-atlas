@@ -1,0 +1,27 @@
+[package]
+name = "openatlas-ui-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true
+serde-wasm-bindgen.workspace = true
+web-sys = { workspace = true, features = [
+    "Document",
+    "DomTokenList",
+    "Element",
+    "Event",
+    "HtmlElement",
+    "Location",
+    "MessageEvent",
+    "NodeList",
+    "WebSocket",
+    "Window",
+    "console",
+] }
