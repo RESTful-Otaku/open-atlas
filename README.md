@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="web/public/logo.png" alt="OpenAtlas logo" width="720" />
+</div>
+
 # OpenAtlas
 
 Portable AI coding assistant configuration that makes agents (opencode, Claude,
