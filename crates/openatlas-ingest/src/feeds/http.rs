@@ -1,10 +1,10 @@
 //! Shared HTTP + JSON helpers for feed adapters.
 
+use crate::rate_limit::{global as rate_limiter, host_from_url};
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
-use crate::rate_limit::{global as rate_limiter, host_from_url};
 
 /// GET + status check + JSON body as `T`.
 pub async fn fetch_json<T: DeserializeOwned>(client: &Client, feed: &str, url: &str) -> Result<T> {

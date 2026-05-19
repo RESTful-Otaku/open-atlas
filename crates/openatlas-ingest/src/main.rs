@@ -4,22 +4,21 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use anyhow::Context;
 use chrono::Utc;
+use openatlas_ingest::logging;
 use openatlas_ingest::{
-    feed_config,
-    feeds,
-    local_env,
-    rate_limit,
-    metrics::IngestMetrics,
+    feed_config, feeds,
     fixtures::push_static_fixtures,
     health::initialize_feed_runtime,
     ingest_mode::{ingest_mode, IngestMode},
+    local_env,
+    metrics::IngestMetrics,
+    rate_limit,
     routes::router,
     simulator::spawn_simulators,
     state::AppState,
     stdb::StdbClient,
 };
 use tokio::sync::RwLock;
-use openatlas_ingest::logging;
 use tracing::{info, warn};
 
 const BIND_ADDR: &str = "0.0.0.0:8080";
@@ -88,4 +87,3 @@ async fn main() -> anyhow::Result<()> {
         .context("bind failed")?;
     axum::serve(listener, app).await.context("server failed")
 }
-

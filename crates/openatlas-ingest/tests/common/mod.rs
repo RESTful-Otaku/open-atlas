@@ -5,14 +5,8 @@ use std::sync::Arc;
 use axum::Router;
 use chrono::Utc;
 use openatlas_ingest::{
-    feed_config,
-    health::initialize_feed_runtime,
-    ingest_mode::IngestMode,
-    metrics::IngestMetrics,
-    rate_limit,
-    routes::router,
-    state::AppState,
-    stdb::StdbClient,
+    feed_config, health::initialize_feed_runtime, ingest_mode::IngestMode, metrics::IngestMetrics,
+    rate_limit, routes::router, state::AppState, stdb::StdbClient,
 };
 use tokio::sync::RwLock;
 

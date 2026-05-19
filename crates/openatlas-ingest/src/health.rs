@@ -128,8 +128,7 @@ pub(crate) async fn record_feed_success(
 
 fn schedule_next_poll(interval: Duration) -> Option<DateTime<Utc>> {
     Some(
-        Utc::now()
-            + chrono::Duration::from_std(interval).unwrap_or(chrono::TimeDelta::seconds(60)),
+        Utc::now() + chrono::Duration::from_std(interval).unwrap_or(chrono::TimeDelta::seconds(60)),
     )
 }
 
@@ -157,8 +156,7 @@ pub(crate) async fn sync_poll_intervals_from_config(state: &AppState) {
         if let Some(feed) = feeds.get_mut(descriptor.name) {
             let default = feed_poll::default_interval_secs(descriptor);
             feed.default_poll_interval_secs = default;
-            feed.poll_interval_secs =
-                feed_poll::effective_interval_secs(descriptor.name, default);
+            feed.poll_interval_secs = feed_poll::effective_interval_secs(descriptor.name, default);
         }
     }
 }

@@ -101,13 +101,9 @@ pub fn spawn_simulators(state: AppState) {
             loop {
                 interval.tick().await;
                 let event = generate_event(source, domain.clone());
-                let result = push_events_via_state(
-                    &state,
-                    vec![event],
-                    source,
-                    "internal://simulator",
-                )
-                .await;
+                let result =
+                    push_events_via_state(&state, vec![event], source, "internal://simulator")
+                        .await;
                 if result.transport_errors > 0 {
                     error!(source, "simulator failed to push event to STDB");
                 }
@@ -170,18 +166,18 @@ mod tests {
         let domains: std::collections::HashSet<_> =
             SIMULATORS.iter().map(|s| s.domain.clone()).collect();
         for d in Domain::ALL.iter() {
-            assert!(
-                domains.contains(d),
-                "missing simulator for {:?}",
-                d
-            );
+            assert!(domains.contains(d), "missing simulator for {:?}", d);
         }
     }
 
     #[test]
     fn generated_events_are_marked_simulated() {
         let event = generate_event_for_test("finance", Domain::Finance);
-        assert!(event.payload.get("simulated").and_then(|v| v.as_bool()).unwrap_or(false));
+        assert!(event
+            .payload
+            .get("simulated")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false));
         assert!(event.severity_score.is_finite());
         assert!((0.0..=1.0).contains(&event.severity_score));
     }

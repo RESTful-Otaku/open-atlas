@@ -67,13 +67,18 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
                 .tone
                 .map(|tone| ((-tone + 5.0) / 15.0).clamp(0.1, 1.0))
                 .unwrap_or(0.5);
-            ObservationDraft::new(article.url.clone(), timestamp, Domain::Geopolitics, severity_score)
-                .field("article_url", article.url)
-                .field("title", article.title.unwrap_or_default())
-                .field("source_country", article.sourcecountry.unwrap_or_default())
-                .field("source_domain", article.domain.unwrap_or_default())
-                .field("language", article.language.unwrap_or_default())
-                .field("tone", article.tone)
+            ObservationDraft::new(
+                article.url.clone(),
+                timestamp,
+                Domain::Geopolitics,
+                severity_score,
+            )
+            .field("article_url", article.url)
+            .field("title", article.title.unwrap_or_default())
+            .field("source_country", article.sourcecountry.unwrap_or_default())
+            .field("source_domain", article.domain.unwrap_or_default())
+            .field("language", article.language.unwrap_or_default())
+            .field("tone", article.tone)
         })
         .collect::<Vec<_>>();
 

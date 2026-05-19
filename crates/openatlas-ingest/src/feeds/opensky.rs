@@ -166,8 +166,23 @@ mod tests {
     #[test]
     fn parses_state_vector_row() {
         let row = serde_json::json!([
-            "abc123", "UAL123  ", "United States", 1_700_000_000_i64,
-            1_700_000_000_i64, -122.4, 37.7, 10_000.0, false, 250.0, 90.0, null, null, null, 0_i64, 0.0, 0_i64
+            "abc123",
+            "UAL123  ",
+            "United States",
+            1_700_000_000_i64,
+            1_700_000_000_i64,
+            -122.4,
+            37.7,
+            10_000.0,
+            false,
+            250.0,
+            90.0,
+            null,
+            null,
+            null,
+            0_i64,
+            0.0,
+            0_i64
         ]);
         let vals = row.as_array().unwrap().clone();
         let parsed = parse_state(&vals).expect("parse");

@@ -10,9 +10,7 @@ use serde::Deserialize;
 use super::{
     adapter::FeedDescriptor,
     http::fetch_json,
-    normalize::{
-        drafts_to_events, location_from_coords, ratio_severity, ObservationDraft,
-    },
+    normalize::{drafts_to_events, location_from_coords, ratio_severity, ObservationDraft},
 };
 
 const POLL_INTERVAL: Duration = Duration::from_secs(60);

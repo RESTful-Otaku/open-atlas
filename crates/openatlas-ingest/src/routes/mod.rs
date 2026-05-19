@@ -31,18 +31,12 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
         .route("/status", get(health::service_status))
-        .route(
-            "/feeds",
-            get(feeds::list_feeds).put(feeds::update_secrets),
-        )
+        .route("/feeds", get(feeds::list_feeds).put(feeds::update_secrets))
         .route(
             "/feeds/poll-intervals",
             axum::routing::put(feeds::update_poll_intervals),
         )
-        .route(
-            "/feeds/{name}/test",
-            axum::routing::post(feeds::test_feed),
-        )
+        .route("/feeds/{name}/test", axum::routing::post(feeds::test_feed))
         .route(
             "/feeds/{name}/reconnect",
             axum::routing::post(feeds::reconnect_feed),

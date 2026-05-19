@@ -339,14 +339,6 @@
     font-family: var(--font-mono);
     font-size: 12px;
   }
-  .mono-block {
-    margin: var(--space-2) 0;
-    padding: var(--space-2) var(--space-3);
-    background: var(--bg-2);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-1);
-    font-size: 12px;
-  }
   .ok {
     color: var(--accent, #22c55e);
   }
