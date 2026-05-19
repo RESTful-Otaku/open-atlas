@@ -69,8 +69,47 @@ const DEFAULT_MODULE = "openatlas";
 
 let activeConnection: DbConnection | null = null;
 let shuttingDown = false;
+let connectionOpening = false;
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let reconnectAttempts = 0;
+const MAX_AUTO_RECONNECT_ATTEMPTS = 8;
+const RECONNECT_BASE_MS = 2_000;
 let narrativeHandlersInstalled = false;
 let narrativeSubscriptionActive = false;
+/** Views that need narrative rows (Hub, event detail, map with hover). */
+let narrativeConsumerCount = 0;
+
+function clearReconnectTimer(): void {
+  if (reconnectTimer !== undefined) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
+  }
+}
+
+function scheduleAutoReconnect(): void {
+  if (shuttingDown || dashboard.dataMode === "demo") return;
+  if (reconnectTimer !== undefined) return;
+  if (reconnectAttempts >= MAX_AUTO_RECONNECT_ATTEMPTS) return;
+  const delay = Math.min(
+    30_000,
+    RECONNECT_BASE_MS * 2 ** reconnectAttempts,
+  );
+  reconnectAttempts += 1;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = undefined;
+    if (
+      shuttingDown ||
+      dashboard.dataMode === "demo" ||
+      activeConnection ||
+      connectionOpening
+    ) {
+      return;
+    }
+    if (dashboard.connection === "offline") {
+      openConnection();
+    }
+  }, delay);
+}
 
 /**
  * Kick off the initial connection. Idempotent — calling twice is a
@@ -90,6 +129,8 @@ export function connectDb(): void {
  */
 export function reconnectNow(): void {
   if (shuttingDown) return;
+  clearReconnectTimer();
+  reconnectAttempts = 0;
   if (dashboard.dataMode === "demo") {
     installDemoData();
     return;
@@ -116,6 +157,9 @@ export function reconnectNow(): void {
  */
 export function disconnectDb(): void {
   shuttingDown = true;
+  clearReconnectTimer();
+  reconnectAttempts = 0;
+  connectionOpening = false;
   narrativeHandlersInstalled = false;
   narrativeSubscriptionActive = false;
   if (activeConnection) {
@@ -139,6 +183,11 @@ export function activeDb(): DbConnection | null {
 }
 
 function openConnection(): void {
+  if (shuttingDown || connectionOpening) return;
+  if (activeConnection) return;
+
+  clearReconnectTimer();
+  connectionOpening = true;
   setConnection("connecting");
   const uri = resolveStdbWebSocketUri();
   const db = import.meta.env.VITE_STDB_DB ?? DEFAULT_MODULE;
@@ -178,14 +227,19 @@ function openConnection(): void {
     setConnectionLastError(
       err instanceof Error ? err.message : "failed to build connection",
     );
+    connectionOpening = false;
     handleLostConnection();
     return;
   }
 
   activeConnection = conn;
+  connectionOpening = false;
 }
 
 function onConnected(connection: DbConnection): void {
+  connectionOpening = false;
+  reconnectAttempts = 0;
+  clearReconnectTimer();
   setConnectionLastError(null);
   setConnection("live");
   installRowHandlers(connection);
@@ -234,19 +288,19 @@ function installRowHandlers(connection: DbConnection): void {
   );
 
   db.world_state.onInsert((_ctx: EventContext, row: WorldStateRow) =>
-    applyWorldState(row),
+    withRowMutation(() => applyWorldState(row)),
   );
   db.world_state.onUpdate(
     (_ctx: EventContext, _old: WorldStateRow, row: WorldStateRow) =>
-      applyWorldState(row),
+      withRowMutation(() => applyWorldState(row)),
   );
 
   db.domain_insight.onInsert((_ctx: EventContext, row: DomainInsight) =>
-    applyDomainInsight(row),
+    withRowMutation(() => applyDomainInsight(row)),
   );
   db.domain_insight.onUpdate(
     (_ctx: EventContext, _old: DomainInsight, row: DomainInsight) =>
-      applyDomainInsight(row),
+      withRowMutation(() => applyDomainInsight(row)),
   );
 }
 
@@ -288,15 +342,30 @@ export function ensureNarrativeSubscription(): void {
 }
 
 /**
+ * Call from view `onMount`; returned teardown runs on destroy so narratives
+ * are not merged into dashboard state when no view is listening.
+ */
+export function acquireNarrativeSubscription(): () => void {
+  if (dashboard.dataMode === "demo") return () => {};
+  narrativeConsumerCount += 1;
+  ensureNarrativeSubscription();
+  return () => {
+    narrativeConsumerCount = Math.max(0, narrativeConsumerCount - 1);
+  };
+}
+
+/**
  * Subscribe to dashboard tables (full `SELECT *` per ring/small table).
  * Trimming happens in `sync-dashboard-cache.ts` — STDB 2.1 subscription
  * SQL rejects ORDER BY and LIMIT on some tables (e.g. event_narrative).
  */
 function subscribeDashboardQueries(connection: DbConnection): void {
+  installNarrativeRowHandlers(connection);
   connection
     .subscriptionBuilder()
     .onApplied(() => {
       hydrateDashboardFromConnection(connection);
+      ensureNarrativeSubscription();
     })
     .onError((ctx) => {
       const err = ctx.event;
@@ -310,15 +379,7 @@ function subscribeDashboardQueries(connection: DbConnection): void {
         msg,
         "Use full SELECT * only (no ORDER BY or LIMIT). See web/src/lib/stdb-subscriptions.ts.",
       );
-      if (activeConnection) {
-        try {
-          activeConnection.disconnect();
-        } catch {
-          /* */
-        }
-        activeConnection = null;
-      }
-      setConnection("offline");
+      handleLostConnection();
     })
     .subscribe([...CORE_SUBSCRIPTION_QUERIES]);
 }
@@ -335,15 +396,18 @@ function formatSubscriptionError(err: unknown): string {
 }
 
 function handleLostConnection(): void {
+  connectionOpening = false;
   narrativeHandlersInstalled = false;
   narrativeSubscriptionActive = false;
-  if (activeConnection) {
+  const prev = activeConnection;
+  activeConnection = null;
+  if (prev) {
     try {
-      activeConnection.disconnect();
+      prev.disconnect();
     } catch {
       /* already torn down */
     }
   }
-  activeConnection = null;
   setConnection("offline");
+  scheduleAutoReconnect();
 }

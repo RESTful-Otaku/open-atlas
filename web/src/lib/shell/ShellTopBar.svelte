@@ -8,6 +8,7 @@
   import { router } from "../router.svelte";
   import { viewForPattern } from "../views";
   import SystemStatusBar from "../components/SystemStatusBar.svelte";
+  import UpdateIntervalMenu from "./UpdateIntervalMenu.svelte";
 
   interface Props {
     onopensearch?: () => void;
@@ -44,6 +45,7 @@
   </button>
 
   <div class="shell-status">
+    <UpdateIntervalMenu />
     <SystemStatusBar />
   </div>
 </header>
@@ -59,6 +61,7 @@
     backdrop-filter: saturate(160%) blur(12px);
     -webkit-backdrop-filter: saturate(160%) blur(12px);
     border-bottom: 1px solid var(--border-1);
+    overflow: visible;
   }
 
   .shell-brand {
@@ -129,6 +132,9 @@
   }
 
   .shell-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
     justify-self: end;
   }
 

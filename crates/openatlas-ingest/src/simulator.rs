@@ -128,8 +128,8 @@ fn generate_event(source: &str, domain: Domain) -> WorldEvent {
         _ => 0.3,
     };
     let variance: f64 = rng.random_range(0.0..0.5);
-    // ~12% of events cross the module anomaly/narrative threshold (0.85) so
-    // signals, narratives, and anomaly panels stay populated in sim/hybrid.
+    // ~12% cross anomaly threshold (0.85); narrative threshold is 0.5 so
+    // moderate sim events also get inference/disruption rows in the module.
     let severity_score = if rng.random_bool(0.12) {
         rng.random_range(0.86..0.99)
     } else {

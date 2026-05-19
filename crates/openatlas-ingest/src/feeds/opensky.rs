@@ -117,7 +117,11 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
     let stride = if sample_size == 0 {
         1
     } else {
-        (states.len() / sample_size).max(1)
+        states
+            .len()
+            .checked_div(sample_size)
+            .unwrap_or(1)
+            .max(1)
     };
 
     let mut drafts = Vec::with_capacity(sample_size);

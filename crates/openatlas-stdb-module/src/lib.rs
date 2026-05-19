@@ -40,7 +40,10 @@ mod narrative;
 
 use spacetimedb::{reducer, ReducerContext, SpacetimeType, Table, Timestamp};
 
-use narrative::{build_narrative, NarrativeContext, NARRATIVE_SEVERITY_THRESHOLD};
+use narrative::{
+    build_domain_insight_narrative, build_narrative, NarrativeContext,
+    NARRATIVE_SEVERITY_THRESHOLD,
+};
 
 /// Maximum number of signals retained across all domains. The newest
 /// `SIGNAL_RING_SIZE` rows are preserved; older rows are pruned at ingest
@@ -701,9 +704,19 @@ fn rebuild_domain_insight(
         .count()
         .min(INSIGHT_SIGNAL_WINDOW) as u32;
 
-    let narrative = format!(
-        "domain={} trend={} anomalies_recent={} dominant_source={}",
-        domain, trend, anomaly_count_recent, source_label
+    let risk_index = ctx
+        .db
+        .world_state()
+        .domain()
+        .find(domain)
+        .map(|s| s.risk_index)
+        .unwrap_or(0.0);
+    let narrative = build_domain_insight_narrative(
+        domain,
+        trend,
+        anomaly_count_recent,
+        &source_label,
+        risk_index,
     );
 
     let row = DomainInsight {

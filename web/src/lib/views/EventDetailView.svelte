@@ -20,7 +20,8 @@
   import { DOMAIN_STREAM_EXPLANATION } from "../event-domain-copy";
   import { router, navigate } from "../router.svelte";
   import { useNarrativeSubscription } from "../narrative-subscription";
-  import { dashboard, setSelectedDomain } from "../state.svelte";
+  import { dashboardData } from "../dashboard-revision.svelte";
+  import { dashboard, lookupEventById, setSelectedDomain } from "../state.svelte";
 
   useNarrativeSubscription();
   import { domainColor, domainLabel } from "../colors";
@@ -31,14 +32,23 @@
     SeverityChip,
     bucketSeverity,
   } from "../primitives";
-  import type { UiEvent, UiEventNarrative } from "../types";
+  import { resolveEventNarrative } from "../event-narrative-fallback";
+  import type { UiEvent } from "../types";
 
   const eventId = $derived(router.match.params.id ?? "");
-  const event = $derived<UiEvent | null>(
-    dashboard.events.find((e) => e.id === eventId) ?? null,
+  const event = $derived.by((): UiEvent | null => {
+    void dashboardData.revision;
+    return eventId ? (lookupEventById(eventId) ?? null) : null;
+  });
+  const narrative = $derived(
+    resolveEventNarrative(
+      event,
+      dashboard.eventNarratives,
+      event ? dashboard.domainInsights[event.domain] : undefined,
+    ),
   );
-  const narrative = $derived<UiEventNarrative | null>(
-    dashboard.eventNarratives[eventId] ?? null,
+  const narrativeFromServer = $derived(
+    event ? Boolean(dashboard.eventNarratives[event.id]) : false,
   );
   const streamExpl = $derived(
     event && DOMAIN_STREAM_EXPLANATION[event.domain]
@@ -256,8 +266,8 @@
               <p>{narrative.summary}</p>
             {:else}
               <p class="ed-muted">
-                No detailed narrative was generated for this event. The
-                server only writes narratives above a severity threshold.
+                No narrative for this event — severity is below the watch
+                threshold ({Math.round(0.5 * 100)}%).
               </p>
             {/if}
           </div>
@@ -320,6 +330,10 @@
         <section class="panel">
           <PanelHeader title="Provenance" />
           <div class="ed-body ed-provenance">
+              <div class="kv">
+                <span>Source</span
+                ><span>{narrativeFromServer ? "SpacetimeDB" : "Synthesized from telemetry"}</span>
+              </div>
               <div class="kv">
                 <span>Updated</span><span>{formatTime(narrative.updated_at)}</span>
               </div>

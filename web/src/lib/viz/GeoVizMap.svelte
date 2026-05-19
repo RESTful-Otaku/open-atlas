@@ -12,6 +12,7 @@
   import { mapThemeFor } from "../theme-map";
   import { onThemeChange, readThemeFromDocument } from "../theme-events";
   import { demoFreightRoutes, demoLeoOrbitLine, demoPointFeatures } from "./showcase-datasets";
+  import { releaseWebGlCanvases } from "../webgl-teardown";
 
   type Mode = "heat" | "points" | "both";
 
@@ -148,10 +149,12 @@
       setupGen += 1;
       ro?.disconnect();
       ro = null;
+      const container = m?.getContainer();
       m?.remove();
       m = null;
       map = null;
       loaded = false;
+      if (container) releaseWebGlCanvases(container);
     };
 
     const run = async (): Promise<void> => {

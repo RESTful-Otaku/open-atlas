@@ -9,8 +9,9 @@
 -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { installRouter, router } from "../router.svelte";
+  import { router } from "../router.svelte";
   import { viewForPattern } from "../views";
+  import ActiveRoute from "./ActiveRoute.svelte";
   import LeftRail from "./LeftRail.svelte";
   import ShellTopBar from "./ShellTopBar.svelte";
   import MarketTicker from "./MarketTicker.svelte";
@@ -25,12 +26,12 @@
   } from "../demo-mode";
   import { refreshFeedLive } from "../feed-live.svelte";
   import { refreshRemoteReadiness } from "../readiness.svelte";
+  import { prefetchView } from "../view-loaders";
 
   let { class: className = "" }: { class?: string } = $props();
   let paletteOpen = $state(false);
 
   onMount(() => {
-    const disposer = installRouter();
     const onKey = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -72,8 +73,9 @@
     document.addEventListener("visibilitychange", onVisibility);
     if (!document.hidden) startBackgroundPolls();
 
+    prefetchView("/matrix/:id");
+
     return () => {
-      disposer();
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("visibilitychange", onVisibility);
       stopBackgroundPolls();
@@ -81,7 +83,6 @@
   });
 
   const activeView = $derived(viewForPattern(router.match.pattern));
-  const ActivePage = $derived(activeView.component);
   const showTicker = $derived(routeShowsTicker(router.match.pattern));
   const showCommandBar = $derived(
     routeShowsCommandBar(router.match.pattern),
@@ -152,20 +153,19 @@
     <MarketTicker />
   {/if}
   <main
+    id="shell-main"
     class="shell-main"
     class:shell-main-fill={activeView.id === "globe" || activeView.id === "map" || activeView.id === "viz" || activeView.id === "exec-hub" || activeView.id === "matrix"}
     aria-label={activeView.title}
   >
-    <!-- Keyed so each route remounts; a bare dynamic tag must be bound to
-         a capitalized `ActivePage` reference (not `activeView.component`). -->
-    {#key router.match.path}
-      <ActivePage />
-    {/key}
+    <ActiveRoute />
   </main>
   {#if showCommandBar}
     <OperatorCommandBar />
   {/if}
-  <CommandPalette open={paletteOpen} onclose={() => (paletteOpen = false)} />
+  {#if paletteOpen}
+    <CommandPalette open={paletteOpen} onclose={() => (paletteOpen = false)} />
+  {/if}
   <StateNotifyBridge />
   <ToastStack />
 </div>
@@ -176,6 +176,9 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    position: relative;
+    z-index: 100;
+    overflow: visible;
   }
   .demo-banner {
     display: flex;

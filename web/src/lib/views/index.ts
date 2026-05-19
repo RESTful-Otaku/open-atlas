@@ -4,14 +4,12 @@
  * # Adding a view (two edits)
  *
  * 1. Create a `XxxView.svelte` component in this folder.
- * 2. Append an entry to `VIEW_CATALOG` with its route pattern, title,
- *    and icon. Optional: `navDescription` / `navHref` for the left rail.
+ * 2. Register it in `view-loaders.ts` and append metadata here.
  *
  * Route patterns must match entries in `ROUTE_TABLE` (see
  * `../router.svelte.ts`).
  */
 
-import type { Component } from "svelte";
 import type { Icon as IconComponent } from "@lucide/svelte";
 import {
   Boxes,
@@ -25,21 +23,10 @@ import {
   Settings,
 } from "@lucide/svelte";
 
-import { MATRIX_CATALOG } from "../matrices";
+import { MATRIX_CATALOG } from "../matrices/catalog";
 import { DOMAIN_CATALOG } from "../colors";
 import { domainIcon } from "../domain-icons";
-
-import GlobeHomeView from "./GlobeHomeView.svelte";
-import DomainView from "./DomainView.svelte";
 import { DOMAIN_NAV_BLURB } from "./domain-nav-blurb";
-import HubView from "./HubView.svelte";
-import MapView from "./MapView.svelte";
-import EntitiesView from "./EntitiesView.svelte";
-import SettingsView from "./SettingsView.svelte";
-import LegacyView from "./LegacyView.svelte";
-import MatrixHostView from "./MatrixHostView.svelte";
-import EventDetailView from "./EventDetailView.svelte";
-import VizShowcaseView from "./VizShowcaseView.svelte";
 
 const DEFAULT_MATRIX_PATH = `/matrix/${MATRIX_CATALOG[0]!.id}` as const;
 
@@ -47,20 +34,9 @@ export interface ViewCatalogEntry {
   readonly id: string;
   readonly pattern: string;
   readonly title: string;
-  /**
-   * Shown under the title when the left rail is expanded. Keep to one
-   * short line; omit for icon-only + tooltip when collapsed.
-   */
   readonly navDescription?: string;
-  /**
-   * If set, the rail and command palette navigate here instead of
-   * `pattern` (needed for a default `/matrix/...` when `pattern` is
-   * `/matrix/:id`).
-   */
   readonly navHref?: string;
   readonly icon: typeof IconComponent;
-  readonly component: Component;
-  /** True if this entry should appear in the left-rail nav. */
   readonly nav: boolean;
 }
 
@@ -73,7 +49,6 @@ const DOMAIN_VIEWS: readonly ViewCatalogEntry[] = DOMAIN_CATALOG.map(
       navDescription:
         DOMAIN_NAV_BLURB[d.id] ?? `Live signals and state — ${d.label}`,
       icon: domainIcon(d.id),
-      component: DomainView,
       nav: true,
     }) satisfies ViewCatalogEntry,
 );
@@ -85,7 +60,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     title: "3D Globe",
     navDescription: "Global globe, heat, and event POIs",
     icon: Globe2,
-    component: GlobeHomeView,
     nav: true,
   },
   {
@@ -94,7 +68,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     title: "2D map",
     navDescription: "Flat map, same overlays — pan & zoom",
     icon: MapIcon,
-    component: MapView,
     nav: true,
   },
   {
@@ -103,7 +76,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     title: "Hub",
     navDescription: "Executive tiles and cross-domain snapshot",
     icon: LayoutGrid,
-    component: HubView,
     nav: true,
   },
   ...DOMAIN_VIEWS,
@@ -114,7 +86,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     navDescription: "KPIs, triage, and domain command boards",
     navHref: DEFAULT_MATRIX_PATH,
     icon: PanelLeftDashed,
-    component: MatrixHostView,
     nav: true,
   },
   {
@@ -123,7 +94,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     title: "Visualizations",
     navDescription: "Charts, graphs, and map overlay gallery",
     icon: ChartSpline,
-    component: VizShowcaseView,
     nav: true,
   },
   {
@@ -132,7 +102,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     title: "Entities",
     navDescription: "Entity search and field resolution",
     icon: Boxes,
-    component: EntitiesView,
     nav: true,
   },
   {
@@ -141,7 +110,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     title: "Overview",
     navDescription: "KPIs, map, streams, and domain panels at a glance",
     icon: LayoutDashboard,
-    component: LegacyView,
     nav: true,
   },
   {
@@ -149,7 +117,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     pattern: "/events/:id",
     title: "Event Detail",
     icon: FileText,
-    component: EventDetailView,
     nav: false,
   },
   {
@@ -158,7 +125,6 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     title: "Settings",
     navDescription: "STDB, LLM, and demo mode",
     icon: Settings,
-    component: SettingsView,
     nav: true,
   },
 ];
@@ -171,7 +137,6 @@ export function viewForPattern(pattern: string): ViewCatalogEntry {
   return BY_PATTERN.get(pattern) ?? VIEW_CATALOG[0]!;
 }
 
-/** Where the left rail and palette should send users for a catalog entry. */
 export function hrefForNavEntry(entry: ViewCatalogEntry): string {
   return entry.navHref ?? entry.pattern;
 }

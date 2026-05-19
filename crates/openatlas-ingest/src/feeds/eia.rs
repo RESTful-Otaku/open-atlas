@@ -25,6 +25,7 @@ pub(super) const DESCRIPTOR: FeedDescriptor = FeedDescriptor {
         Box::pin(async move {
             let api_key = std::env::var(ENV_API_KEY)
                 .map_err(|_| anyhow::anyhow!("EIA_API_KEY is not set"))?;
+            crate::feed_config::secret_value_valid(ENV_API_KEY, api_key.trim())?;
             fetch(client, api_key).await
         })
     },

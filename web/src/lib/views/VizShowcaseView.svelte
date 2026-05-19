@@ -5,6 +5,7 @@
 <script lang="ts">
   import { ChartSpline } from "@lucide/svelte";
 
+  import MountWhenVisible from "../components/MountWhenVisible.svelte";
   import GeoVizMap from "../viz/GeoVizMap.svelte";
   import ShowcaseChartCard from "../viz/ShowcaseChartCard.svelte";
   import { SHOWCASE_ECHARTS } from "../viz/showcase-options";
@@ -37,7 +38,9 @@
         MapLibre GL 3D globe and CARTO dark vector (WebGL, not a three.js model). Heat cluster, circles, routes,
         and a pink dashed synthetic LEO track. Same stack as the main dashboard map.
       </p>
-      <GeoVizMap class="viz-geo-map" />
+      <MountWhenVisible class="viz-geo-mount" minHeight="420px" rootMargin="240px 0px">
+        <GeoVizMap class="viz-geo-map" />
+      </MountWhenVisible>
     </section>
 
     <section class="viz-section" id="charts" aria-labelledby="charts-heading">
@@ -47,7 +50,14 @@
       </p>
       <div class="viz-grid">
         {#each SHOWCASE_ECHARTS as entry (entry.id)}
-          <ShowcaseChartCard {entry} />
+          <MountWhenVisible
+            class="viz-grid-cell"
+            minHeight="24rem"
+            rootMargin="280px 0px"
+            unmountDelayMs={500}
+          >
+            <ShowcaseChartCard {entry} />
+          </MountWhenVisible>
         {/each}
       </div>
     </section>

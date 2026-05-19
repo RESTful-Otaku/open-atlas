@@ -5,7 +5,8 @@
 -->
 <script lang="ts">
   import { router, navigate } from "../router.svelte";
-  import { matrixById, MatrixView } from "../matrices";
+  import { matrixById } from "../matrices/catalog";
+  import MatrixView from "../matrices/MatrixView.svelte";
 
   const matrixId = $derived(router.match.params.id ?? "");
   const matrix = $derived(matrixById(matrixId));

@@ -7,6 +7,8 @@
 import type { DbConnection } from "./stdb";
 import type { Event, Signal, CausalEdge, EventNarrative } from "./stdb/types";
 import { bumpDashboardRevision, bumpDomainsRevision } from "./dashboard-revision.svelte";
+import { invalidateDomainEventsCache } from "./domain-events-cache";
+import { sameOrderedEvents, sameOrderedIds } from "./buffer-trim";
 import { invalidateGeoEventIndex } from "./geo-event-index";
 import {
   MAX_CAUSAL_EDGES,
@@ -94,7 +96,7 @@ export function hydrateDashboardFromConnection(connection: DbConnection): void {
   }
 
   endDashboardBatch();
-  sortAndTrimDashboardBuffers();
+  sortAndTrimDashboardBuffers({ publish: true });
   bumpDomainsRevision();
 
   if (import.meta.env.DEV) {
@@ -118,25 +120,47 @@ export function hydrateNarrativesFromConnection(connection: DbConnection): void 
     applyEventNarrative(row);
   }
   endDashboardBatch();
-  sortAndTrimDashboardBuffers();
+  sortAndTrimDashboardBuffers({ publish: true });
 }
 
 /** Keep buffers sorted and within caps (subscriptions lack ORDER BY). */
-export function sortAndTrimDashboardBuffers(): void {
-  flushPendingDashboardPatches();
-  flushPendingSeverityUpdates();
+export function sortAndTrimDashboardBuffers(options?: {
+  /** When true, sort/trim and bump viz revision even if no pending stream patches. */
+  publish?: boolean;
+}): void {
+  const { streamDirty, domainsDirty: pendingDomains } =
+    flushPendingDashboardPatches();
+  const severityDirty = flushPendingSeverityUpdates();
+  const publish =
+    options?.publish ?? (streamDirty || pendingDomains || severityDirty);
+  if (!publish) return;
 
-  dashboard.events = [...dashboard.events]
+  let streamChanged = streamDirty;
+  let domainsChanged = pendingDomains || severityDirty;
+
+  const nextEvents = [...dashboard.events]
     .sort((a, b) => b.ordinal - a.ordinal)
     .slice(0, MAX_EVENTS);
+  if (!sameOrderedEvents(dashboard.events, nextEvents)) {
+    dashboard.events = nextEvents;
+    streamChanged = true;
+  }
 
-  dashboard.recentSignals = [...dashboard.recentSignals]
+  const nextSignals = [...dashboard.recentSignals]
     .sort((a, b) => Number(b.id) - Number(a.id))
     .slice(0, MAX_SIGNALS);
+  if (!sameOrderedIds(dashboard.recentSignals, nextSignals)) {
+    dashboard.recentSignals = nextSignals;
+    streamChanged = true;
+  }
 
-  dashboard.recentCausalEdges = [...dashboard.recentCausalEdges]
+  const nextEdges = [...dashboard.recentCausalEdges]
     .sort((a, b) => Number(b.id) - Number(a.id))
     .slice(0, MAX_CAUSAL_EDGES);
+  if (!sameOrderedIds(dashboard.recentCausalEdges, nextEdges)) {
+    dashboard.recentCausalEdges = nextEdges;
+    streamChanged = true;
+  }
 
   const narratives = Object.values(dashboard.eventNarratives)
     .sort(
@@ -144,13 +168,26 @@ export function sortAndTrimDashboardBuffers(): void {
         Date.parse(b.updated_at) - Date.parse(a.updated_at),
     )
     .slice(0, MAX_EVENT_NARRATIVES);
-  dashboard.eventNarratives = Object.fromEntries(
+  const nextNarratives = Object.fromEntries(
     narratives.map((n) => [n.event_id, n]),
   );
+  const narrKeys = Object.keys(dashboard.eventNarratives);
+  const nextKeys = Object.keys(nextNarratives);
+  let narrChanged =
+    narrKeys.length !== nextKeys.length ||
+    narrKeys.some((k) => dashboard.eventNarratives[k] !== nextNarratives[k]);
+  if (narrChanged) {
+    dashboard.eventNarratives = nextNarratives;
+    streamChanged = true;
+  }
+
+  if (!streamChanged && !domainsChanged) return;
 
   rebuildEventIdIndex();
   invalidateGeoEventIndex();
+  invalidateDomainEventsCache();
   bumpDashboardRevision();
+  if (domainsChanged) bumpDomainsRevision();
 }
 
 /** Call after domain-only patches (hydrate does full commit). */

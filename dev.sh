@@ -7,7 +7,7 @@
 #
 # Usage:
 #   ./dev.sh                 Short interactive menu (install gum for a nicer TUI)
-#   ./dev.sh <command>       Non-interactive, e.g.  up  down  web  all  all:sim  check
+#   ./dev.sh <command>       Non-interactive: run  up  down  web (partial)  check
 #   ./dev.sh help            Command list
 #
 # All long-running state (PID file, log file) lives under .dev/.
@@ -33,6 +33,10 @@ source "${SCRIPT_DIR}/scripts/load-local-env.sh"
 : "${DASHBOARD_URL:=http://localhost:5173}"
 : "${FRONTEND_DIR:=web}"
 : "${FRONTEND_DIST_DIR:=${FRONTEND_DIR}/dist}"
+: "${FRONTEND_PID_FILE:=${DEV_DIR}/vite.pid}"
+: "${FRONTEND_LOG_FILE:=${DEV_DIR}/vite.log}"
+: "${VITE_READY_URL:=http://127.0.0.1:5173/}"
+: "${VITE_READY_TIMEOUT_SECS:=90}"
 : "${CARGO_HOME_LOCAL:=${SCRIPT_DIR}/.cargo-local}"
 : "${READY_TIMEOUT_SECS:=45}"
 
@@ -47,6 +51,11 @@ source "${SCRIPT_DIR}/scripts/load-local-env.sh"
 : "${STDB_DATA_DIR:=${DEV_DIR}/spacetime-data}"
 : "${STDB_READY_TIMEOUT_SECS:=30}"
 
+# SpacetimeDB Cloud (Maincloud) — used when OPENATLAS_STDB_TARGET=cloud
+: "${STDB_CLOUD_SERVER:=https://maincloud.spacetimedb.com}"
+: "${STDB_CLOUD_WS:=wss://maincloud.spacetimedb.com}"
+: "${STDB_CLOUD_DB:=openatlas}"
+
 # `openatlas-llm-bridge` (→ Ollama). Must match Vite's proxy in `web/vite.config.ts`.
 # Set OPENATLAS_START_LLM=0 to skip auto-starting the bridge (Settings hub AI
 # analysis will be unavailable until you run it manually).
@@ -57,6 +66,24 @@ source "${SCRIPT_DIR}/scripts/load-local-env.sh"
 : "${LLM_READY_TIMEOUT_SECS:=90}"
 
 mkdir -p "$DEV_DIR"
+
+# Anchor .dev paths to repo root (start_frontend_dev cds into web/ before writing pid/log).
+abs_repo_path() {
+    local p="$1"
+    if [[ "$p" == /* ]]; then
+        printf '%s' "$p"
+    else
+        printf '%s/%s' "$SCRIPT_DIR" "$p"
+    fi
+}
+PID_FILE="$(abs_repo_path "$PID_FILE")"
+LOG_FILE="$(abs_repo_path "$LOG_FILE")"
+STDB_PID_FILE="$(abs_repo_path "$STDB_PID_FILE")"
+STDB_LOG_FILE="$(abs_repo_path "$STDB_LOG_FILE")"
+LLM_PID_FILE="$(abs_repo_path "$LLM_PID_FILE")"
+LLM_LOG_FILE="$(abs_repo_path "$LLM_LOG_FILE")"
+FRONTEND_PID_FILE="$(abs_repo_path "$FRONTEND_PID_FILE")"
+FRONTEND_LOG_FILE="$(abs_repo_path "$FRONTEND_LOG_FILE")"
 
 # Route cargo through the workspace-local cache so sandboxed runs do not hit a
 # read-only $HOME.
@@ -150,21 +177,30 @@ stdb_pid() {
 }
 
 print_status_line() {
-    local pid
+    local pid uri mode
     if pid="$(stdb_pid)"; then
-        style_ok "● spacetimedb running (pid=${pid}, ${STDB_LISTEN_ADDR})"
+        style_ok "● spacetimedb local (pid=${pid}, ${STDB_LISTEN_ADDR})"
     else
-        style_warn "○ spacetimedb not running (run: ./dev.sh spacetime:start)"
+        style_warn "○ spacetimedb local not running"
     fi
     if pid="$(server_pid)"; then
-        style_ok "● ingest running (pid=${pid})"
+        uri="$(current_ingest_stdb_uri)"
+        mode="$(ingest_mode_running)"
+        if is_cloud_stdb_uri "$uri"; then
+            style_ok "● ingest → cloud ${STDB_CLOUD_DB} (pid=${pid}, mode=${mode:-?})"
+        else
+            style_ok "● ingest → local ${STDB_DB_NAME} (pid=${pid}, mode=${mode:-?})"
+        fi
     else
         style_warn "○ ingest not running"
     fi
-    if [[ -d "$FRONTEND_DIST_DIR" ]]; then
-        style_info "● frontend bundle present at ${FRONTEND_DIST_DIR}/"
+    if pid="$(frontend_dev_pid)"; then
+        style_ok "● vite dev (pid=${pid}, ${DASHBOARD_URL})"
     else
-        style_warn "○ frontend bundle missing (run: ./dev.sh build:frontend)"
+        style_warn "○ vite dev not running"
+    fi
+    if [[ -d "$FRONTEND_DIST_DIR" ]]; then
+        style_muted "  dist/ present (production build)"
     fi
     if pid="$(llm_bridge_pid)"; then
         style_ok "● openatlas-llm-bridge running (pid=${pid}, http://${LLM_LISTEN_ADDR})"
@@ -202,13 +238,153 @@ do_build_frontend() {
     style_ok "frontend bundle written to ${FRONTEND_DIST_DIR}/"
 }
 
-do_dev_frontend() {
+ensure_frontend_deps() {
     require_cmd bun "install from https://bun.sh"
-    style_header "⚡ Vite dev server on :5173 (proxies :8080; bun)"
     if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
         spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
     fi
-    (cd "$FRONTEND_DIR" && bun run dev)
+}
+
+ensure_web_cloud_env_file() {
+    local dest="${FRONTEND_DIR}/.env.local"
+    local tmpl="${FRONTEND_DIR}/.env.cloud.example"
+    if [[ -f "$dest" ]]; then
+        return 0
+    fi
+    if [[ -f "$tmpl" ]]; then
+        cp "$tmpl" "$dest"
+        style_muted "created ${dest} (Vite also gets inline VITE_* for this run)"
+    fi
+}
+
+frontend_dev_pid() {
+    [[ -f "$FRONTEND_PID_FILE" ]] || return 1
+    local pid
+    pid="$(cat "$FRONTEND_PID_FILE" 2>/dev/null || true)"
+    [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null && printf '%s' "$pid"
+}
+
+stop_frontend_dev() {
+    local pid
+    if ! pid="$(frontend_dev_pid)"; then
+        rm -f "$FRONTEND_PID_FILE"
+        return 0
+    fi
+    style_header "⏹  Stopping Vite (pid=${pid})"
+    kill "$pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+        if ! kill -0 "$pid" 2>/dev/null; then break; fi
+        sleep 0.5
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        style_warn "forcing SIGKILL on Vite"
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+    rm -f "$FRONTEND_PID_FILE"
+    style_ok "vite stopped"
+}
+
+wait_for_vite_ready() {
+    require_cmd curl
+    local deadline=$(( $(date +%s) + VITE_READY_TIMEOUT_SECS ))
+    while true; do
+        if curl -sf "$VITE_READY_URL" >/dev/null 2>&1; then
+            style_ok "Vite ready at ${DASHBOARD_URL}"
+            return 0
+        fi
+        if ! frontend_dev_pid >/dev/null; then
+            style_err "Vite exited during startup — see $FRONTEND_LOG_FILE"
+            rm -f "$FRONTEND_PID_FILE"
+            return 1
+        fi
+        if (( $(date +%s) > deadline )); then
+            style_err "Vite did not become ready within ${VITE_READY_TIMEOUT_SECS}s"
+            style_muted "see $FRONTEND_LOG_FILE (port 5173 in use?)"
+            return 1
+        fi
+        sleep 0.5
+    done
+}
+
+# Background Vite for Run / up (TUI-friendly). Foreground: ./dev.sh web or OPENATLAS_VITE_FOREGROUND=1.
+start_frontend_dev() {
+    local stdb_target="${1:-local}"
+    if frontend_dev_pid >/dev/null; then
+        style_warn "Vite already running (pid=$(frontend_dev_pid))"
+        return 0
+    fi
+    ensure_frontend_deps
+    : > "$FRONTEND_LOG_FILE"
+    case "$stdb_target" in
+        cloud|maincloud)
+            ensure_web_cloud_env_file
+            style_header "⚡ Starting Vite :5173 → Maincloud (${STDB_CLOUD_DB})"
+            (
+                cd "$FRONTEND_DIR"
+                nohup env \
+                    VITE_STDB_URI="${STDB_CLOUD_WS}" \
+                    VITE_STDB_DB="${STDB_CLOUD_DB}" \
+                    bun run dev >>"$FRONTEND_LOG_FILE" 2>&1 &
+                echo $! > "$FRONTEND_PID_FILE"
+            )
+            ;;
+        *)
+            style_header "⚡ Starting Vite :5173 → local SpacetimeDB (ws://127.0.0.1:3000)"
+            (
+                cd "$FRONTEND_DIR"
+                nohup env \
+                    VITE_STDB_URI="ws://127.0.0.1:3000" \
+                    VITE_STDB_DB="${STDB_DB_NAME}" \
+                    bun run dev >>"$FRONTEND_LOG_FILE" 2>&1 &
+                echo $! > "$FRONTEND_PID_FILE"
+            )
+            ;;
+    esac
+    style_muted "pid $(cat "$FRONTEND_PID_FILE") · logs: $FRONTEND_LOG_FILE"
+    sleep 0.5
+    wait_for_vite_ready
+}
+
+# Vite: command-line VITE_* wins over .env / .env.local (see web/src/lib/stdb-endpoint.ts).
+web_vite_local() {
+    ensure_frontend_deps
+    style_header "⚡ Vite :5173 → local SpacetimeDB (ws://127.0.0.1:3000)"
+    style_muted "Ingest proxy :8080 · no ?demo=1 for live STDB"
+    (
+        cd "$FRONTEND_DIR"
+        VITE_STDB_URI="ws://127.0.0.1:3000" VITE_STDB_DB="${STDB_DB_NAME}" bun run dev
+    )
+}
+
+web_vite_cloud() {
+    ensure_frontend_deps
+    ensure_web_cloud_env_file
+    style_header "⚡ Vite :5173 → Maincloud (${STDB_CLOUD_DB})"
+    style_muted "${STDB_CLOUD_WS} · publish: ./dev.sh spacetime:publish:cloud"
+    (
+        cd "$FRONTEND_DIR"
+        VITE_STDB_URI="${STDB_CLOUD_WS}" VITE_STDB_DB="${STDB_CLOUD_DB}" bun run dev
+    )
+}
+
+do_dev_frontend() {
+    local stdb_target="${1:-local}"
+    case "$stdb_target" in
+        cloud|maincloud) web_vite_cloud ;;
+        *)               web_vite_local ;;
+    esac
+}
+
+do_dev_web_only() {
+    local stdb_target="${1:-local}"
+    apply_stdb_target "$stdb_target"
+    if ! server_pid >/dev/null; then
+        style_warn "ingest not running — /status proxy will fail until you start a backend"
+        style_muted "Tip: ./dev.sh run:${stdb_target}:sim  (full stack in one terminal)"
+    elif ! ingest_matches_target "$stdb_target"; then
+        style_warn "ingest target mismatch — restart with ./dev.sh start:${stdb_target}:sim (or live)"
+    fi
+    do_dev_frontend "$stdb_target"
 }
 
 do_build_cargo() {
@@ -294,6 +470,12 @@ do_spacetime_publish() {
     style_ok "module '${STDB_DB_NAME}' published"
 }
 
+do_spacetime_publish_cloud() {
+    require_cmd spacetime "install from https://spacetimedb.com/install"
+    style_header "☁️  Publishing module to SpacetimeDB Cloud (${STDB_CLOUD_DB})"
+    "$SCRIPT_DIR/scripts/publish-stdb-cloud.sh"
+}
+
 do_spacetime_stop() {
     local pid
     if ! pid="$(stdb_pid)"; then
@@ -325,44 +507,110 @@ do_spacetime_logs() {
 }
 
 # ----------------------------------------------------------------------------
-# Server lifecycle
+# SpacetimeDB target + ingest lifecycle
 # ----------------------------------------------------------------------------
 ingest_mode_running() {
     curl -sf "${STATUS_URL}" 2>/dev/null | jq -r '.ingest_mode // ""' 2>/dev/null || true
 }
 
+ingest_status_json() {
+    curl -sf "${STATUS_URL}" 2>/dev/null || true
+}
+
+current_ingest_stdb_uri() {
+    ingest_status_json | jq -r '.stdb_uri // ""' 2>/dev/null || true
+}
+
+is_cloud_stdb_uri() {
+    [[ "${1:-}" == *"maincloud"* ]] || [[ "${1:-}" == *"spacetimedb.com"* ]]
+}
+
+apply_stdb_target() {
+    local target="${1:-local}"
+    case "$target" in
+        cloud|maincloud)
+            export OPENATLAS_STDB_TARGET=cloud
+            export OPENATLAS_STDB_URI="$STDB_CLOUD_SERVER"
+            export OPENATLAS_STDB_DB="$STDB_CLOUD_DB"
+            ;;
+        local|*)
+            export OPENATLAS_STDB_TARGET=local
+            export OPENATLAS_STDB_URI="http://${STDB_LISTEN_ADDR}"
+            export OPENATLAS_STDB_DB="$STDB_DB_NAME"
+            ;;
+    esac
+}
+
+ingest_matches_target() {
+    local target="$1"
+    local uri
+    uri="$(current_ingest_stdb_uri)"
+    [[ -n "$uri" ]] || return 1
+    case "$target" in
+        cloud|maincloud) is_cloud_stdb_uri "$uri" ;;
+        local|*)         ! is_cloud_stdb_uri "$uri" ;;
+        *)                 return 1 ;;
+    esac
+}
+
+cloud_preflight() {
+    require_cmd spacetime "install from https://spacetimedb.com/install"
+    if ! spacetime login show >/dev/null 2>&1; then
+        style_err "SpacetimeDB Cloud requires: spacetime login"
+        return 1
+    fi
+    style_muted "Cloud DB ${STDB_CLOUD_DB} @ ${STDB_CLOUD_SERVER}"
+    return 0
+}
+
+print_stack_profile() {
+    local target="$1"
+    local mode="$2"
+    style_info "Stack: ${target} · ingest=${mode} · UI ${DASHBOARD_URL}"
+}
+
 start_server() {
-  # Ingest mode: live (real APIs), sim, hybrid (both), static (fixture burst).
+    # Ingest mode: sim | live | hybrid | static. Target: local | cloud.
     local ingest_mode="${1:-live}"
+    local stdb_target="${2:-${OPENATLAS_STDB_TARGET:-local}}"
+    apply_stdb_target "$stdb_target"
+
     if server_pid >/dev/null; then
         local running
         running="$(ingest_mode_running)"
-        if [[ -n "$running" && "$running" != "$ingest_mode" ]]; then
-            style_warn "ingest running in mode=${running}; restarting as ${ingest_mode}"
-            stop_server
-        else
-            style_warn "ingest already running (pid=$(server_pid), mode=${running:-unknown})"
+        if ingest_matches_target "$stdb_target" \
+            && [[ -n "$running" && "$running" == "$ingest_mode" ]]; then
+            style_warn "ingest already running (pid=$(server_pid), ${stdb_target}/${ingest_mode})"
             return 0
         fi
+        style_warn "restarting ingest → ${stdb_target}/${ingest_mode} (was ${running:-?})"
+        stop_server
     fi
-    if ! stdb_pid >/dev/null; then
-        style_warn "spacetimedb not running; starting and publishing module"
-        do_spacetime_start
-        do_spacetime_publish
+
+    if [[ "$stdb_target" == "local" ]]; then
+        if ! stdb_pid >/dev/null; then
+            style_warn "spacetimedb not running; starting and publishing module"
+            do_spacetime_start
+            do_spacetime_publish
+        fi
+    else
+        cloud_preflight || return 1
     fi
-    style_header "▶️  Starting openatlas-ingest (mode=${ingest_mode} → spacetimedb)"
+
+    style_header "▶️  Starting openatlas-ingest (${stdb_target} · ${ingest_mode})"
     : > "$LOG_FILE"
     (
-        export OPENATLAS_INGEST_MODE="$ingest_mode"
+        local -a env_args=(
+            "OPENATLAS_STDB_URI=${OPENATLAS_STDB_URI}"
+            "OPENATLAS_STDB_DB=${OPENATLAS_STDB_DB}"
+            "OPENATLAS_INGEST_MODE=${ingest_mode}"
+            "RUST_LOG=${RUST_LOG:-openatlas_ingest=info,info}"
+        )
         if [[ "$ingest_mode" == "live" || "$ingest_mode" == "hybrid" ]]; then
-            export OPENATLAS_ENABLE_LIVE_FEEDS=1
-        else
-            unset OPENATLAS_ENABLE_LIVE_FEEDS
+            env_args+=("OPENATLAS_ENABLE_LIVE_FEEDS=1")
         fi
-        export RUST_LOG="${RUST_LOG:-openatlas_ingest=info,info}"
-        export OPENATLAS_STDB_URI="${OPENATLAS_STDB_URI:-http://${STDB_LISTEN_ADDR}}"
-        export OPENATLAS_STDB_DB="${OPENATLAS_STDB_DB:-${STDB_DB_NAME}}"
-        nohup cargo run -p openatlas-ingest --quiet >>"$LOG_FILE" 2>&1 &
+        nohup env "${env_args[@]}" \
+            cargo run -p openatlas-ingest --quiet >>"$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
     )
     style_info "pid $(cat "$PID_FILE") · logs: $LOG_FILE"
@@ -389,7 +637,7 @@ wait_for_ready() {
                 if [[ \$(date +%s) -gt ${deadline} ]]; then exit 1; fi
             done
         "; then
-            style_ok "server ready at ${DASHBOARD_URL}"
+            style_ok "ingest ready at ${READY_URL}"
         else
             style_err "server did not become ready within ${READY_TIMEOUT_SECS}s"
             style_muted "see $LOG_FILE for details"
@@ -398,7 +646,7 @@ wait_for_ready() {
     else
         while true; do
             if curl -sf "$READY_URL" >/dev/null 2>&1; then
-                style_ok "server ready at ${DASHBOARD_URL}"
+                style_ok "ingest ready at ${READY_URL}"
                 return 0
             fi
             if (( $(date +%s) > deadline )); then
@@ -560,6 +808,11 @@ do_status() {
     else
         style_warn "ingest not running"
     fi
+    if pid="$(frontend_dev_pid)"; then
+        style_ok "vite dev running (pid=${pid}, ${DASHBOARD_URL})"
+    else
+        style_warn "vite dev not running"
+    fi
     require_cmd curl
     if curl -sf "$HEALTH_URL" >/dev/null; then
         style_ok "/health -> ok"
@@ -616,16 +869,53 @@ do_prove_live() {
         fi
     fi
     if ! server_pid >/dev/null; then
-        start_server live || return 1
+        start_server live local || return 1
     fi
     "$SCRIPT_DIR/scripts/prove-live-stack.sh"
 }
 
+# Force-stop anything still listening on OpenAtlas dev ports (stale PID files, manual runs).
+kill_tcp_listeners() {
+    local port="$1"
+    [[ "$port" =~ ^[0-9]+$ ]] || return 0
+    local pid
+    if command -v lsof >/dev/null 2>&1; then
+        while read -r pid; do
+            [[ -n "$pid" ]] || continue
+            kill "$pid" 2>/dev/null || true
+        done < <(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+    elif command -v fuser >/dev/null 2>&1; then
+        fuser -k "${port}/tcp" >/dev/null 2>&1 || true
+    fi
+}
+
+stop_dev_stack_ports() {
+    kill_tcp_listeners 5173
+    kill_tcp_listeners 8080
+    local llm_port="${LLM_LISTEN_ADDR##*:}"
+    kill_tcp_listeners "${llm_port:-3847}"
+    kill_tcp_listeners "${STDB_LISTEN_ADDR##*:}"
+}
+
+# Tear down everything started by Run / up (Vite, ingest, LLM bridge, local SpacetimeDB).
 do_down() {
+    style_header "⏹  Stopping full stack"
+    stop_frontend_dev
     stop_server
     stop_llm_bridge
     do_spacetime_stop
-    style_ok "full stack stopped"
+    stop_dev_stack_ports
+    rm -f "$FRONTEND_PID_FILE" "$PID_FILE" "$LLM_PID_FILE" "$STDB_PID_FILE"
+    style_ok "everything stopped (Vite, ingest, LLM bridge, local SpacetimeDB)"
+}
+
+do_vite_logs() {
+    if [[ ! -f "$FRONTEND_LOG_FILE" ]]; then
+        style_warn "no Vite log yet at $FRONTEND_LOG_FILE"
+        return 0
+    fi
+    style_header "🪵 Tailing $FRONTEND_LOG_FILE (Ctrl+C to exit)"
+    tail -n 80 -f "$FRONTEND_LOG_FILE"
 }
 
 do_logs() {
@@ -641,10 +931,6 @@ do_logs() {
 # Open dashboard / TUI / CLI explorer
 # ----------------------------------------------------------------------------
 do_open_dashboard() {
-    if ! server_pid >/dev/null; then
-        style_warn "server not running; starting (simulated feeds)"
-        start_server sim
-    fi
     style_header "🌐 Opening ${DASHBOARD_URL}"
     if command -v xdg-open >/dev/null; then
         xdg-open "$DASHBOARD_URL" >/dev/null 2>&1 &
@@ -740,6 +1026,7 @@ do_lint() {
 do_clean() {
     style_header "🧹 Cleaning"
     if confirm "Stop services and remove build artifacts (includes SpacetimeDB data)?"; then
+        stop_frontend_dev
         stop_server
         stop_llm_bridge
         do_spacetime_stop
@@ -757,53 +1044,117 @@ do_clean() {
 # ----------------------------------------------------------------------------
 
 print_web_hint() {
-    style_muted "UI: ./dev.sh web  or  make web  →  ${DASHBOARD_URL}  (proxies ingest + /api/llm)"
+    style_muted "UI: ${DASHBOARD_URL}  ·  foreground Vite: ./dev.sh web  ·  logs: $FRONTEND_LOG_FILE"
 }
 
-# Bring up SpacetimeDB + ingest + LLM. Mode: sim | live | hybrid | static.
+# Bring up ingest (+ local SpacetimeDB when target=local). Mode: sim | live | hybrid | static.
 # Set OPENATLAS_SKIP_BUILD=1 to skip wasm + web dist rebuild (faster restarts).
 stack_up() {
     local ingest_mode="${1:-${OPENATLAS_INGEST_MODE:-hybrid}}"
+    local stdb_target="${2:-local}"
+    apply_stdb_target "$stdb_target"
+    print_stack_profile "$stdb_target" "$ingest_mode"
+
     if [[ "${OPENATLAS_SKIP_BUILD:-0}" != "1" ]]; then
         do_spacetime_build
     else
         style_muted "OPENATLAS_SKIP_BUILD=1 — skipping spacetime wasm build"
     fi
-    do_spacetime_start
-    do_spacetime_publish
-    if [[ "${OPENATLAS_SKIP_BUILD:-0}" != "1" ]]; then
-        do_build_frontend
+
+    if [[ "$stdb_target" == "local" ]]; then
+        do_spacetime_start
+        do_spacetime_publish
+        if [[ "${OPENATLAS_SKIP_BUILD:-0}" != "1" ]]; then
+            do_build_frontend
+        fi
+    else
+        cloud_preflight || return 1
     fi
-    start_server "$ingest_mode"
+
+    start_server "$ingest_mode" "$stdb_target"
+}
+
+ensure_stack_for_run() {
+    local stdb_target="$1"
+    local ingest_mode="$2"
+    apply_stdb_target "$stdb_target"
+
+    local need_up=0
+    if [[ "$stdb_target" == "local" ]] && ! stdb_pid >/dev/null; then
+        need_up=1
+    fi
+    if ! server_pid >/dev/null; then
+        need_up=1
+    elif ! ingest_matches_target "$stdb_target"; then
+        style_warn "ingest points at wrong STDB — restarting for ${stdb_target}"
+        stop_server
+        need_up=1
+    else
+        local running
+        running="$(ingest_mode_running)"
+        if [[ -n "$running" && "$running" != "$ingest_mode" ]]; then
+            stop_server
+            need_up=1
+        fi
+    fi
+
+    if (( need_up )); then
+        stack_up "$ingest_mode" "$stdb_target"
+    else
+        style_muted "backend already up (${stdb_target}/${ingest_mode})"
+    fi
+}
+
+# Full stack: SpacetimeDB (local) + ingest + LLM bridge + Vite + open browser.
+# Backend-only pieces live under Advanced (menu_up_backend, start:*, web:*).
+full_stack_up() {
+    local ingest_mode="${1:-${OPENATLAS_INGEST_MODE:-hybrid}}"
+    local stdb_target="${2:-local}"
+    style_header "Full stack — ${stdb_target} · ${ingest_mode}"
+    print_stack_profile "$stdb_target" "$ingest_mode"
+    ensure_stack_for_run "$stdb_target" "$ingest_mode"
+    if [[ "${OPENATLAS_VITE_FOREGROUND:-0}" == "1" ]]; then
+        style_muted "Foreground Vite (Ctrl+C stops UI only; backend keeps running)"
+        do_open_dashboard
+        do_dev_frontend "$stdb_target"
+        return
+    fi
+    start_frontend_dev "$stdb_target" || return 1
+    do_open_dashboard
+    style_ok "full stack running — ${DASHBOARD_URL}"
+    style_muted "Vite logs: $FRONTEND_LOG_FILE · Stop: ./dev.sh down"
+}
+
+do_run_stack() {
+    full_stack_up "${2:-hybrid}" "${1:-local}"
 }
 
 do_all() {
-    style_header "Up — hybrid ingest (live APIs + simulators)"
-    stack_up hybrid
-    do_open_dashboard
-    print_web_hint
+    full_stack_up hybrid local
 }
 
 do_all_sim() {
-    style_header "Up — simulated ingest only"
-    stack_up sim
-    do_open_dashboard
-    print_web_hint
+    full_stack_up sim local
+}
+
+do_all_live() {
+    full_stack_up live local
+}
+
+do_all_cloud_sim() {
+    full_stack_up sim cloud
+}
+
+do_all_cloud_live() {
+    full_stack_up live cloud
 }
 
 do_up_fast() {
-    OPENATLAS_SKIP_BUILD=1 stack_up "${OPENATLAS_INGEST_MODE:-hybrid}"
-    style_ok "stack up (fast — no rebuild). Run: ./dev.sh web"
+    OPENATLAS_SKIP_BUILD=1 full_stack_up "${OPENATLAS_INGEST_MODE:-hybrid}" "${OPENATLAS_STDB_TARGET:-local}"
 }
 
 do_run() {
-    style_header "Run — backend + Vite UI (Ctrl+C stops the UI only)"
-    if ! stdb_pid >/dev/null || ! server_pid >/dev/null; then
-        stack_up "${OPENATLAS_INGEST_MODE:-hybrid}"
-    else
-        style_muted "backend already running — starting Vite only"
-    fi
-    do_dev_frontend
+    full_stack_up "${OPENATLAS_INGEST_MODE:-hybrid}" local
 }
 
 do_verify() {
@@ -878,37 +1229,37 @@ print_help() {
     cat <<'HELP'
 OpenAtlas dev harness  —  ./dev.sh <cmd>   or   make <target>
 
-Daily (use these)
-  up              SpacetimeDB + publish + hybrid ingest + LLM  (OPENATLAS_INGEST_MODE)
-  up:fast         Same without wasm/web rebuild (OPENATLAS_SKIP_BUILD=1)
-  down            Stop ingest, LLM bridge, SpacetimeDB
-  run             up (if needed) + Vite on :5173 — one terminal
-  web             Vite only (backend must be up)
-  web:demo        UI with synthetic data (no SpacetimeDB)
-  status          Health summary + /status JSON
+Full stack (STDB + ingest + LLM + Vite + opens browser) — use Run in TUI or:
+  run                 Local hybrid (default)
+  run:local:sim       Local STDB + sim ingest + Vite
+  run:local:live      Local STDB + live feeds + Vite
+  run:local:hybrid    Local STDB + live + simulators + Vite
+  run:cloud:sim       Maincloud + sim ingest + Vite
+  run:cloud:live      Maincloud + live feeds + Vite
+  up / up:hybrid      Same as run:local:hybrid
+  up:sim | up:live    Full stack with that ingest mode (local STDB)
+  up:cloud:sim|live   Full stack on Maincloud
+  up:fast             Full stack, skip wasm/dist rebuild (OPENATLAS_SKIP_BUILD=1)
+  OPENATLAS_VITE_FOREGROUND=1 ./dev.sh run   Vite in foreground (Ctrl+C = UI only)
+
+Advanced / partial (./dev.sh menu → Advanced)
+  web | web:cloud     Vite only (backend must already be up)
+  web:demo            Demo UI only (no SpacetimeDB)
+  start:*             Ingest only (no Vite)
+  down                Stop everything (TUI Stop = same)
+
+Cloud module
+  spacetime:publish:cloud    Publish wasm to Maincloud (once per DB)
 
 Test & build
-  test            fmt + clippy + unit tests
-  build           spacetime wasm + web dist + cargo release
-  verify          test + subscription SQL + runtime checks (if stack up)
-  verify --full   + prove-live (+ prove-llm when bridge up)
-  e2e             Full compile + optional stack smoke (scripts/e2e-qa.sh)
-  e2e:quick       Compile gates only
+  test | build | verify [--full] | e2e | e2e:quick | status | logs
 
-Ingest modes (with up / stack_up)
-  up:sim          Simulators only
-  up:live         Live public APIs only
-  up:hybrid       Live + simulators (default)
+Advanced
+  prove:live | prove:llm | feeds | spacetime:* | llm:* | cli | tail | clean
 
-Optional / advanced
-  prove:live | prove:llm | feeds | logs | clean | clean:force
-  start | start:sim | start:hybrid | stop | restart
-  spacetime:build|start|publish|stop|logs | llm:start|stop|logs | ollama:cpu
-  cli | tail | dashboard
-
-Config: ./scripts/init-local-config.sh  or  ./dev.sh init-config  (see docs/CONFIG.md)
-Env: .env, .dev/local.env, .dev/feed-secrets.json, web/.env  — all gitignored
-State: .dev/   Menu: ./dev.sh   Makefile: make help
+Config: ./dev.sh init-config  (see docs/CONFIG.md)
+Env: .env sets defaults; Run/web commands force local vs cloud STDB for ingest + Vite.
+Menu: ./dev.sh  →  Run (full stack) · Stop (tear down all) · Test · Advanced · Quit
 HELP
 }
 
@@ -921,53 +1272,198 @@ menu_return_or_quit() {
     return 0
 }
 
+# Full-stack presets (STDB + ingest + Vite + browser). CLI: ./dev.sh run:local:sim etc.
+menu_run_presets() {
+    local r
+    r="$(choose \
+        "Local sim" \
+        "Local live" \
+        "Local hybrid" \
+        "Cloud sim" \
+        "Cloud live" \
+        "Back")" || return
+    case "$r" in
+        "Local sim")     full_stack_up sim local ;;
+        "Local live")    full_stack_up live local ;;
+        "Local hybrid")  full_stack_up hybrid local ;;
+        "Cloud sim")     full_stack_up sim cloud ;;
+        "Cloud live")    full_stack_up live cloud ;;
+        "Back"|"")       return ;;
+        *)               style_warn "unknown: $r" ;;
+    esac
+}
+
+menu_test() {
+    local t
+    t="$(choose \
+        "Verify (health + runtime)" \
+        "Unit + lint (fmt/clippy/test)" \
+        "E2E quick" \
+        "E2E full" \
+        "Back")" || return
+    case "$t" in
+        "Verify (health + runtime)")     do_verify ;;
+        "Unit + lint (fmt/clippy/test)") do_check ;;
+        "E2E quick")                     "$SCRIPT_DIR/scripts/e2e-qa.sh" --quick ;;
+        "E2E full")                      "$SCRIPT_DIR/scripts/e2e-qa.sh" ;;
+        "Back"|"")                       return ;;
+        *)                               style_warn "unknown: $t" ;;
+    esac
+}
+
+menu_web_only() {
+    local w
+    w="$(choose \
+        "Local STDB" \
+        "Cloud (Maincloud)" \
+        "Demo (no STDB)" \
+        "Back")" || return
+    case "$w" in
+        "Local STDB")          do_dev_web_only local ;;
+        "Cloud (Maincloud)")   do_dev_web_only cloud ;;
+        "Demo (no STDB)")      do_dev_frontend_demo ;;
+        "Back"|"")             return ;;
+        *)                     style_warn "unknown: $w" ;;
+    esac
+}
+
+menu_up_backend() {
+    local u
+    u="$(choose \
+        "Local sim" \
+        "Local live" \
+        "Local hybrid" \
+        "Cloud sim" \
+        "Cloud live" \
+        "Back")" || return
+    case "$u" in
+        "Local sim")     stack_up sim local ;;
+        "Local live")    stack_up live local ;;
+        "Local hybrid")  stack_up hybrid local ;;
+        "Cloud sim")     stack_up sim cloud ;;
+        "Cloud live")    stack_up live cloud ;;
+        "Back"|"")       return ;;
+        *)               style_warn "unknown: $u" ;;
+    esac
+}
+
 menu_advanced() {
     local a
     a="$(choose \
-        "Spacetime — build" \
-        "Spacetime — start" \
-        "Spacetime — publish" \
-        "Spacetime — stop" \
-        "Spacetime — logs" \
-        "Ingest — start (live)" \
-        "Ingest — start (sim)" \
-        "Ingest — start (hybrid)" \
-        "Ingest — stop" \
-        "Ingest — restart (live)" \
-        "Prove live" \
-        "Feed status" \
-        "LLM — start" \
-        "LLM — stop" \
-        "LLM — logs" \
-        "Tail — ingest" \
-        "Tail — SpacetimeDB" \
-        "E2E QA" \
-        "E2E quick" \
-        "Print full command list" \
+        "Run — other preset..." \
+        "Run — web only..." \
+        "Run — backend only..." \
+        "SpacetimeDB..." \
+        "Ingest..." \
+        "Observe (logs / feeds / status)" \
+        "LLM bridge..." \
+        "Prove live pipeline" \
+        "Build all" \
+        "Clean workspace" \
+        "Command reference" \
         "Back")" || return
     case "$a" in
-        "Spacetime — build")        do_spacetime_build ;;
-        "Spacetime — start")        do_spacetime_start ;;
-        "Spacetime — publish")      do_spacetime_publish ;;
-        "Spacetime — stop")         do_spacetime_stop ;;
-        "Spacetime — logs")         do_spacetime_logs ;;
-        "Ingest — start (live)")    start_server live ;;
-        "Ingest — start (sim)")     start_server sim ;;
-        "Ingest — start (hybrid)")  start_server hybrid ;;
-        "Ingest — stop")            stop_server ;;
-        "Ingest — restart (live)") stop_server; start_server live ;;
-        "Prove live")               do_prove_live ;;
-        "Feed status")              do_feed_status ;;
-        "LLM — start")              start_llm_bridge ;;
-        "LLM — stop")               stop_llm_bridge ;;
-        "LLM — logs")               do_llm_logs ;;
-        "Tail — ingest")            do_logs ;;
-        "Tail — SpacetimeDB")       do_spacetime_logs ;;
-        "E2E QA")                   "$SCRIPT_DIR/scripts/e2e-qa.sh" ;;
-        "E2E quick")                "$SCRIPT_DIR/scripts/e2e-qa.sh" --quick ;;
-        "Print full command list")  print_help ;;
-        "Back"|"")                  return ;;
-        *)                          style_warn "unknown: $a" ;;
+        "Run — other preset...")     menu_run_presets ;;
+        "Run — web only...")         menu_web_only ;;
+        "Run — backend only...")     menu_up_backend ;;
+        "SpacetimeDB...")            menu_advanced_spacetime ;;
+        "Ingest...")                 menu_advanced_ingest ;;
+        "Observe (logs / feeds / status)")
+            menu_advanced_observe ;;
+        "LLM bridge...")             menu_advanced_llm ;;
+        "Prove live pipeline")       do_prove_live ;;
+        "Build all")                 do_build_all ;;
+        "Clean workspace")           do_clean ;;
+        "Command reference")         print_help ;;
+        "Back"|"")                   return ;;
+        *)                           style_warn "unknown: $a" ;;
+    esac
+}
+
+menu_advanced_spacetime() {
+    local s
+    s="$(choose \
+        "Build module" \
+        "Start local" \
+        "Publish local" \
+        "Publish cloud" \
+        "Stop local" \
+        "Logs" \
+        "Back")" || return
+    case "$s" in
+        "Build module")    do_spacetime_build ;;
+        "Start local")     do_spacetime_start ;;
+        "Publish local")   do_spacetime_publish ;;
+        "Publish cloud")   do_spacetime_publish_cloud ;;
+        "Stop local")      do_spacetime_stop ;;
+        "Logs")            do_spacetime_logs ;;
+        "Back"|"")         return ;;
+        *)                 style_warn "unknown: $s" ;;
+    esac
+}
+
+menu_advanced_ingest() {
+    local i
+    i="$(choose \
+        "Start local sim" \
+        "Start local live" \
+        "Start local hybrid" \
+        "Start cloud sim" \
+        "Start cloud live" \
+        "Stop ingest" \
+        "Back")" || return
+    case "$i" in
+        "Start local sim")     start_server sim local ;;
+        "Start local live")    start_server live local ;;
+        "Start local hybrid")  start_server hybrid local ;;
+        "Start cloud sim")     start_server sim cloud ;;
+        "Start cloud live")    start_server live cloud ;;
+        "Stop ingest")         stop_server ;;
+        "Back"|"")             return ;;
+        *)                     style_warn "unknown: $i" ;;
+    esac
+}
+
+menu_advanced_observe() {
+    local o
+    o="$(choose \
+        "Status" \
+        "Feed health" \
+        "Tail ingest log" \
+        "Tail Vite log" \
+        "Tail SpacetimeDB log" \
+        "Back")" || return
+    case "$o" in
+        "Status")                 do_status ;;
+        "Feed health")            do_feed_status ;;
+        "Tail ingest log")        do_logs ;;
+        "Tail Vite log")          do_vite_logs ;;
+        "Tail SpacetimeDB log")   do_spacetime_logs ;;
+        "Back"|"")                return ;;
+        *)                        style_warn "unknown: $o" ;;
+    esac
+}
+
+menu_advanced_llm() {
+    local l
+    l="$(choose \
+        "Start" \
+        "Stop" \
+        "Logs" \
+        "Back")" || return
+    case "$l" in
+        "Start")  start_llm_bridge ;;
+        "Stop")   stop_llm_bridge ;;
+        "Logs")   do_llm_logs ;;
+        "Back"|"") return ;;
+        *)        style_warn "unknown: $l" ;;
+    esac
+}
+
+menu_blocks_after() {
+    case "$1" in
+        "Run"|"Run..."|"Stop"|"Test"|"Test..."|"Advanced"|"Advanced...") return 0 ;;
+        *) return 1 ;;
     esac
 }
 
@@ -976,67 +1472,25 @@ menu() {
     while true; do
         print_banner
         print_status_line
-        # Short labels: easy to read, script / gum friendly (no emoji in match strings)
         choice="$(choose \
-            "1  Up — hybrid stack (STDB + ingest + LLM)" \
-            "2  Down — stop everything" \
-            "3  Run — up + web UI (this terminal)" \
-            "4  Web only — Vite :5173" \
-            "5  Verify — test + health checks" \
-            "6  Demo web — no backend" \
-            "7  Status" \
-            "8  Test (fmt/clippy/unit)" \
-            "9  Advanced..." \
-            "10 Help" \
-            "11 Quit")" || break
+            "Run" \
+            "Stop" \
+            "Test" \
+            "Advanced" \
+            "Quit")" || break
         case "$choice" in
-            "1  Up — hybrid stack (STDB + ingest + LLM)")
-                do_all
-                ;;
-            "2  Down — stop everything")
-                do_down
-                ;;
-            "3  Run — up + web UI (this terminal)")
-                do_run
-                ;;
-            "4  Web only — Vite :5173")
-                do_dev_frontend
-                ;;
-            "5  Verify — test + health checks")
-                do_verify
-                ;;
-            "6  Demo web — no backend")
-                do_dev_frontend_demo
-                ;;
-            "7  Status")
-                do_status
-                ;;
-            "8  Test (fmt/clippy/unit)")
-                do_check
-                ;;
-            "9  Advanced...")
-                menu_advanced
-                ;;
-            "10 Help")
-                print_help
-                ;;
-            "11 Quit"|"")
-                break
-                ;;
-            *)
-                style_warn "unknown: $choice"
-                ;;
+            "Run")       full_stack_up hybrid local ;;
+            "Stop")      do_down ;;
+            "Test")      menu_test ;;
+            "Advanced")  menu_advanced ;;
+            "Quit"|"")   break ;;
+            *)           style_warn "unknown: $choice" ;;
         esac
-        case "$choice" in
-            "3  Run — up + web UI (this terminal)"|"4  Web only — Vite :5173"|"6  Demo web — no backend"|"11 Quit"|"")
-                : # blocking or quit
-                ;;
-            *)
-                if [[ -n "$choice" ]]; then
-                    menu_return_or_quit || break
-                fi
-                ;;
-        esac
+        if menu_blocks_after "$choice"; then
+            :
+        elif [[ -n "$choice" ]]; then
+            menu_return_or_quit || break
+        fi
     done
     style_muted "bye"
 }
@@ -1050,20 +1504,28 @@ main() {
         help|-h|--help)      print_help ;;
         all|up|up:hybrid)    do_all ;;
         up:fast)             do_up_fast ;;
-        up:live)             stack_up live; do_open_dashboard; print_web_hint ;;
+        up:live)             do_all_live ;;
+        up:cloud:sim)        do_all_cloud_sim ;;
+        up:cloud:live)       do_all_cloud_live ;;
         all:sim|up:sim)      do_all_sim ;;
         down)                do_down ;;
         run)                 do_run ;;
+        run:local:sim)       do_run_stack local sim ;;
+        run:local:live)      do_run_stack local live ;;
+        run:local:hybrid)    do_run_stack local hybrid ;;
+        run:cloud:sim)       do_run_stack cloud sim ;;
+        run:cloud:live)      do_run_stack cloud live ;;
         verify)              do_verify "${2:-}" ;;
         test)                do_check ;;
         prove:live)          do_prove_live ;;
         prove:llm)           do_prove_llm ;;
         feeds|feed:status)   do_feed_status ;;
-        web)                 do_dev_frontend ;;
+        web|web:local)       do_dev_web_only local ;;
+        web:cloud)           do_dev_web_only cloud ;;
         web:demo)            do_dev_frontend_demo ;;
         check)               do_check ;;
         init-config)         do_init_config ;;
-        clean:force)         do_clean_force ;;
+        clean:force)         stop_frontend_dev; do_clean_force ;;
         build)               do_build_all ;;
         build:frontend)      do_build_frontend ;;
         dev:frontend)        do_dev_frontend ;;
@@ -1071,19 +1533,25 @@ main() {
         spacetime:build)     do_spacetime_build ;;
         spacetime:start)     do_spacetime_start ;;
         spacetime:publish)   do_spacetime_publish ;;
+        spacetime:publish:cloud) do_spacetime_publish_cloud ;;
         spacetime:stop)      do_spacetime_stop ;;
         spacetime:logs)      do_spacetime_logs ;;
-        start)               start_server live ;;
-        start:sim)           start_server sim ;;
-        start:hybrid)        start_server hybrid ;;
-        start:static)        start_server static ;;
+        start)               start_server live local ;;
+        start:sim)           start_server sim local ;;
+        start:live)          start_server live local ;;
+        start:hybrid)        start_server hybrid local ;;
+        start:static)        start_server static local ;;
+        start:cloud:sim)     start_server sim cloud ;;
+        start:cloud:live)    start_server live cloud ;;
+        start:cloud:hybrid)  start_server hybrid cloud ;;
         stop)                stop_server ;;
-        stop:all)            stop_server; stop_llm_bridge; do_spacetime_stop ;;
+        stop:all)            do_down ;;
+        vite:logs)           do_vite_logs ;;
         llm:start)            start_llm_bridge ;;
         llm:stop)            stop_llm_bridge ;;
         llm:logs)            do_llm_logs ;;
         ollama:cpu)          do_ollama_cpu ;;
-        restart)             stop_server; start_server live ;;
+        restart)             stop_server; start_server live local ;;
         status)              do_status ;;
         logs)                do_logs ;;
         dashboard)           do_open_dashboard ;;

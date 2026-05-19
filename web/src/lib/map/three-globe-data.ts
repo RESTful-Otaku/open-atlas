@@ -3,6 +3,7 @@
  * selection rules as the MapLibre map.
  */
 import { DOMAIN_CATALOG, domainColor } from "../colors";
+import type { GeoEventIndex } from "../geo-event-index-build";
 import type { UiCausalEdge, UiEvent } from "../types";
 import { matchesSelectedDomain } from "../state.svelte";
 import { isGeoEvent } from "./map-causal-geojson";
@@ -40,22 +41,19 @@ export type GlobeHeatmapDatum = {
 };
 
 export function buildPerDomainHeatmaps(
-  events: readonly UiEvent[],
+  index: GeoEventIndex,
   mapDomains: ReadonlySet<string>,
 ): GlobeHeatmapDatum[] {
   const out: GlobeHeatmapDatum[] = [];
   for (const d of DOMAIN_CATALOG) {
     if (mapDomains.size > 0 && !mapDomains.has(d.id)) continue;
     const pts: [number, number, number][] = [];
-    for (const e of events) {
+    for (const e of index.byDomain.get(d.id) ?? []) {
       if (!matchesSelectedDomain(e.domain)) continue;
-      if (!mapDomains.has(e.domain)) continue;
-      if (e.domain !== d.id) continue;
-      if (!isGeoEvent(e)) continue;
       const w = Number.isFinite(e.severity_score)
         ? 0.25 + Math.max(0, Math.min(1, e.severity_score)) * 0.85
         : 0.45;
-      pts.push([e.location.lat, e.location.lon, w]);
+      pts.push([e.location!.lat, e.location!.lon, w]);
     }
     if (pts.length) {
       out.push({ domain: d.id, color: d.color, points: pts });
@@ -81,11 +79,11 @@ export type GlobeEventPoint = {
 };
 
 export function buildGlobePoints(
-  events: readonly UiEvent[],
+  geoEvents: readonly UiEvent[],
   mapDomains: ReadonlySet<string>,
 ): GlobeEventPoint[] {
   const pts: GlobeEventPoint[] = [];
-  for (const e of events) {
+  for (const e of geoEvents) {
     if (!matchesSelectedDomain(e.domain)) continue;
     if (!mapDomains.has(e.domain)) continue;
     if (!isGeoEvent(e)) continue;

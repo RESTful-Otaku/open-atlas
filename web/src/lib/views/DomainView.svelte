@@ -9,6 +9,8 @@
   import { domainIcon } from "../domain-icons";
   import { matrixIdForDomain } from "../hub";
   import { navigate, router } from "../router.svelte";
+  import { getEventsForDomain } from "../domain-events-cache";
+  import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard, setSelectedDomain } from "../state.svelte";
   import { SeverityChip, bucketSeverity, bucketRisk } from "../primitives";
   import type { UiCausalEdge, UiEvent, UiSignal } from "../types";
@@ -44,11 +46,11 @@
       ? (dashboard.domainSeverityHistory[domainId] ?? [])
       : ([] as number[]),
   );
-  const domainEventsAll = $derived(
-    domainId
-      ? dashboard.events.filter((e) => e.domain === domainId)
-      : [],
-  );
+  const domainEventsAll = $derived.by(() => {
+    if (!domainId) return [] as UiEvent[];
+    void dashboardData.revision;
+    return getEventsForDomain(domainId);
+  });
   const domainEvents = $derived(sortEventsForDomain(domainEventsAll));
   const deskProfile = $derived(
     domainId ? deskProfileForDomain(domainId) : ("geo_operational" as DeskProfile),
@@ -193,15 +195,17 @@
 
     <section class="domain-panel domain-charts-wrap" aria-labelledby="domain-charts-h">
       <h2 id="domain-charts-h" class="visually-hidden">Domain charts</h2>
-      <DomainChartsBlock
-        profile={deskProfile}
-        domainId={catalog.id}
-        accent={catalog.color}
-        events={domainEventsAll}
-        severityHistory={severityHistory}
-        state={state}
-        dataMode={dashboard.dataMode}
-      />
+      {#key catalog.id}
+        <DomainChartsBlock
+          profile={deskProfile}
+          domainId={catalog.id}
+          accent={catalog.color}
+          events={domainEventsAll}
+          severityHistory={severityHistory}
+          state={state}
+          dataMode={dashboard.dataMode}
+        />
+      {/key}
     </section>
 
     <section

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { debounce } from "../debounce-raf";
   import { initChart, type ECharts } from "../echarts";
   import { onThemeChange } from "../theme-events";
   import { tooltipBase } from "../viz/chart-theme";
@@ -14,7 +15,8 @@
   const { span = 6 }: { span?: number } = $props();
 
   let container: HTMLDivElement | undefined = $state();
-  let chart: ECharts | null = null;
+  /** Must be `$state` so the data `$effect` re-runs after `onMount` creates the instance. */
+  let chart: ECharts | null = $state(null);
 
   interface Node {
     id: string;
@@ -139,38 +141,65 @@
 
     const resize = () => chart?.resize();
     window.addEventListener("resize", resize);
+    const ro =
+      container &&
+      new ResizeObserver(() => {
+        chart?.resize();
+      });
+    ro?.observe(container);
     const offTheme = onThemeChange(() => {
       chart?.setOption({ tooltip: { ...tooltipBase, confine: true } });
     });
     return () => {
+      applyGraphToChart.cancel();
       offTheme();
+      ro?.disconnect();
       window.removeEventListener("resize", resize);
       chart?.dispose();
       chart = null;
     };
   });
 
-  $effect(() => {
-    if (!chart) return;
-    chart.setOption(
+  const applyGraphToChart = debounce(() => {
+    const c = chart;
+    if (!c) return;
+    const { nodes, links, categories } = graph;
+    c.setOption(
       {
         animationDurationUpdate: 0,
         series: [
           {
-            data: graph.nodes,
-            links: graph.links,
-            categories: graph.categories,
+            type: "graph",
+            layout: "force",
+            roam: true,
+            draggable: true,
+            label: { show: false },
+            emphasis: {
+              focus: "adjacency",
+              lineStyle: { width: 3 },
+            },
             force: {
               repulsion: 80,
               edgeLength: [40, 90],
               gravity: 0.08,
               layoutAnimation: false,
             },
+            edgeSymbol: ["none", "arrow"],
+            edgeSymbolSize: [0, 6],
+            lineStyle: { color: "rgba(148,163,184,0.45)", curveness: 0.12 },
+            data: nodes,
+            links,
+            categories,
           },
         ],
       },
       { replaceMerge: ["series"] } as never,
     );
+  }, 300);
+
+  $effect(() => {
+    void dashboardData.revision;
+    applyGraphToChart();
   });
 
   const summary = $derived({

@@ -2,7 +2,7 @@
  * Shared LLM + ingest reachability checks (also shown in Settings).
  * SpacetimeDB status lives on `dashboard.connection` in `state.svelte.ts`.
  */
-import { checkLlmBridgeReady } from "./llm";
+import { checkLlmBridgeCapable, checkLlmBridgeReady } from "./llm";
 import {
   fetchIngestReady,
   fetchIngestStatus,
@@ -42,6 +42,18 @@ async function fetchIngestOk(): Promise<{
     };
   }
   return { ok: true, err: null, status: result.status };
+}
+
+/**
+ * Refresh LLM readiness before analysis. When `deep` is true, also runs a tiny
+ * Ollama completion (catches CUDA / model load failures that /v1/ready misses).
+ */
+export async function ensureLlmReady(deep = false): Promise<boolean> {
+  await refreshRemoteReadiness();
+  if (deep) {
+    readiness.llmReady = await checkLlmBridgeCapable();
+  }
+  return readiness.llmReady === true;
 }
 
 /** GET /ready on the ingest service (proxied in Vite dev) + LLM /v1/ready + /status. */

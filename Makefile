@@ -1,16 +1,17 @@
 # OpenAtlas — thin wrappers around ./dev.sh (single source of truth).
-# Override ingest mode: make up INGEST_MODE=sim
 #
-#   make up      Start SpacetimeDB + hybrid ingest + LLM bridge
-#   make down    Stop everything
-#   make run     up + Vite dev server (blocking)
-#   make web     Vite only (stack must be up)
-#   make test    fmt + clippy + unit tests
-#   make build   module + web dist + release binaries
-#   make verify  test + subscription SQL + runtime health (if stack up)
-#   make verify-full   + prove-live (+ prove-llm if Ollama up)
+# Quick start (full stack = STDB + ingest + Vite + opens browser):
+#   make run              Local hybrid (default)
+#   make run-local-sim    Local STDB + sim + Vite
+#   make up               Same as run (full stack)
+#   make web              Vite only (Advanced — backend must be up)
+#   make down             Stop everything
+#
+# Override ingest mode for `make up`: make up INGEST_MODE=sim
 
-.PHONY: help up down run web test build verify verify-full clean status logs init-config
+.PHONY: help up down run run-local-sim run-local-live run-local-hybrid \
+	run-cloud-sim run-cloud-live web web-cloud web-demo test build verify \
+	verify-full clean status logs init-config up-sim up-live up-cloud-sim up-cloud-live
 
 INGEST_MODE ?= hybrid
 export OPENATLAS_INGEST_MODE := $(INGEST_MODE)
@@ -24,14 +25,47 @@ init-config:
 up:
 	@./dev.sh up
 
+up-sim:
+	@./dev.sh up:sim
+
+up-live:
+	@./dev.sh up:live
+
+up-cloud-sim:
+	@./dev.sh up:cloud:sim
+
+up-cloud-live:
+	@./dev.sh up:cloud:live
+
 down:
 	@./dev.sh down
 
 run:
 	@./dev.sh run
 
+run-local-sim:
+	@./dev.sh run:local:sim
+
+run-local-live:
+	@./dev.sh run:local:live
+
+run-local-hybrid:
+	@./dev.sh run:local:hybrid
+
+run-cloud-sim:
+	@./dev.sh run:cloud:sim
+
+run-cloud-live:
+	@./dev.sh run:cloud:live
+
 web:
 	@./dev.sh web
+
+web-cloud:
+	@./dev.sh web:cloud
+
+web-demo:
+	@./dev.sh web:demo
 
 test:
 	@./dev.sh test

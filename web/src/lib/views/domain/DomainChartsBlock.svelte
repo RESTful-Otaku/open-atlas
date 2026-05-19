@@ -1,5 +1,7 @@
 <script lang="ts">
   import EChartsPanel from "../../viz/EChartsPanel.svelte";
+  import { memoDomainDeskPack } from "../../chart-cache";
+  import { dashboardData } from "../../dashboard-revision.svelte";
   import type { DeskProfile } from "./domain-desk-types";
   import { deskChartPack } from "./domain-desk-charts";
   import type { DataMode } from "../../data-source-copy";
@@ -24,16 +26,20 @@
     dataMode = "live",
   }: Props = $props();
 
-  const pack = $derived(
-    deskChartPack(profile, {
-      domainId,
-      accent,
-      events,
-      severityHistory,
-      state,
-      dataMode,
-    }),
-  );
+  const pack = $derived.by(() => {
+    void dashboardData.revision;
+    void dashboardData.domainsRevision;
+    return memoDomainDeskPack(`${profile}:${domainId}`, () =>
+      deskChartPack(profile, {
+        domainId,
+        accent,
+        events,
+        severityHistory,
+        state,
+        dataMode,
+      }),
+    );
+  });
 </script>
 
 <section class="desk-charts" aria-label="Analytic charts for this domain">

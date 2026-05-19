@@ -51,7 +51,7 @@ export function rollingStressLine(
   const labels = severityHistory.map((_, i) => `T-${severityHistory.length - i}`);
   return {
     backgroundColor: "transparent",
-    animationDuration: 420,
+    animation: false,
     textStyle: { color: chartTextMuted() },
     tooltip: { trigger: "axis" },
     grid: { left: 44, right: 12, top: 28, bottom: 28 },
@@ -133,29 +133,145 @@ export function hourOfDayBars(events: readonly UiEvent[], accent: string): EChar
   };
 }
 
-export function marketsCandles(domainId: string, accent: string): EChartsOption {
+const MARKET_UP = "#22c55e";
+const MARKET_DOWN = "#ef4444";
+
+function tradingSessionData(
+  domainId: string,
+  bars: number,
+): { labels: string[]; ohlc: number[][]; volume: number[] } {
   const rng = pseudoRng(hashStr(domainId) ^ 0x5ca1ab1e);
-  const n = 36;
-  const cat: string[] = [];
-  const data: number[][] = [];
-  let last = 100 + rng() * 20;
-  for (let i = 0; i < n; i++) {
-    cat.push(`D-${n - i}`);
+  const labels: string[] = [];
+  const ohlc: number[][] = [];
+  const volume: number[] = [];
+  let last = domainId === "economy" ? 102.5 : 148.2 + rng() * 8;
+  const now = Date.now();
+  for (let i = bars - 1; i >= 0; i--) {
+    const d = new Date(now - i * 3_600_000);
+    labels.push(
+      `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:00`,
+    );
     const o = last;
-    const c = o + (rng() - 0.48) * 4.2;
-    const low = Math.min(o, c) - rng() * 2.1;
-    const high = Math.max(o, c) + rng() * 2.4;
-    data.push([Math.round(o * 100) / 100, Math.round(c * 100) / 100, Math.round(low * 100) / 100, Math.round(high * 100) / 100]);
+    const c = o + (rng() - 0.48) * (domainId === "economy" ? 0.85 : 2.4);
+    const low = Math.min(o, c) - rng() * 1.2;
+    const high = Math.max(o, c) + rng() * 1.4;
+    ohlc.push([
+      +o.toFixed(2),
+      +c.toFixed(2),
+      +low.toFixed(2),
+      +high.toFixed(2),
+    ]);
+    volume.push(Math.floor(4_000 + rng() * 48_000 + Math.abs(c - o) * 8_000));
     last = c;
   }
+  return { labels, ohlc, volume };
+}
+
+/** Classic OHLC + volume panel (Bloomberg / TradingView style layout). */
+export function financeTradingChart(domainId: string, _accent: string): EChartsOption {
+  const { labels, ohlc, volume } = tradingSessionData(domainId, 48);
   return {
     backgroundColor: "transparent",
+    animation: false,
+    axisPointer: { link: [{ xAxisIndex: [0, 1] }] },
+    tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+    grid: [
+      { left: 52, right: 16, top: 24, height: "58%" },
+      { left: 52, right: 16, top: "72%", height: "18%" },
+    ],
+    xAxis: [
+      {
+        type: "category",
+        data: labels,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: chartGridLine() } },
+        axisLabel: { show: false },
+        splitLine: { show: false },
+      },
+      {
+        type: "category",
+        gridIndex: 1,
+        data: labels,
+        boundaryGap: true,
+        axisLine: { lineStyle: { color: chartGridLine() } },
+        axisLabel: { color: chartTextMuted(), fontSize: 8, rotate: 35 },
+      },
+    ],
+    yAxis: [
+      {
+        scale: true,
+        splitLine: { lineStyle: { color: chartGridLine() } },
+        axisLabel: { color: chartTextMuted(), fontSize: 10 },
+      },
+      {
+        scale: true,
+        gridIndex: 1,
+        splitNumber: 2,
+        axisLabel: { color: chartTextMuted(), fontSize: 9 },
+        splitLine: { show: false },
+      },
+    ],
+    dataZoom: [
+      { type: "inside", xAxisIndex: [0, 1], start: 55, end: 100 },
+      { type: "slider", xAxisIndex: [0, 1], bottom: 4, height: 18 },
+    ],
+    series: [
+      {
+        name: "Price",
+        type: "candlestick",
+        data: ohlc,
+        itemStyle: {
+          color: MARKET_UP,
+          color0: MARKET_DOWN,
+          borderColor: MARKET_UP,
+          borderColor0: MARKET_DOWN,
+        },
+      },
+      {
+        name: "Volume",
+        type: "bar",
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: volume.map((v, i) => ({
+          value: v,
+          itemStyle: {
+            color:
+              ohlc[i]![1] >= ohlc[i]![0]
+                ? "rgba(34, 197, 94, 0.45)"
+                : "rgba(239, 68, 68, 0.45)",
+          },
+        })),
+      },
+    ],
+  };
+}
+
+/** Intraday index / spread line with moving average. */
+export function financeIndexLine(domainId: string, accent: string): EChartsOption {
+  const rng = pseudoRng(hashStr(domainId) ^ 0x901e5);
+  const n = 64;
+  const labels: string[] = [];
+  const close: number[] = [];
+  let v = 100;
+  for (let i = 0; i < n; i++) {
+    labels.push(`${i}`);
+    v += (rng() - 0.48) * 1.1;
+    close.push(+v.toFixed(2));
+  }
+  const ma = close.map((_, i) => {
+    const slice = close.slice(Math.max(0, i - 7), i + 1);
+    return +(slice.reduce((a, b) => a + b, 0) / slice.length).toFixed(2);
+  });
+  return {
+    backgroundColor: "transparent",
+    animation: false,
     tooltip: { trigger: "axis" },
-    grid: { left: 48, right: 12, top: 18, bottom: 28 },
+    grid: { left: 48, right: 12, top: 22, bottom: 32 },
     xAxis: {
       type: "category",
-      data: cat,
-      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+      data: labels,
+      boundaryGap: false,
+      axisLabel: { show: false },
       axisLine: { lineStyle: { color: chartGridLine() } },
     },
     yAxis: {
@@ -165,39 +281,20 @@ export function marketsCandles(domainId: string, accent: string): EChartsOption 
     },
     series: [
       {
-        type: "candlestick",
-        itemStyle: {
-          color: accent,
-          color0: "#64748b",
-          borderColor: accent,
-          borderColor0: "#94a3b8",
-        },
-        data,
+        name: "Index",
+        type: "line",
+        data: close,
+        showSymbol: false,
+        lineStyle: { width: 1.5, color: accent },
+      },
+      {
+        name: "MA(8)",
+        type: "line",
+        data: ma,
+        showSymbol: false,
+        lineStyle: { width: 1, type: "dashed", color: "#94a3b8" },
       },
     ],
-  };
-}
-
-export function syntheticVolume(domainId: string): EChartsOption {
-  const rng = pseudoRng(hashStr(domainId) ^ 0x901e5);
-  const n = 36;
-  const v: number[] = [];
-  for (let i = 0; i < n; i++) v.push(Math.floor(800 + rng() * 9000 + Math.sin(i * 0.4) * 1200));
-  return {
-    backgroundColor: "transparent",
-    tooltip: { trigger: "axis" },
-    grid: { left: 44, right: 8, top: 18, bottom: 28 },
-    xAxis: {
-      type: "category",
-      data: v.map((_, i) => `${i}`),
-      show: false,
-    },
-    yAxis: {
-      type: "value",
-      splitLine: { lineStyle: { color: chartGridLine() } },
-      axisLabel: { color: chartTextMuted(), fontSize: 10 },
-    },
-    series: [{ type: "line", smooth: 0.4, areaStyle: { opacity: 0.12 }, data: v, lineStyle: { color: "#22d3ee" } }],
   };
 }
 
@@ -721,19 +818,23 @@ export function deskChartPack(
     dataMode?: DataMode;
   },
 ): DeskChartPack {
-  const { accent, events, severityHistory, state, dataMode = "live" } = params;
-  void params.domainId;
+  const { domainId, accent, events, severityHistory, state, dataMode = "live" } = params;
   switch (profile) {
     case "markets":
       return {
-        primaryTitle: "Rolling stress (domain severity ring)",
-        secondaryTitle: "Event arrivals by UTC hour",
-        tertiaryTitle: "Severity mix (treemap)",
-        primary: rollingStressLine(severityHistory, accent),
-        secondary: hourOfDayBars(events, accent),
-        tertiary: deskTertiaryTreemapSeverity(events, accent),
+        primaryTitle:
+          domainId === "economy"
+            ? "Macro index · intraday (synthetic)"
+            : "OHLC · session (synthetic tape)",
+        secondaryTitle: "Domain risk stress (live ring)",
+        tertiaryTitle: "Arrivals by UTC hour",
+        primary: financeTradingChart(domainId, accent),
+        secondary: rollingStressLine(severityHistory, accent),
+        tertiary: hourOfDayBars(events, accent),
         notes: [
-          "Finance/economy desks read trend and arrival rhythm from live events — open the economic matrix for cross-book composition.",
+          domainId === "economy"
+            ? "Economy desk: macro-style index and stress from live world-state — wire sovereign/bond feeds for production."
+            : "Finance desk: candlestick + volume layout as used on trading terminals; live event tempo in supporting panels.",
           state
             ? `Risk index ${state.risk_index.toFixed(2)} · ${state.event_count} events in ring.`
             : "World-state row not yet populated for this domain.",
@@ -741,73 +842,73 @@ export function deskChartPack(
       };
     case "defensive_digital":
       return {
-        primaryTitle: "Escalation funnel (severity thresholds)",
-        secondaryTitle: "UTC hour histogram",
-        tertiaryTitle: "Hour × day-of-week load (heatmap)",
-        primary: deskTertiaryFunnelPipeline(events),
-        secondary: hourOfDayBars(events, accent),
-        tertiary: deskTertiaryHeatmapWeekHour(events, accent),
+        primaryTitle: "Kill-chain stage histogram",
+        secondaryTitle: "Hour × day-of-week SOC heatmap",
+        tertiaryTitle: "Escalation funnel (severity)",
+        primary: cyberKillChainBar(domainId, accent),
+        secondary: deskTertiaryHeatmapWeekHour(events, accent),
+        tertiary: deskTertiaryFunnelPipeline(events),
         notes: [
-          "Funnel counts are from this domain’s live events — use the cyber matrix graph for cross-domain linkage.",
+          "SOC-style views: MITRE-aligned stage counts (synthetic) plus live event tempo from SpacetimeDB.",
         ],
       };
     case "life_sciences":
       return {
-        primaryTitle: "Week × hour arrivals (UTC heatmap)",
-        secondaryTitle: "Hour-of-day histogram",
+        primaryTitle: "Capacity radar (synthetic wards)",
+        secondaryTitle: "Week × hour surge heatmap",
         tertiaryTitle: "Escalation funnel",
-        primary: deskTertiaryHeatmapWeekHour(events, accent),
-        secondary: hourOfDayBars(events, accent),
+        primary: healthRadar(domainId, accent),
+        secondary: deskTertiaryHeatmapWeekHour(events, accent),
         tertiary: deskTertiaryFunnelPipeline(events),
         notes: [
-          "Temporal heatmaps surface surge windows; bind hospital capacity axes when real HL7 feeds are wired.",
+          "Hospital operations: radar for surge axes; heatmap shows when live events cluster in UTC.",
         ],
       };
     case "orbital_regime":
       return {
-        primaryTitle: "Rolling stress (domain severity ring)",
-        secondaryTitle: "Event arrivals by UTC hour",
-        tertiaryTitle: "UTC dayparts × severity (sunburst)",
-        primary: rollingStressLine(severityHistory, accent),
-        secondary: hourOfDayBars(events, accent),
+        primaryTitle: "Conjunction readiness gauge",
+        secondaryTitle: "Altitude vs orbit phase (scatter)",
+        tertiaryTitle: "UTC dayparts × severity",
+        primary: spaceGauge(domainId, accent),
+        secondary: spaceScatter(domainId, accent),
         tertiary: deskTertiarySunburstUtc(events, accent),
         notes: [
-          "Orbital conjunction and tracking layers live on the 3D globe and map — this desk shows event tempo from SpacetimeDB.",
+          "Mission control: conjunction gauge and orbit scatter are synthetic; conjunction tracks live on the globe.",
         ],
       };
     case "human_systems":
       return {
-        primaryTitle: "Rolling stress (domain severity ring)",
+        primaryTitle: "Population pyramid (synthetic cohorts)",
         secondaryTitle: "Event arrivals by UTC hour",
-        tertiaryTitle: "Escalation funnel",
-        primary: rollingStressLine(severityHistory, accent),
+        tertiaryTitle: "Severity mix (treemap)",
+        primary: demographicsPyramid(domainId, accent),
         secondary: hourOfDayBars(events, accent),
-        tertiary: deskTertiaryFunnelPipeline(events),
+        tertiary: deskTertiaryTreemapSeverity(events, accent),
         notes: [
-          "Demographics desk uses live event tempo until structured census tables are available.",
+          "Demographics desk: pyramid until census tables are wired; hour/treemap reflect live event stream.",
         ],
       };
     case "geopolitical_layer":
       return {
-        primaryTitle: "Rolling stress (severity ring)",
-        secondaryTitle: "Regional stack (geotagged events × severity)",
-        tertiaryTitle: "Event arrivals by UTC hour",
-        primary: rollingStressLine(severityHistory, accent),
-        secondary: geopoliticalRegionBars(events, accent),
-        tertiary: hourOfDayBars(events, accent),
+        primaryTitle: "Regional severity stack (geotagged)",
+        secondaryTitle: "Rolling stress (severity ring)",
+        tertiaryTitle: "Sankey · response stages",
+        primary: geopoliticalRegionBars(events, accent),
+        secondary: rollingStressLine(severityHistory, accent),
+        tertiary: deskTertiarySankeyStages(events, accent),
         notes: [
-          "Regions are inferred from event coordinates (AMER / EMEA / APAC / MENA / POLAR).",
+          "Regions inferred from coordinates (AMER / EMEA / APAC / MENA / POLAR).",
         ],
       };
     case "geo_operational":
     default:
       return {
-        primaryTitle: "Rolling severity stress (ring projection)",
-        secondaryTitle: "Event arrivals by UTC hour",
-        tertiaryTitle: "UTC dayparts × severity (sunburst)",
-        primary: rollingStressLine(severityHistory, accent),
-        secondary: hourOfDayBars(events, accent),
-        tertiary: deskTertiarySunburstUtc(events, accent),
+        primaryTitle: "NOC · week × hour load (UTC)",
+        secondaryTitle: "Rolling severity stress (ring)",
+        tertiaryTitle: "Ops flow (sankey)",
+        primary: deskTertiaryHeatmapWeekHour(events, accent),
+        secondary: rollingStressLine(severityHistory, accent),
+        tertiary: deskTertiarySankeyStages(events, accent),
         notes: [
           state
             ? `World-state risk index ${state.risk_index.toFixed(2)} vs avg severity ${state.avg_severity.toFixed(2)}.`

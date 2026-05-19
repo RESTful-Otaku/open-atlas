@@ -1,11 +1,7 @@
 /**
- * Deterministic AI synthesis body builders per matrix id.
- *
- * Each builder is a pure function of the reactive dashboard snapshot:
- * same input → same output. The "AI" label is aspirational for now —
- * the output is rule-based composition. That's intentional: until a
- * real inference path is wired up, we want a predictable, replayable
- * narrative that operators can trust across reloads.
+ * Deterministic fallback synthesis per matrix id (used when Ollama is down).
+ * `AiSynthesisPanel` calls the LLM bridge when ready and shows this output
+ * until the model responds.
  */
 
 import { domainLabel } from "../colors";

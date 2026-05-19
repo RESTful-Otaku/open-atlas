@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
   import { debounce, rafCoalesce } from "../debounce-raf";
+  import { releaseWebGlCanvases } from "../webgl-teardown";
   import { useNarrativeSubscription } from "../narrative-subscription";
 
   useNarrativeSubscription();
@@ -285,10 +286,12 @@
       mapPointHover = null;
       ro?.disconnect();
       ro = null;
+      const container = m?.getContainer();
       m?.remove();
       m = null;
       map = null;
       loaded = false;
+      if (container) releaseWebGlCanvases(container);
     };
 
     const setup = async (): Promise<void> => {
@@ -492,33 +495,13 @@
         paint: {
           "line-color": ["get", "sourceColor"],
           "line-width": [
-            "*",
-            [
-              "interpolate",
-              ["linear"],
-              ["get", "influence"],
-              0,
-              1.1,
-              1,
-              3.6,
-            ],
-            [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              0,
-              0.45,
-              2,
-              0.7,
-              4,
-              0.95,
-              8,
-              1.2,
-              12,
-              1.3,
-              14,
-              1.4,
-            ],
+            "interpolate",
+            ["linear"],
+            ["get", "influence"],
+            0,
+            1.1,
+            1,
+            3.6,
           ],
           "line-opacity": [
             "interpolate",
@@ -610,39 +593,21 @@
         paint: {
           "circle-color": ["get", "color"],
           "circle-radius": [
-            "*",
-            [
-              "interpolate",
-              ["linear"],
-              ["get", "w"],
-              0,
-              0.25,
-              1,
-              1.05,
-            ],
-            [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              0,
-              0.8,
-              1,
-              0,
-              2,
-              1.0,
-              3,
-              2.6,
-              5,
-              3.6,
-              7,
-              4.5,
-              9,
-              5.5,
-              11,
-              6.4,
-              14,
-              8.2,
-            ],
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            2,
+            2,
+            3,
+            5,
+            5,
+            8,
+            7,
+            12,
+            9,
+            14,
+            10,
           ],
           "circle-opacity": [
             "interpolate",
@@ -817,6 +782,8 @@
 
     return () => {
       cancelled = true;
+      flushTrackingLayers.cancel();
+      flushSolarLayers.cancel();
       offTheme();
       teardownMap();
     };
@@ -879,6 +846,20 @@
     if (pathSrc) pathSrc.setData(trackingPathsCollection);
   }, 250);
 
+  const flushSolarLayers = debounce(() => {
+    const currentMap = map;
+    if (!currentMap || !loaded) return;
+    const when = new Date(simUtcMs);
+    const sub = subsolarPoint(when);
+    const f: GeoJSON.Feature[] = [];
+    if (showTerminator) f.push(buildTerminatorLine(sub));
+    if (showSubsun) f.push(buildSunPointFeature(sub));
+    const s = currentMap.getSource(SRC_SOLAR) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (s) s.setData({ type: "FeatureCollection", features: f });
+  }, 200);
+
   function syncMapOverlays(m: MapLibreMap): void {
     const setVis = (id: string, on: boolean): void => {
       if (!m.getLayer(id)) return;
@@ -903,19 +884,11 @@
   });
 
   $effect(() => {
-    const currentMap = map;
-    if (!currentMap || !loaded) return;
-    const when = new Date(simUtcMs);
+    if (useWebGlGlobe) return;
+    void simUtcMs;
     void showTerminator;
     void showSubsun;
-    const sub = subsolarPoint(when);
-    const f: GeoJSON.Feature[] = [];
-    if (showTerminator) f.push(buildTerminatorLine(sub));
-    if (showSubsun) f.push(buildSunPointFeature(sub));
-    const s = currentMap.getSource(SRC_SOLAR) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (s) s.setData({ type: "FeatureCollection", features: f });
+    flushSolarLayers();
   });
 
   $effect(() => {
