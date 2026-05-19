@@ -8,6 +8,14 @@
     offline: "Offline",
   };
 
+  const liveLabel = $derived(
+    dashboard.dataMode === "demo"
+      ? "Preview"
+      : dashboard.connection === "live"
+        ? `Live · ${dashboard.events.length} events`
+        : LABELS[dashboard.connection],
+  );
+
   const settingsTitle = $derived(
     dashboard.dataMode === "demo"
       ? "Synthetic demo data — no WebSocket. Settings still lists integration."
@@ -45,9 +53,7 @@
     title={settingsTitle}
   >
     <span class="status-dot" aria-hidden="true"></span>
-    <span class="status-label">
-      {dashboard.dataMode === "demo" ? "Preview" : LABELS[dashboard.connection]}
-    </span>
+    <span class="status-label">{liveLabel}</span>
   </a>
 </div>
 

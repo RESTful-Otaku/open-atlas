@@ -3,6 +3,18 @@ dist
 node_modules
 .DS_Store
 
+# ---------------------------------------------------------------------------
+# Local secrets & operator config — NEVER commit (see docs/CONFIG.md)
+# ---------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Feed API keys (copy docs/feed-secrets.example.json → .dev/feed-secrets.json)
+**/feed-secrets.json
+!docs/feed-secrets.example.json
+
 # Local dev / toolchain caches (dev.sh, CI agents — do not publish)
 .dev/
 .cargo-local/

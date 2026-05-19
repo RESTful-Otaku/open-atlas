@@ -3,28 +3,48 @@
  * SpacetimeDB status lives on `dashboard.connection` in `state.svelte.ts`.
  */
 import { checkLlmBridgeReady } from "./llm";
+import {
+  fetchIngestReady,
+  fetchIngestStatus,
+  type IngestServiceStatus,
+} from "./ingest-status";
 
 export const readiness = $state({
   llmReady: null as boolean | null,
   ingestReady: null as boolean | null,
+  ingestStatus: null as IngestServiceStatus | null,
   readinessRefreshing: false,
   ingestCheckErr: null as string | null,
 });
 
-async function fetchIngestOk(): Promise<{ ok: boolean; err: string | null }> {
-  try {
-    const r = await fetch("/ready", { method: "GET" });
-    if (r.ok) return { ok: true, err: null };
-    return { ok: false, err: `${r.status} ${r.statusText}` };
-  } catch (e) {
+async function fetchIngestOk(): Promise<{
+  ok: boolean;
+  err: string | null;
+  status: IngestServiceStatus | null;
+}> {
+  const [ready, result] = await Promise.all([fetchIngestReady(), fetchIngestStatus()]);
+  if (!result.ok) {
+    return { ok: false, err: result.err, status: null };
+  }
+  const stdbOk = result.status?.stdb_reachable === true;
+  if (!ready) {
     return {
       ok: false,
-      err: e instanceof Error ? e.message : String(e),
+      err: "ingest /ready failed (cannot reach SpacetimeDB)",
+      status: result.status,
     };
   }
+  if (!stdbOk) {
+    return {
+      ok: false,
+      err: "ingest reports SpacetimeDB unreachable",
+      status: result.status,
+    };
+  }
+  return { ok: true, err: null, status: result.status };
 }
 
-/** GET /ready on the ingest service (proxied in Vite dev) + LLM /v1/ready. */
+/** GET /ready on the ingest service (proxied in Vite dev) + LLM /v1/ready + /status. */
 export async function refreshRemoteReadiness(): Promise<void> {
   if (readiness.readinessRefreshing) return;
   readiness.readinessRefreshing = true;
@@ -36,6 +56,7 @@ export async function refreshRemoteReadiness(): Promise<void> {
     ]);
     readiness.llmReady = llm;
     readiness.ingestReady = ing.ok;
+    readiness.ingestStatus = ing.status;
     readiness.ingestCheckErr = ing.err;
   } finally {
     readiness.readinessRefreshing = false;

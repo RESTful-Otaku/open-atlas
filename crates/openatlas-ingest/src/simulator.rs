@@ -14,7 +14,7 @@ use serde_json::json;
 use tracing::error;
 use uuid::Uuid;
 
-use crate::{state::AppState, stdb::IngestOutcome};
+use crate::{pipeline::push_events_via_state, state::AppState};
 
 struct Simulator {
     source: &'static str,
@@ -43,9 +43,54 @@ const SIMULATORS: &[Simulator] = &[
         domain: Domain::Energy,
         tick_ms: 500,
     },
+    Simulator {
+        source: "transport",
+        domain: Domain::Transport,
+        tick_ms: 900,
+    },
+    Simulator {
+        source: "health",
+        domain: Domain::Health,
+        tick_ms: 1400,
+    },
+    Simulator {
+        source: "geospatial",
+        domain: Domain::Geospatial,
+        tick_ms: 2000,
+    },
+    Simulator {
+        source: "economy",
+        domain: Domain::Economy,
+        tick_ms: 1100,
+    },
+    Simulator {
+        source: "geopolitics",
+        domain: Domain::Geopolitics,
+        tick_ms: 1600,
+    },
+    Simulator {
+        source: "cyber",
+        domain: Domain::Cyber,
+        tick_ms: 700,
+    },
+    Simulator {
+        source: "space",
+        domain: Domain::Space,
+        tick_ms: 2200,
+    },
+    Simulator {
+        source: "demographics",
+        domain: Domain::Demographics,
+        tick_ms: 2500,
+    },
+    Simulator {
+        source: "infrastructure",
+        domain: Domain::Infrastructure,
+        tick_ms: 950,
+    },
 ];
 
-pub(crate) fn spawn_simulators(state: AppState) {
+pub fn spawn_simulators(state: AppState) {
     for sim in SIMULATORS.iter() {
         let state = state.clone();
         let source = sim.source;
@@ -56,15 +101,15 @@ pub(crate) fn spawn_simulators(state: AppState) {
             loop {
                 interval.tick().await;
                 let event = generate_event(source, domain.clone());
-                match state
-                    .stdb
-                    .ingest_event(&event, source, "internal://simulator")
-                    .await
-                {
-                    Ok(IngestOutcome::Accepted) | Ok(IngestOutcome::Duplicate) => {}
-                    Err(error) => {
-                        error!(source, "simulator failed to push event: {error:#}");
-                    }
+                let result = push_events_via_state(
+                    &state,
+                    vec![event],
+                    source,
+                    "internal://simulator",
+                )
+                .await;
+                if result.transport_errors > 0 {
+                    error!(source, "simulator failed to push event to STDB");
                 }
             }
         });
@@ -81,7 +126,13 @@ fn generate_event(source: &str, domain: Domain) -> WorldEvent {
         _ => 0.3,
     };
     let variance: f64 = rng.random_range(0.0..0.5);
-    let severity_score = (base_severity + variance).min(1.0);
+    // ~12% of events cross the module anomaly/narrative threshold (0.85) so
+    // signals, narratives, and anomaly panels stay populated in sim/hybrid.
+    let severity_score = if rng.random_bool(0.12) {
+        rng.random_range(0.86..0.99)
+    } else {
+        (base_severity + variance).min(1.0)
+    };
 
     WorldEvent {
         id: Uuid::new_v4(),

@@ -1,6 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { initChart, type ECharts, type EChartsOption } from "../echarts";
+  import { onThemeChange, readThemeFromDocument } from "../theme-events";
+  import type { ThemeId } from "../theme.svelte";
+  import { rafCoalesce } from "../debounce-raf";
+  import { resolveEchartsTheme } from "./chart-theme";
   import { withInteractiveDefaults } from "./chart-interactivity";
 
   interface Props {
@@ -28,6 +32,7 @@
 
   let el: HTMLDivElement | undefined = $state();
   let chart: ECharts | null = $state(null);
+  let chartTheme = $state<ThemeId>(readThemeFromDocument());
 
   const handlers = $state({
     onChartClick: undefined as Props["onChartClick"],
@@ -41,16 +46,40 @@
     handlers.onDataZoom = onDataZoom;
   });
 
-  onMount(() => {
-    if (!el) return;
-    const c = initChart(el);
-    chart = c;
-    const ro = new ResizeObserver(() => c.resize());
-    ro.observe(el);
-
+  function mountChart(node: HTMLDivElement, theme: ThemeId): ECharts {
+    const c = initChart(node, resolveEchartsTheme(theme));
     c.on("click", (p) => handlers.onChartClick?.(p));
     c.on("brushSelected", (p) => handlers.onBrushSelected?.(p));
     c.on("datazoom", (p) => handlers.onDataZoom?.(p));
+    return c;
+  }
+
+  onMount(() => {
+    const offTheme = onThemeChange((t) => {
+      chartTheme = t;
+    });
+    return offTheme;
+  });
+
+  /** Mount once per container; theme changes re-init without reading `mergedOption`. */
+  $effect(() => {
+    const node = el;
+    const theme = chartTheme;
+    if (!node) return;
+
+    chart?.off("click");
+    chart?.off("brushSelected");
+    chart?.off("datazoom");
+    chart?.dispose();
+
+    const c = mountChart(node, theme);
+    chart = c;
+    if (latestOption) {
+      c.setOption(latestOption, { notMerge: false, lazyUpdate: true });
+    }
+
+    const ro = new ResizeObserver(() => c.resize());
+    ro.observe(node);
 
     return () => {
       ro.disconnect();
@@ -58,16 +87,24 @@
       c.off("brushSelected");
       c.off("datazoom");
       c.dispose();
-      chart = null;
+      if (chart === c) chart = null;
     };
   });
 
-  $effect(() => {
-    if (!chart) return;
-    chart.setOption(mergedOption, {
+  let latestOption: EChartsOption | undefined;
+  const applyChartOption = rafCoalesce(() => {
+    const c = chart;
+    const opt = latestOption;
+    if (!c || !opt) return;
+    c.setOption(opt, {
       notMerge: false,
       lazyUpdate: true,
     });
+  });
+
+  $effect(() => {
+    latestOption = mergedOption;
+    applyChartOption();
   });
 </script>
 

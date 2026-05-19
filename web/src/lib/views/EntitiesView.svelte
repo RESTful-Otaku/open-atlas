@@ -5,31 +5,49 @@
 <script lang="ts">
   import { Database, Search } from "@lucide/svelte";
 
+  import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard, setSelectedDomain } from "../state.svelte";
   import { navigate } from "../router.svelte";
   import type { UiEvent } from "../types";
   import ConnectionPill from "../components/ConnectionPill.svelte";
+  import DataPipelineBanner from "../components/DataPipelineBanner.svelte";
+
+  const ENTITY_DISPLAY_CAP = 100;
 
   let q = $state("");
+  let debouncedQ = $state("");
   type SortKey = "time" | "severity" | "ordinal";
   let sortBy = $state<SortKey>("ordinal");
   let sortDesc = $state(true);
 
-  const domains = $derived(
-    [...new Set(dashboard.events.map((e) => e.domain))].sort((a, b) =>
-      a.localeCompare(b),
-    ),
-  );
+  $effect(() => {
+    const needle = q;
+    const t = window.setTimeout(() => {
+      debouncedQ = needle;
+    }, 150);
+    return () => clearTimeout(t);
+  });
 
-  const rows = $derived(
-    filterAndSort(
+  const domains = $derived.by(() => {
+    void dashboardData.revision;
+    return [...new Set(dashboard.events.map((e) => e.domain))].sort((a, b) =>
+      a.localeCompare(b),
+    );
+  });
+
+  const filteredRows = $derived.by(() => {
+    void dashboardData.revision;
+    return filterAndSort(
       dashboard.events,
-      q,
+      debouncedQ,
       dashboard.selectedDomain,
       sortBy,
       sortDesc,
-    ),
-  );
+    );
+  });
+
+  const rows = $derived(filteredRows.slice(0, ENTITY_DISPLAY_CAP));
+  const filteredCount = $derived(filteredRows.length);
 
   function filterAndSort(
     events: readonly UiEvent[],
@@ -87,8 +105,12 @@
     </div>
     <p class="entities-sub">
       Live <code>event</code> rows from your SpacetimeDB module (same feed as
-      the globe and matrices). {dashboard.events.length} in ring buffer; showing
-      {rows.length} after filters.
+      the globe and matrices). {dashboard.events.length} in ring buffer;
+      {#if filteredCount > ENTITY_DISPLAY_CAP}
+        showing first {ENTITY_DISPLAY_CAP} of {filteredCount} matches
+      {:else}
+        showing {filteredCount} after filters
+      {/if}.
     </p>
     <div class="entities-toolbar">
       <div class="entities-search" role="search">
@@ -108,6 +130,8 @@
       </div>
     </div>
   </header>
+
+  <DataPipelineBanner />
 
   <div class="entities-domains" role="group" aria-label="Domain filter">
     <button
@@ -158,10 +182,24 @@
       <tbody>
         {#if rows.length === 0}
           <tr>
-            <td class="td-empty" colspan="6"
-              >No events match. Check SpacetimeDB is running and ingest is
-              writing.</td
-            >
+            <td class="td-empty" colspan="6">
+              {#if dashboard.dataMode === "demo"}
+                No events match the current filter. Demo mode should show hundreds
+                of rows — try Settings → Re-seed demo data.
+              {:else if dashboard.connection !== "live"}
+                Not connected to SpacetimeDB ({dashboard.connection}).
+                {#if dashboard.connectionLastError}
+                  {dashboard.connectionLastError}
+                {/if}
+                Use Reconnect in the status pill or ./dev.sh up then ./dev.sh web.
+              {:else if dashboard.events.length === 0}
+                Connected but the event buffer is empty. Start ingest with
+                <code>./dev.sh up</code> (hybrid recommended) and wait a few seconds.
+              {:else}
+                No events match the domain or search filter. Clear the domain
+                chip above or widen your search.
+              {/if}
+            </td>
           </tr>
         {:else}
           {#each rows as ev (ev.id)}

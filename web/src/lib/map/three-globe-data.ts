@@ -7,6 +7,8 @@ import type { UiCausalEdge, UiEvent } from "../types";
 import { matchesSelectedDomain } from "../state.svelte";
 import { isGeoEvent } from "./map-causal-geojson";
 import { buildSunPointFeature, buildTerminatorLine, subsolarPoint } from "./solar-geometry";
+import { arcAltitudeForGlobe } from "./tracking-paths";
+import { approximateMoonPoint } from "./globe-day-night";
 
 /**
  * t ∈ [0, 1] is normalized density from the globe.gl heatmap shader.
@@ -69,8 +71,8 @@ export type GlobeEventPoint = {
   r: number;
   id: string;
   domain: string;
-  /** "sun" for the subsolar marker (if present). */
-  kind?: "event" | "sun" | "tracking";
+  /** "sun" | "moon" for solar markers. */
+  kind?: "event" | "sun" | "moon" | "tracking";
   /** Public tracking layers (NORAD / ADS-B / sample AIS). */
   trackLabel?: string;
   trackClass?: string;
@@ -111,6 +113,8 @@ export type GlobeArc = {
   color: string;
   w: number;
   id: string;
+  /** Peak altitude in globe-radius units (above surface). */
+  altitude: number;
 };
 
 export function buildGlobeArcs(
@@ -150,6 +154,12 @@ export function buildGlobeArcs(
       color: c1,
       w: 0.2 + inf * 1.6,
       id: edge.id,
+      altitude: arcAltitudeForGlobe(
+        a.location.lat,
+        a.location.lon,
+        b.location.lat,
+        b.location.lon,
+      ),
     });
     // reserve c2 for future gradient; arcColor can use [c1, c2]
     void c2;
@@ -189,6 +199,21 @@ export function buildSunMarkerPoint(simUtcMs: number): GlobeEventPoint | null {
     r: 1.25,
     id: "subsun",
     domain: "solar",
+    altitude: 0.018,
+  };
+}
+
+export function buildMoonMarkerPoint(simUtcMs: number): GlobeEventPoint | null {
+  const m = approximateMoonPoint(simUtcMs);
+  return {
+    kind: "moon",
+    lat: m.lat,
+    lng: m.lng,
+    color: "rgba(226, 232, 240, 0.92)",
+    r: 0.72,
+    id: "moon",
+    domain: "lunar",
+    altitude: 0.016,
   };
 }
 

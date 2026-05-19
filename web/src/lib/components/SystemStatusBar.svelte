@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
   import {
+    Activity,
     Database,
     RadioTower,
     RefreshCw,
@@ -12,6 +13,12 @@
   } from "@lucide/svelte";
 
   import { reconnectNow } from "../connection.svelte";
+  import {
+    feedLive,
+    feedSummaryTier,
+    refreshFeedLive,
+    summarizeFeeds,
+  } from "../feed-live.svelte";
   import { readiness, refreshRemoteReadiness } from "../readiness.svelte";
   import { dashboard } from "../state.svelte";
   import type { ConnectionState } from "../types";
@@ -36,6 +43,25 @@
   const feed = $derived.by(() => feedPillar(dashboard.dataMode, dashboard.connection));
   const ingest = $derived(boolPillar(readiness.ingestReady));
   const llm = $derived(boolPillar(readiness.llmReady));
+  const feedSummary = $derived(summarizeFeeds(feedLive.catalog));
+  const feedsPillar = $derived(feedSummaryTier(feedSummary));
+
+  const feedsTitle = $derived(
+    feedSummary
+      ? `${feedSummary.ok}/${feedSummary.total} feeds OK · ${feedLive.catalog?.retention_hours ?? 24}h STDB retention`
+      : feedLive.error
+        ? `Feed status: ${feedLive.error}`
+        : "Open-data feed poll health",
+  );
+  const feedsLabel = $derived(
+    feedSummary
+      ? feedSummary.error > 0
+        ? `${feedSummary.ok}/${feedSummary.total}`
+        : `${feedSummary.ok} OK`
+      : feedLive.loading
+        ? "…"
+        : "—",
+  );
 
   const feedTitle = $derived(
     dashboard.dataMode === "demo"
@@ -46,7 +72,7 @@
   );
 
   async function onRetry(): Promise<void> {
-    await refreshRemoteReadiness();
+    await Promise.all([refreshRemoteReadiness(), refreshFeedLive()]);
     if (dashboard.dataMode !== "demo" && dashboard.connection === "offline") {
       reconnectNow();
     }
@@ -95,6 +121,21 @@
       >
     </span>
   </a>
+
+  {#if dashboard.dataMode !== "demo"}
+    <span class="sep" aria-hidden="true"></span>
+
+    <a class="row" data-tier={feedsPillar} href="#/settings" title={feedsTitle}>
+      <span class="ico" aria-hidden="true">
+        <Activity size={12} strokeWidth={2.25} />
+      </span>
+      <span class="dot" aria-hidden="true"></span>
+      <span class="lab">
+        <span class="lab-k">Feeds</span>
+        <span class="lab-v">{feedsLabel}</span>
+      </span>
+    </a>
+  {/if}
 
   <span class="sep" aria-hidden="true"></span>
 

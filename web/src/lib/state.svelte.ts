@@ -41,6 +41,7 @@ import {
   MAX_SEVERITY_HISTORY,
   MAX_SIGNALS,
 } from "./data-limits";
+import { bumpDomainsRevision } from "./dashboard-revision.svelte";
 import type {
   ConnectionState,
   UiCausalEdge,
@@ -132,7 +133,45 @@ function projectLocation(
   return null;
 }
 
+/** Shallow parse of ingest canonical payload (schema_version 1). */
+function readCanonicalPayload(json: string): {
+  source?: string;
+  icao24?: string;
+  callsign?: string;
+  velocity_mps?: number;
+  true_track_deg?: number;
+  baro_altitude_m?: number;
+  on_ground?: boolean;
+} {
+  if (!json) return {};
+  try {
+    const p = JSON.parse(json) as Record<string, unknown>;
+    const source =
+      typeof p.src === "string"
+        ? p.src
+        : typeof p.source === "string"
+          ? p.source
+          : undefined;
+    return {
+      source,
+      icao24: typeof p.icao24 === "string" ? p.icao24 : undefined,
+      callsign:
+        typeof p.callsign === "string" ? p.callsign.trim() : undefined,
+      velocity_mps:
+        typeof p.velocity_mps === "number" ? p.velocity_mps : undefined,
+      true_track_deg:
+        typeof p.true_track_deg === "number" ? p.true_track_deg : undefined,
+      baro_altitude_m:
+        typeof p.baro_altitude_m === "number" ? p.baro_altitude_m : undefined,
+      on_ground: typeof p.on_ground === "boolean" ? p.on_ground : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 function projectEvent(row: Event): UiEvent {
+  const canon = readCanonicalPayload(row.payloadJson);
   return {
     id: String(row.id),
     ordinal: Number(row.ordinal),
@@ -140,6 +179,13 @@ function projectEvent(row: Event): UiEvent {
     domain: domainIdFromTag(row.domain),
     severity_score: row.severityScore,
     location: projectLocation(row.location),
+    feedSource: canon.source,
+    icao24: canon.icao24,
+    callsign: canon.callsign,
+    velocity_mps: canon.velocity_mps,
+    true_track_deg: canon.true_track_deg,
+    baro_altitude_m: canon.baro_altitude_m,
+    on_ground: canon.on_ground,
   };
 }
 
@@ -233,6 +279,231 @@ function projectDomainInsight(row: DomainInsight): UiDomainInsight {
 }
 
 // ---------------------------------------------------------------------------
+// Batched mutations (hydrate / bulk STDB apply)
+// ---------------------------------------------------------------------------
+
+let batchDepth = 0;
+let batchEvents: UiEvent[] | null = null;
+let batchSignals: UiSignal[] | null = null;
+let batchCausalEdges: UiCausalEdge[] | null = null;
+let batchNarratives: Record<string, UiEventNarrative> | null = null;
+const batchSeverityEvents: UiEvent[] = [];
+
+/** Suppress per-row reactive fan-out while hydrating or replaying many rows. */
+export function beginDashboardBatch(): void {
+  batchDepth += 1;
+  if (batchDepth === 1) {
+    batchEvents = [];
+    batchSignals = [];
+    batchCausalEdges = [];
+    batchNarratives = {};
+    batchSeverityEvents.length = 0;
+  }
+}
+
+/** Commit batched buffers in one assignment + trim. */
+export function endDashboardBatch(): void {
+  if (batchDepth === 0) return;
+  batchDepth -= 1;
+  if (batchDepth > 0) return;
+
+  if (batchEvents !== null) {
+    dashboard.events = batchEvents;
+    batchEvents = null;
+  }
+  if (batchSignals !== null) {
+    dashboard.recentSignals = batchSignals;
+    batchSignals = null;
+  }
+  if (batchCausalEdges !== null) {
+    dashboard.recentCausalEdges = batchCausalEdges;
+    batchCausalEdges = null;
+  }
+  if (batchNarratives !== null) {
+    evictOldestNarratives(batchNarratives, MAX_EVENT_NARRATIVES);
+    dashboard.eventNarratives = batchNarratives;
+    batchNarratives = null;
+  }
+  flushPendingSeverityUpdates();
+  eventIdToIndex.clear();
+}
+
+const eventIdToIndex = new Map<string, number>();
+
+/** Live STDB rows buffer here until `flushPendingDashboardPatches` (one reactive commit/frame). */
+const pendingEvents = new Map<string, UiEvent>();
+const pendingSignals = new Map<string, UiSignal>();
+const pendingCausalEdges = new Map<string, UiCausalEdge>();
+const pendingWorldState: Record<string, UiWorldState> = {};
+const pendingDomainInsights: Record<string, UiDomainInsight> = {};
+const pendingEventDeletes = new Set<string>();
+const pendingSignalDeletes = new Set<string>();
+const pendingCausalDeletes = new Set<string>();
+
+/** Merge pending patches then trim — called from `sortAndTrimDashboardBuffers`. */
+export function flushPendingDashboardPatches(): void {
+  let domainsDirty = false;
+
+  if (pendingEventDeletes.size > 0) {
+    dashboard.events = dashboard.events.filter(
+      (e) => !pendingEventDeletes.has(e.id),
+    );
+    pendingEventDeletes.clear();
+    eventIdToIndex.clear();
+  }
+
+  if (pendingEvents.size > 0) {
+    const merged = new Map<string, UiEvent>();
+    for (const e of dashboard.events) merged.set(e.id, e);
+    for (const e of pendingEvents.values()) merged.set(e.id, e);
+    pendingEvents.clear();
+    dashboard.events = [...merged.values()];
+    eventIdToIndex.clear();
+  }
+
+  if (pendingSignalDeletes.size > 0) {
+    dashboard.recentSignals = dashboard.recentSignals.filter(
+      (s) => !pendingSignalDeletes.has(s.id),
+    );
+    pendingSignalDeletes.clear();
+  }
+
+  if (pendingSignals.size > 0) {
+    const merged = new Map<string, UiSignal>();
+    for (const s of dashboard.recentSignals) merged.set(s.id, s);
+    for (const s of pendingSignals.values()) merged.set(s.id, s);
+    pendingSignals.clear();
+    dashboard.recentSignals = [...merged.values()];
+  }
+
+  if (pendingCausalDeletes.size > 0) {
+    dashboard.recentCausalEdges = dashboard.recentCausalEdges.filter(
+      (e) => !pendingCausalDeletes.has(e.id),
+    );
+    pendingCausalDeletes.clear();
+  }
+
+  if (pendingCausalEdges.size > 0) {
+    const merged = new Map<string, UiCausalEdge>();
+    for (const e of dashboard.recentCausalEdges) merged.set(e.id, e);
+    for (const e of pendingCausalEdges.values()) merged.set(e.id, e);
+    pendingCausalEdges.clear();
+    dashboard.recentCausalEdges = [...merged.values()];
+  }
+
+  if (Object.keys(pendingWorldState).length > 0) {
+    dashboard.domainState = { ...dashboard.domainState, ...pendingWorldState };
+    for (const k of Object.keys(pendingWorldState)) {
+      delete pendingWorldState[k];
+    }
+    domainsDirty = true;
+  }
+
+  if (Object.keys(pendingDomainInsights).length > 0) {
+    dashboard.domainInsights = {
+      ...dashboard.domainInsights,
+      ...pendingDomainInsights,
+    };
+    for (const k of Object.keys(pendingDomainInsights)) {
+      delete pendingDomainInsights[k];
+    }
+    domainsDirty = true;
+  }
+
+  if (domainsDirty) bumpDomainsRevision();
+}
+
+function narrativesBucket(): Record<string, UiEventNarrative> {
+  return batchNarratives ?? dashboard.eventNarratives;
+}
+
+function commitEventsBuffer(buf: UiEvent[]): void {
+  if (batchEvents !== null) {
+    batchEvents = buf;
+  } else {
+    dashboard.events = buf;
+    eventIdToIndex.clear();
+  }
+}
+
+function commitSignalsBuffer(buf: UiSignal[]): void {
+  if (batchSignals !== null) batchSignals = buf;
+  else dashboard.recentSignals = buf;
+}
+
+function commitCausalBuffer(buf: UiCausalEdge[]): void {
+  if (batchCausalEdges !== null) batchCausalEdges = buf;
+  else dashboard.recentCausalEdges = buf;
+}
+
+function commitNarrativesBucket(bucket: Record<string, UiEventNarrative>): void {
+  if (batchNarratives !== null) batchNarratives = bucket;
+  else dashboard.eventNarratives = bucket;
+}
+
+const pendingSeverityByDomain = new Map<string, number[]>();
+
+function queueSeverity(event: UiEvent): void {
+  if (batchDepth > 0) {
+    batchSeverityEvents.push(event);
+    return;
+  }
+  let list = pendingSeverityByDomain.get(event.domain);
+  if (!list) {
+    list = [];
+    pendingSeverityByDomain.set(event.domain, list);
+  }
+  list.push(event.severity_score);
+}
+
+/** Called from `sortAndTrimDashboardBuffers` (debounced per frame). */
+export function flushPendingSeverityUpdates(): void {
+  if (batchSeverityEvents.length > 0) {
+    const nextHist = { ...dashboard.domainSeverityHistory };
+    for (const event of batchSeverityEvents) {
+      let hist = nextHist[event.domain] ?? [];
+      hist = hist.concat(event.severity_score);
+      if (hist.length > MAX_SEVERITY_HISTORY) {
+        hist = hist.slice(hist.length - MAX_SEVERITY_HISTORY);
+      }
+      nextHist[event.domain] = hist;
+    }
+    batchSeverityEvents.length = 0;
+    dashboard.domainSeverityHistory = nextHist;
+    return;
+  }
+  if (pendingSeverityByDomain.size === 0) return;
+  const nextHist = { ...dashboard.domainSeverityHistory };
+  for (const [domain, scores] of pendingSeverityByDomain) {
+    let hist = nextHist[domain] ?? [];
+    for (const score of scores) {
+      hist = hist.concat(score);
+      if (hist.length > MAX_SEVERITY_HISTORY) {
+        hist = hist.slice(hist.length - MAX_SEVERITY_HISTORY);
+      }
+    }
+    nextHist[domain] = hist;
+  }
+  pendingSeverityByDomain.clear();
+  dashboard.domainSeverityHistory = nextHist;
+}
+
+function mergeEventInPlace(next: UiEvent): void {
+  if (batchEvents !== null) {
+    commitEventsBuffer(mergeOrAppendById(batchEvents, next, MAX_EVENTS + 64));
+    return;
+  }
+  pendingEvents.set(next.id, next);
+}
+
+export function rebuildEventIdIndex(): void {
+  eventIdToIndex.clear();
+  dashboard.events.forEach((row, i) => {
+    eventIdToIndex.set(row.id, i);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Mutation helpers (called from connection.svelte.ts row callbacks)
 // ---------------------------------------------------------------------------
 
@@ -255,69 +526,91 @@ export function applyEvent(row: Event): void {
     });
     return;
   }
-  const merged = mergeOrAppendById(dashboard.events, next, MAX_EVENTS);
-  dashboard.events = merged;
-  recordSeverity(next);
+  mergeEventInPlace(next);
+  queueSeverity(next);
 }
 
 export function removeEvent(id: bigint): void {
   const key = String(id);
-  dashboard.events = dashboard.events.filter((row) => row.id !== key);
+  if (batchEvents !== null) {
+    batchEvents = batchEvents.filter((row) => row.id !== key);
+    return;
+  }
+  pendingEvents.delete(key);
+  pendingEventDeletes.add(key);
 }
 
 export function applySignal(row: Signal): void {
   const next = projectSignal(row);
-  dashboard.recentSignals = mergeOrAppendById(
-    dashboard.recentSignals,
-    next,
-    MAX_SIGNALS,
-  );
+  if (batchSignals !== null) {
+    commitSignalsBuffer(mergeOrAppendById(batchSignals, next, MAX_SIGNALS * 2));
+    return;
+  }
+  pendingSignals.set(next.id, next);
 }
 
 export function removeSignal(id: bigint): void {
   const key = String(id);
-  dashboard.recentSignals = dashboard.recentSignals.filter(
-    (row) => row.id !== key,
-  );
+  if (batchSignals !== null) {
+    batchSignals = batchSignals.filter((row) => row.id !== key);
+    return;
+  }
+  pendingSignals.delete(key);
+  pendingSignalDeletes.add(key);
 }
 
 export function applyCausalEdge(row: CausalEdge): void {
   const next = projectCausalEdge(row);
-  dashboard.recentCausalEdges = mergeOrAppendById(
-    dashboard.recentCausalEdges,
-    next,
-    MAX_CAUSAL_EDGES,
-  );
+  if (batchCausalEdges !== null) {
+    commitCausalBuffer(
+      mergeOrAppendById(batchCausalEdges, next, MAX_CAUSAL_EDGES * 2),
+    );
+    return;
+  }
+  pendingCausalEdges.set(next.id, next);
 }
 
 export function removeCausalEdge(id: bigint): void {
   const key = String(id);
-  dashboard.recentCausalEdges = dashboard.recentCausalEdges.filter(
-    (row) => row.id !== key,
-  );
+  if (batchCausalEdges !== null) {
+    batchCausalEdges = batchCausalEdges.filter((row) => row.id !== key);
+    return;
+  }
+  pendingCausalEdges.delete(key);
+  pendingCausalDeletes.add(key);
 }
 
 export function applyWorldState(row: WorldStateRow): void {
   const next = projectWorldState(row);
-  dashboard.domainState = { ...dashboard.domainState, [next.domain]: next };
+  if (batchDepth > 0) {
+    dashboard.domainState = { ...dashboard.domainState, [next.domain]: next };
+    return;
+  }
+  pendingWorldState[next.domain] = next;
 }
 
 export function applyDomainInsight(row: DomainInsight): void {
   const next = projectDomainInsight(row);
-  dashboard.domainInsights = {
-    ...dashboard.domainInsights,
-    [next.domain]: next,
-  };
+  if (batchDepth > 0) {
+    dashboard.domainInsights = {
+      ...dashboard.domainInsights,
+      [next.domain]: next,
+    };
+    return;
+  }
+  pendingDomainInsights[next.domain] = next;
 }
 
 export function applyEventNarrative(row: EventNarrative): void {
   const next = projectEventNarrative(row);
   const merged: Record<string, UiEventNarrative> = {
-    ...dashboard.eventNarratives,
+    ...narrativesBucket(),
     [next.event_id]: next,
   };
-  evictOldestNarratives(merged, MAX_EVENT_NARRATIVES);
-  dashboard.eventNarratives = merged;
+  if (batchNarratives === null) {
+    evictOldestNarratives(merged, MAX_EVENT_NARRATIVES);
+  }
+  commitNarrativesBucket(merged);
 }
 
 export function removeEventNarrative(eventId: bigint): void {
@@ -379,14 +672,3 @@ function mergeOrAppendById<T extends { id: string }>(
   return out;
 }
 
-function recordSeverity(event: UiEvent): void {
-  const existing = dashboard.domainSeverityHistory[event.domain] ?? [];
-  const nextHistory = existing.concat(event.severity_score);
-  if (nextHistory.length > MAX_SEVERITY_HISTORY) {
-    nextHistory.splice(0, nextHistory.length - MAX_SEVERITY_HISTORY);
-  }
-  dashboard.domainSeverityHistory = {
-    ...dashboard.domainSeverityHistory,
-    [event.domain]: nextHistory,
-  };
-}

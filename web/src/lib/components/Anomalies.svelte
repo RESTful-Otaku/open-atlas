@@ -25,7 +25,8 @@
   {#if rows.length === 0}
     <div class="empty-state">
       <strong>All clear</strong>
-      No anomalies have crossed threshold in the current window.
+      Anomalies appear when event severity ≥ 0.85. Simulators and hybrid ingest
+      generate high-severity events over time.
     </div>
   {:else}
     <ul class="rows">

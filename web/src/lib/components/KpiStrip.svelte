@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Activity, AlertTriangle, Layers, Radio } from "@lucide/svelte";
 
+  import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard } from "../state.svelte";
   import { MAX_EVENTS } from "../data-limits";
   import { fmtInt, fmtFixed } from "../format";
@@ -28,8 +29,14 @@
     );
   }
 
-  const series = $derived(severitySeries(dashboard.events));
-  const avg = $derived(averageSeverity(dashboard.events));
+  const series = $derived.by(() => {
+    void dashboardData.revision;
+    return severitySeries(dashboard.events);
+  });
+  const avg = $derived.by(() => {
+    void dashboardData.revision;
+    return averageSeverity(dashboard.events);
+  });
   const domainCount = $derived(Object.keys(dashboard.domainState).length);
 </script>
 

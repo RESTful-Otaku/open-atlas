@@ -9,12 +9,10 @@
     events: readonly UiEvent[];
     accent: string;
     title?: string;
+    /** Footer line under the SVG (e.g. demo vs live data source). */
+    caption?: string;
   }
-  const {
-    events,
-    accent,
-    title = "Geographic distribution (synthetic anchors)",
-  }: Props = $props();
+  const { events, accent, title, caption }: Props = $props();
 
   type Pt = { x: number; y: number; sev: number; id: string };
   const pts = $derived.by(() => {
@@ -37,8 +35,10 @@
   });
 </script>
 
-<section class="mini-map" aria-label={title}>
-  <h3 class="mini-map-h">{title}</h3>
+<section class="mini-map" aria-label={title ?? "Geographic distribution"}>
+  {#if title}
+    <h3 class="mini-map-h">{title}</h3>
+  {/if}
   {#if pts.length === 0}
     <p class="mini-map-empty">No geotagged events in this slice — try another domain or the full map.</p>
   {:else}
@@ -74,7 +74,9 @@
         />
       {/each}
     </svg>
-    <p class="mini-map-cap mono">{pts.length} points · equirectangular plot · demo seed</p>
+    {#if caption}
+      <p class="mini-map-cap mono">{caption}</p>
+    {/if}
   {/if}
 </section>
 

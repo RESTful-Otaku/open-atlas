@@ -24,6 +24,15 @@ export interface UiEvent {
   domain: string;
   severity_score: number;
   location: UiLocation | null;
+  /** Feed name from canonical payload (`source`), when present. */
+  feedSource?: string;
+  /** OpenSky / transport feed fields (parsed once at projection). */
+  icao24?: string;
+  callsign?: string;
+  velocity_mps?: number;
+  true_track_deg?: number;
+  baro_altitude_m?: number;
+  on_ground?: boolean;
 }
 
 export interface UiSignal {

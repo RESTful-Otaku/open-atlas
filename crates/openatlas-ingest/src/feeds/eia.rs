@@ -1,14 +1,16 @@
-//! U.S. Energy Information Administration — hourly lower-48 electricity
-//! demand. Requires `EIA_API_KEY`. Dormant by default.
+//! U.S. Energy Information Administration — hourly lower-48 electricity demand.
 
 use std::time::Duration;
 
 use chrono::Utc;
-use openatlas_core::{Domain, WorldEvent};
+use openatlas_core::Domain;
 use reqwest::Client;
-use serde_json::{json, Value};
 
-use super::{adapter::FeedDescriptor, deterministic_event_id};
+use super::{
+    adapter::FeedDescriptor,
+    http::{eia_data_rows, fetch_text, parse_json_value},
+    normalize::{drafts_to_events, parse_eia_period, ratio_severity, ObservationDraft},
+};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(900);
 const SOURCE_URL: &str = "https://www.eia.gov/";
@@ -28,65 +30,55 @@ pub(super) const DESCRIPTOR: FeedDescriptor = FeedDescriptor {
     },
 };
 
-/// Approximate U.S. peak demand in MW; clamps severity at 1.0.
 const PEAK_DEMAND_MW: f64 = 720_000.0;
 
-async fn fetch(client: Client, api_key: String) -> anyhow::Result<Vec<WorldEvent>> {
+async fn fetch(client: Client, api_key: String) -> anyhow::Result<Vec<openatlas_core::WorldEvent>> {
     let url = format!(
         "https://api.eia.gov/v2/electricity/rto/region-data/data/?api_key={api_key}&frequency=hourly&data[0]=value&facets[respondent][]=US48&facets[type][]=D&sort[0][column]=period&sort[0][direction]=desc&length=12"
     );
 
-    let payload = client
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<Value>()
-        .await?;
+    let body = fetch_text(&client, "eia", &url).await?;
+    let payload = parse_json_value(&body, "eia")?;
+    let observations = eia_data_rows(&payload)?;
 
-    let observations = payload
-        .get("response")
-        .and_then(|v| v.get("data"))
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let mut events = Vec::new();
-    for obs in observations.into_iter() {
-        let period = obs
-            .get("period")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_owned();
-        let respondent = obs
-            .get("respondent")
-            .and_then(|v| v.as_str())
-            .unwrap_or("US48")
-            .to_owned();
-        let value = obs.get("value").and_then(|v| v.as_f64()).or_else(|| {
-            obs.get("value")
+    let drafts = observations
+        .iter()
+        .filter_map(|obs| {
+            let period = obs.get("period").and_then(|v| v.as_str()).unwrap_or("");
+            let respondent = obs
+                .get("respondent")
                 .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok())
-        });
-        let Some(value) = value else { continue };
+                .unwrap_or("US48");
+            let value = obs.get("value").and_then(|v| v.as_f64()).or_else(|| {
+                obs.get("value")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<f64>().ok())
+            })?;
+            let observed_at = parse_eia_period(period).unwrap_or_else(Utc::now);
+            let severity_score = ratio_severity(value, PEAK_DEMAND_MW);
+            let external_key = format!("{respondent}-{period}");
+            Some(
+                ObservationDraft::new(external_key, observed_at, Domain::Energy, severity_score)
+                    .field("respondent", respondent)
+                    .field("period", period)
+                    .field("value_mw", value)
+                    .field("metric", "hourly_demand"),
+            )
+        })
+        .collect::<Vec<_>>();
 
-        let severity_score = (value / PEAK_DEMAND_MW).clamp(0.0, 1.0);
-        let external_key = format!("{respondent}-{period}");
-        events.push(WorldEvent {
-            id: deterministic_event_id("eia", &external_key),
-            timestamp: Utc::now(),
-            domain: Domain::Energy,
-            location: None,
-            severity_score,
-            payload: json!({
-                "source": "eia",
-                "source_url": SOURCE_URL,
-                "respondent": respondent,
-                "period": period,
-                "value_mw": value,
-                "metric": "hourly_demand"
-            }),
-        });
+    Ok(drafts_to_events("eia", SOURCE_URL, drafts))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_fixture_rows() {
+        let body = include_str!("../../tests/fixtures/eia_demand.json");
+        let v = parse_json_value(body, "eia").unwrap();
+        let rows = eia_data_rows(&v).unwrap();
+        assert_eq!(rows.len(), 2);
     }
-    Ok(events)
 }

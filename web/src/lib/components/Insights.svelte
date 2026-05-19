@@ -22,7 +22,8 @@
   {#if insights.length === 0}
     <div class="empty-state">
       <strong>No insights yet</strong>
-      Narratives appear as the inference layer finds patterns.
+      Domain narratives appear after ingest pushes events into SpacetimeDB
+      (try <code>./dev.sh up</code> or demo mode in Settings).
     </div>
   {:else}
     <div class="insight-list">

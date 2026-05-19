@@ -19,7 +19,10 @@
 
   import { DOMAIN_STREAM_EXPLANATION } from "../event-domain-copy";
   import { router, navigate } from "../router.svelte";
-  import { dashboard } from "../state.svelte";
+  import { useNarrativeSubscription } from "../narrative-subscription";
+  import { dashboard, setSelectedDomain } from "../state.svelte";
+
+  useNarrativeSubscription();
   import { domainColor, domainLabel } from "../colors";
   import { signalsForEvent } from "../map/event-map-hover";
   import { domainIcon } from "../domain-icons";
@@ -85,6 +88,18 @@
 
   function formatCoord(lat: number, lon: number): string {
     return `${lat.toFixed(3)}°, ${lon.toFixed(3)}°`;
+  }
+
+  function openOnMap(): void {
+    if (!event) return;
+    setSelectedDomain(event.domain);
+    navigate("/map");
+  }
+
+  function openOnGlobe(): void {
+    if (!event) return;
+    setSelectedDomain(event.domain);
+    navigate("/");
   }
 
   /**
@@ -163,10 +178,20 @@
             </div>
             <div>
               <dt><MapPin size={12} strokeWidth={1.75} /> Location</dt>
-              <dd>
-                {event.location
-                  ? formatCoord(event.location.lat, event.location.lon)
-                  : "—"}
+              <dd class="ed-loc-dd">
+                {#if event.location}
+                  <span>{formatCoord(event.location.lat, event.location.lon)}</span>
+                  <span class="ed-loc-actions">
+                    <button type="button" class="ed-loc-btn" onclick={openOnMap}>
+                      2D map
+                    </button>
+                    <button type="button" class="ed-loc-btn" onclick={openOnGlobe}>
+                      Globe
+                    </button>
+                  </span>
+                {:else}
+                  —
+                {/if}
               </dd>
             </div>
             <div>
@@ -204,7 +229,7 @@
             </div>
             {#if domainTrend.length > 1}
               <div class="ed-trend">
-                <span class="ed-trend-lab">Recent domain severity (synthetic / rolling index)</span>
+                <span class="ed-trend-lab">Domain severity trend (rolling index)</span>
                 <svg
                   class="ed-spark"
                   viewBox="0 0 120 40"
@@ -503,6 +528,29 @@
   }
   .ed-trend-lab {
     font-size: 10px;
+  }
+  .ed-loc-dd {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .ed-loc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .ed-loc-btn {
+    font-size: 0.68rem;
+    padding: 0.15rem 0.45rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-1);
+    background: var(--bg-2);
+    color: var(--text-2);
+    cursor: pointer;
+  }
+  .ed-loc-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-1);
   }
   .ed-spark {
     width: 100%;

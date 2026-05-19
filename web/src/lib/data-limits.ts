@@ -1,13 +1,11 @@
 /**
- * Client-side row caps: subscription queries and merge buffers use these
- * (see `state.svelte.ts` and `connection.svelte.ts`). Keep in sync with
- * SpacetimeDB module expectations for subscription LIMIT clauses.
+ * Client-side row caps after sort/trim (see `sync-dashboard-cache.ts`).
+ * Keep ~½ of `openatlas-stdb-module` ring sizes so WS sync stays lean.
  */
-/** Live STDB subscription + merge cap — keep aligned with `connection.svelte.ts` LIMITs. */
-export const MAX_EVENTS = 520;
-export const MAX_SIGNALS = 280;
-export const MAX_CAUSAL_EDGES = 480;
+export const MAX_EVENTS = 400;
+export const MAX_SIGNALS = 200;
+export const MAX_CAUSAL_EDGES = 350;
 /** Rolling severity buckets per domain (sparklines / small multiples). */
-export const MAX_SEVERITY_HISTORY = 36;
-/** Client cache cap for `event_narrative` rows (defense in depth vs server). */
-export const MAX_EVENT_NARRATIVES = 320;
+export const MAX_SEVERITY_HISTORY = 24;
+/** High-severity narratives only; subscribed lazily (see `connection.svelte.ts`). */
+export const MAX_EVENT_NARRATIVES = 64;

@@ -1,41 +1,26 @@
-//! OpenAtlas ingest service entrypoint.
-//!
-//! The ingest service is a thin *pusher*: it polls live open-data feeds
-//! and runs simulators, converts each event into a canonical shape, and
-//! pushes it into SpacetimeDB by invoking the `ingest_event` reducer.
-//! SpacetimeDB is the single source of truth; the browser subscribes to
-//! it directly via the TypeScript SDK, so this service never needs to
-//! serve events, signals, or state over HTTP.
-//!
-//! # Module map
-//! * [`state`]: shared runtime handle passed to every task (stdb client + health).
-//! * [`stdb`]: typed HTTP client for SpacetimeDB reducer calls.
-//! * [`health`]: per-feed health tracking and `/status` DTO.
-//! * [`simulator`]: synthetic event generators.
-//! * [`feeds`]: live open-data feed adapters (one provider per file).
-//! * [`routes`]: minimal axum surface (`/health`, `/ready`, `/status`, static fallback).
-
-mod feeds;
-mod health;
-mod routes;
-mod simulator;
-mod state;
-mod stdb;
+//! OpenAtlas ingest service binary.
 
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use anyhow::Context;
 use chrono::Utc;
+use openatlas_ingest::{
+    feed_config,
+    feeds,
+    local_env,
+    rate_limit,
+    metrics::IngestMetrics,
+    fixtures::push_static_fixtures,
+    health::initialize_feed_runtime,
+    ingest_mode::{ingest_mode, IngestMode},
+    routes::router,
+    simulator::spawn_simulators,
+    state::AppState,
+    stdb::StdbClient,
+};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::{
-    health::initialize_feed_runtime, routes::router, simulator::spawn_simulators, state::AppState,
-    stdb::StdbClient,
-};
-
-/// Bind address. Keeping this as a `const` makes deployment profiles easy
-/// to inspect; override via reverse proxy rather than env.
 const BIND_ADDR: &str = "0.0.0.0:8080";
 
 #[tokio::main]
@@ -55,16 +40,43 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    local_env::load_gitignored_env_files();
+    let env_files = local_env::env_file_paths();
+    if !env_files.is_empty() {
+        info!(files = ?env_files, "loaded local env files");
+    }
+
+    let secrets = feed_config::load_secrets_file();
+    feed_config::apply_secrets_to_env(&secrets);
+    info!(
+        secrets_path = %feed_config::secrets_file_display(),
+        keys = secrets.secrets.len(),
+        "loaded feed API keys"
+    );
+
+    let rate_limiter = Arc::new(rate_limit::FeedRateLimiter::new());
+    rate_limit::install(rate_limiter.clone());
+
     let feed_runtime = Arc::new(RwLock::new(HashMap::new()));
+    let spawned_feeds = Arc::new(RwLock::new(std::collections::HashSet::new()));
     let state = AppState {
         started_at: Utc::now(),
         feed_runtime,
+        spawned_feeds,
         stdb,
+        rate_limiter,
+        metrics: Arc::new(IngestMetrics::default()),
     };
 
-    initialize_feed_runtime(&state).await;
-    spawn_simulators(state.clone());
-    feeds::spawn_all(state.clone());
+    let mode = ingest_mode();
+    info!(ingest_mode = %mode, "ingest mode selected");
+    initialize_feed_runtime(&state, mode).await;
+    match mode {
+        IngestMode::Static => push_static_fixtures(&state).await,
+        _ if mode.simulators_enabled() => spawn_simulators(state.clone()),
+        _ => {}
+    }
+    feeds::spawn_all(state.clone()).await;
 
     let app = router(state);
     let addr: SocketAddr = BIND_ADDR.parse().context("invalid bind address")?;

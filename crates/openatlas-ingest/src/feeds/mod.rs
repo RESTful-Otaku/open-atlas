@@ -32,14 +32,26 @@ use tracing::{debug, error, info};
 use uuid::Uuid;
 
 pub(crate) mod adapter;
+pub(crate) mod http;
+pub mod normalize;
 
 use adapter::FeedDescriptor;
 
 use crate::{
-    health::{next_backoff, record_feed_failure, record_feed_success},
+    circuit::{self, is_circuit_open},
+    feed_config, feed_poll,
+    health::{
+        record_feed_failure, record_feed_poll_start, record_feed_success, record_feed_test,
+        set_feed_worker_running,
+    },
+    ingest_mode::ingest_mode,
+    pipeline::push_events_via_state,
     state::AppState,
-    stdb::IngestOutcome,
+    validate::filter_valid_events,
 };
+
+/// Stagger feed worker start so all adapters do not hit upstream APIs at once.
+const FEED_START_STAGGER: Duration = Duration::from_secs(3);
 
 mod coingecko;
 mod eia;
@@ -73,30 +85,46 @@ pub(crate) fn descriptor_for(name: &str) -> Option<&'static FeedDescriptor> {
     REGISTRY.iter().find(|descriptor| descriptor.name == name)
 }
 
-/// Returns true when live-feed ingestion is enabled via environment flag.
+/// Result of a one-shot feed fetch (Settings → Test).
+#[derive(Debug, Clone)]
+pub struct FeedTestResult {
+    pub ok: bool,
+    pub event_count: usize,
+    pub message: String,
+    pub duration_ms: u64,
+}
+
+/// Returns true when live open-data adapters should run.
 pub(crate) fn live_enabled() -> bool {
-    std::env::var("OPENATLAS_ENABLE_LIVE_FEEDS")
-        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+    ingest_mode().live_feeds_enabled()
 }
 
 /// Spawns every enabled live feed onto the current tokio runtime. A
 /// single shared [`Client`] is reused across feeds so connection
 /// pooling, DNS cache, and TLS session tickets amortise across requests.
-pub(crate) fn spawn_all(state: AppState) {
+pub async fn spawn_all(state: AppState) {
     if !live_enabled() {
-        info!("live open data feeds disabled (set OPENATLAS_ENABLE_LIVE_FEEDS=1)");
+        info!("live open data feeds disabled (set OPENATLAS_INGEST_MODE=live or hybrid)");
         return;
     }
 
     let client = build_client();
 
     let mut spawned = 0usize;
-    for descriptor in REGISTRY {
+    for (index, descriptor) in REGISTRY.iter().enumerate() {
         if is_dormant(descriptor) {
             continue;
         }
-        spawn_feed(state.clone(), client.clone(), descriptor);
+        {
+            let mut set = state.spawned_feeds.write().await;
+            set.insert(descriptor.name.to_owned());
+        }
+        spawn_feed(
+            state.clone(),
+            client.clone(),
+            descriptor,
+            Duration::from_secs(index as u64 * FEED_START_STAGGER.as_secs()),
+        );
         spawned += 1;
     }
     info!(
@@ -114,9 +142,7 @@ fn build_client() -> Client {
 }
 
 fn env_is_set(var: &str) -> bool {
-    std::env::var(var)
-        .map(|value| !value.is_empty())
-        .unwrap_or(false)
+    feed_config::env_key_present(var)
 }
 
 /// A feed is dormant when it declares an env gate that is currently
@@ -140,38 +166,177 @@ fn is_dormant(descriptor: &FeedDescriptor) -> bool {
 /// Core supervised worker loop used by every feed, parametrised only by
 /// its [`FeedDescriptor`]. Any logic that might diverge per provider
 /// (cadence, data parsing, env needs) lives on the descriptor.
-fn spawn_feed(state: AppState, client: Client, descriptor: &'static FeedDescriptor) {
+/// Start the supervised worker for one feed if not already running.
+pub async fn ensure_feed_worker(state: &AppState, name: &str) -> anyhow::Result<()> {
+    let descriptor = descriptor_for(name).ok_or_else(|| anyhow::anyhow!("unknown feed: {name}"))?;
+    if is_dormant(descriptor) {
+        anyhow::bail!(
+            "feed is dormant — configure {} first",
+            descriptor.requires_env.unwrap_or("credentials")
+        );
+    }
+    let mut spawned = state.spawned_feeds.write().await;
+    if spawned.contains(name) {
+        return Ok(());
+    }
+    spawned.insert(name.to_owned());
+    drop(spawned);
+    spawn_feed(state.clone(), build_client(), descriptor, Duration::ZERO);
+    Ok(())
+}
+
+/// One-shot fetch for operator testing (does not write to SpacetimeDB).
+pub async fn test_feed_fetch(
+    state: &AppState,
+    name: &str,
+) -> anyhow::Result<FeedTestResult> {
+    let descriptor = descriptor_for(name).ok_or_else(|| anyhow::anyhow!("unknown feed: {name}"))?;
+    if let Some(key) = descriptor.requires_env {
+        if !env_is_set(key) {
+            anyhow::bail!("{key} is not set");
+        }
+    }
+    if let Some(remaining) = state.rate_limiter.operator_cooldown_remaining(name).await {
+        return Ok(FeedTestResult {
+            ok: false,
+            event_count: 0,
+            message: format!(
+                "Rate limited: wait {}s before testing {name} again (protects upstream APIs)",
+                remaining.as_secs().max(1)
+            ),
+            duration_ms: 0,
+        });
+    }
+    let interval = feed_poll::effective_interval(name, descriptor.poll_interval);
+    state.rate_limiter.wait_scheduled_poll(name, interval).await;
+    state.rate_limiter.record_operator_fetch(name).await;
+
+    let client = build_client();
+    let started = std::time::Instant::now();
+    match (descriptor.fetch)(client).await {
+        Ok(events) => {
+            let (events, rejected) = filter_valid_events(events);
+            let count = events.len();
+            let msg = if rejected > 0 {
+                format!("Fetched {count} valid events ({rejected} rejected by validation)")
+            } else {
+                format!("Fetched {count} events")
+            };
+            Ok(FeedTestResult {
+                ok: true,
+                event_count: count,
+                message: msg,
+                duration_ms: started.elapsed().as_millis() as u64,
+            })
+        }
+        Err(error) => Ok(FeedTestResult {
+            ok: false,
+            event_count: 0,
+            message: error.to_string(),
+            duration_ms: started.elapsed().as_millis() as u64,
+        }),
+    }
+}
+
+/// Clear backoff, ensure worker is running, and run a test fetch.
+pub async fn reconnect_feed(state: &AppState, name: &str) -> anyhow::Result<FeedTestResult> {
+    crate::health::refresh_feed_enabled_flags(state).await;
+    circuit::reset_circuit(state, name).await;
+    ensure_feed_worker(state, name).await?;
+    let result = test_feed_fetch(state, name).await?;
+    record_feed_test(
+        state,
+        name,
+        result.ok,
+        result.message.clone(),
+        result.event_count,
+    )
+    .await;
+    Ok(result)
+}
+
+fn spawn_feed(
+    state: AppState,
+    client: Client,
+    descriptor: &'static FeedDescriptor,
+    start_delay: Duration,
+) {
+    let name = descriptor.name.to_owned();
     tokio::spawn(async move {
-        let name = descriptor.name;
-        let interval = descriptor.poll_interval;
+        if !start_delay.is_zero() {
+            tokio::time::sleep(start_delay).await;
+        }
+        set_feed_worker_running(&state, &name, true).await;
+        let name = name.as_str();
         let fetch = descriptor.fetch;
-        let mut backoff = Duration::from_secs(5);
 
         let source_url = descriptor.source_url;
         loop {
+            let interval = feed_poll::effective_interval(name, descriptor.poll_interval);
+            state
+                .rate_limiter
+                .wait_scheduled_poll(name, interval)
+                .await;
+            state.rate_limiter.record_scheduled_poll(name).await;
+
+            if is_circuit_open(&state, name).await {
+                debug!("{name}: circuit open — skipping upstream fetch until reconnect");
+                record_feed_poll_start(&state, name).await;
+                record_feed_failure(
+                    &state,
+                    name,
+                    "circuit open after repeated failures — use Settings → Reconnect".to_owned(),
+                    interval,
+                )
+                .await;
+                continue;
+            }
+
+            record_feed_poll_start(&state, name).await;
+
             match fetch(client.clone()).await {
                 Ok(events) => {
-                    let total = events.len();
-                    let mut pushed = 0;
-                    for event in events {
-                        match state.stdb.ingest_event(&event, name, source_url).await {
-                            Ok(IngestOutcome::Accepted) => pushed += 1,
-                            Ok(IngestOutcome::Duplicate) => {}
-                            Err(error) => {
-                                error!("{name} event push failed: {error:#}");
-                            }
-                        }
+                    let (events, rejected) = filter_valid_events(events);
+                    if rejected > 0 {
+                        debug!("{name}: {rejected} events failed ingest validation");
                     }
-                    debug!("{name} feed cycle: {pushed}/{total} events pushed to stdb");
-                    record_feed_success(&state, name).await;
-                    backoff = Duration::from_secs(5);
-                    tokio::time::sleep(interval).await;
+                    let total = events.len();
+                    let push = push_events_via_state(&state, events, name, source_url).await;
+                    debug!(
+                        "{name} feed cycle: {} new, {} duplicate, {} rejected, {} transport errors / {total} fetched",
+                        push.accepted,
+                        push.duplicates,
+                        push.rejected,
+                        push.transport_errors,
+                    );
+                    if push.had_hard_failure(total) {
+                        record_feed_failure(
+                            &state,
+                            name,
+                            format!(
+                                "fetched {total} events but none ingested ({} STDB transport errors; {} duplicates)",
+                                push.transport_errors, push.duplicates
+                            ),
+                            interval,
+                        )
+                        .await;
+                        circuit::on_poll_failure(&state, name).await;
+                    } else {
+                        record_feed_success(
+                            &state,
+                            name,
+                            push.accepted,
+                            push.duplicates,
+                            interval,
+                        )
+                        .await;
+                        circuit::on_poll_success(&state, name).await;
+                    }
                 }
                 Err(error) => {
                     error!("{name} fetch failed: {error}");
-                    record_feed_failure(&state, name, error.to_string(), backoff).await;
-                    tokio::time::sleep(backoff).await;
-                    backoff = next_backoff(backoff);
+                    record_feed_failure(&state, name, error.to_string(), interval).await;
+                    circuit::on_poll_failure(&state, name).await;
                 }
             }
         }
@@ -237,5 +402,43 @@ mod tests {
             );
         }
         assert_eq!(source_url_for_source("unknown-feed"), None);
+    }
+
+    /// Hits real public APIs. Run: `cargo test -p openatlas-ingest registry_feeds_fetch -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "network: hits public open-data APIs"]
+    async fn registry_feeds_fetch_without_error() {
+        let client = build_client();
+        let mut checked = 0usize;
+        let mut failures = Vec::new();
+        for descriptor in REGISTRY {
+            if let Some(key) = descriptor.requires_env {
+                if std::env::var(key).map(|v| v.is_empty()).unwrap_or(true) {
+                    eprintln!("skip {} (set {key})", descriptor.name);
+                    continue;
+                }
+            }
+            checked += 1;
+            match (descriptor.fetch)(client.clone()).await {
+                Ok(events) => eprintln!("{} ok — {} events", descriptor.name, events.len()),
+                Err(error) => {
+                    eprintln!("{} FAIL — {error:#}", descriptor.name);
+                    failures.push(descriptor.name);
+                }
+            }
+        }
+        assert!(
+            checked >= 7,
+            "expected at least 7 keyless feeds; got {checked}"
+        );
+        let hard_fail: Vec<_> = failures
+            .iter()
+            .filter(|name| **name != "gdelt")
+            .copied()
+            .collect();
+        assert!(
+            hard_fail.is_empty(),
+            "feeds failed (excluding optional gdelt): {hard_fail:?}"
+        );
     }
 }

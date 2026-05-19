@@ -21,7 +21,7 @@ export function installDemoData(): void {
   dashboard.eventNarratives = { ...s.eventNarratives };
   dashboard.selectedDomain = null;
   setConnectionLastError(null);
-  setConnection("live");
+  setConnection("offline");
   dashboard.dataMode = "demo";
   if (import.meta.env.DEV) {
     console.info(

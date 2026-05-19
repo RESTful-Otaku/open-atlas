@@ -1,8 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
+  import { debounce, rafCoalesce } from "../debounce-raf";
+  import { useNarrativeSubscription } from "../narrative-subscription";
+
+  useNarrativeSubscription();
   import {
     Flame,
+    Globe as GlobeIcon,
     Grid3x3,
     Layers,
     Link2,
@@ -10,6 +15,7 @@
     Moon,
     Plane,
     Sun,
+    SunDim,
     Wind,
   } from "@lucide/svelte";
 
@@ -32,13 +38,19 @@
     LAYER_SUN,
     LAYER_TERM,
     LAYER_TRACKING,
+    LAYER_TRACKING_PATHS,
     layerHeatId,
     SRC_CAUSAL,
     SRC_DEMO,
     SRC_EVENTS,
     SRC_SOLAR,
     SRC_TRACKING,
+    SRC_TRACKING_PATHS,
   } from "../map/map-constants";
+  import {
+    buildAllTrackingPaths,
+    trackingPathsToFeatureCollection,
+  } from "../map/tracking-paths";
   import {
     ensureTleCache,
     loadMaritimeSample,
@@ -48,15 +60,17 @@
     toTrackingGlobePoints,
     type PublicTrackRow,
   } from "../tracking/public-tracking";
-  import {
-    applyMapPresentation,
-    CARTO_DARK_MATTER_GL,
-  } from "../map/map-presentation";
+  import { aircraftRowsFromTransportEvents } from "../tracking/stdb-aircraft";
+  import { applyMapPresentation } from "../map/map-presentation";
+  import { mapThemeFor } from "../theme-map";
+  import { onThemeChange, readThemeFromDocument } from "../theme-events";
   import {
     buildSunPointFeature,
     buildTerminatorLine,
     subsolarPoint,
   } from "../map/solar-geometry";
+  import { dashboardData } from "../dashboard-revision.svelte";
+  import { getGeoEventIndex } from "../geo-event-index";
   import { dashboard, matchesSelectedDomain } from "../state.svelte";
   import { navigate } from "../router.svelte";
   import { DOMAIN_CATALOG, domainColor, hexToRgba } from "../colors";
@@ -91,14 +105,12 @@
   let mapPointHover = $state<MapPointHover | null>(null);
   const mapHoverEvent = $derived.by(() => {
     const m = mapPointHover;
-    return m
-      ? (dashboard.events.find((e) => e.id === m.id) ?? null)
-      : null;
+    if (!m) return null;
+    void dashboardData.revision;
+    return getGeoEventIndex(dashboard.events).eventById.get(m.id) ?? null;
   });
 
   type Mode = "heat" | "points" | "both";
-
-  const BASEMAP = CARTO_DARK_MATTER_GL;
 
   let container: HTMLDivElement | undefined = $state();
   let map = $state<MapLibreMap | null>(null);
@@ -122,15 +134,19 @@
   const simUtcMs = $derived(simDayStart + simMinOfDay * 60_000);
   let showTerminator = $state(true);
   let showSubsun = $state(true);
+  let showMoon = $state(true);
   let showCausal = $state(true);
+  /** NASA day/night textures + city lights (3D globe only). */
+  let showPhotorealEarth = $state(true);
   /** Optional transport glyphs (separate from wind + pressure lines). */
   let showDemoLayers = $state(false);
   /** Wind segments + isobar-style contours (2D and 3D globe). */
   let showWeatherOverlays = $state(true);
-  /** NORAD (TLE) + OpenSky + bundled maritime — see `/public/tracking/`. */
+  /** NORAD (TLE) + STDB aircraft + bundled maritime — see `/public/tracking/`. */
   let showPublicTracking = $state(true);
   let tleCacheReady = $state(false);
-  let airTrackingRows = $state<PublicTrackRow[]>([]);
+  /** Demo-only OpenSky poll; live mode uses SpacetimeDB transport events. */
+  let airTrackingRowsDemo = $state<PublicTrackRow[]>([]);
   let shipTrackingRows = $state<PublicTrackRow[]>([]);
   /** Which of the 13 catalog domains to plot on the map (session-persisted). */
   let mapDomainSet = $state<Set<string>>(loadMapDomainSet());
@@ -187,11 +203,20 @@
     simDate.toISOString().slice(0, 16).replace("T", " "),
   );
 
+  const airFromStdb = $derived.by(() => {
+    void dashboardData.revision;
+    return dashboard.dataMode === "live"
+      ? aircraftRowsFromTransportEvents(dashboard.events)
+      : [];
+  });
+
   const publicTrackingRows = $derived.by((): PublicTrackRow[] => {
     if (!showPublicTracking) return [];
     const when = new Date(simUtcMs);
     const sats = tleCacheReady ? satelliteRowsAtTime(when) : [];
-    return [...sats, ...airTrackingRows, ...shipTrackingRows];
+    const air =
+      dashboard.dataMode === "live" ? airFromStdb : airTrackingRowsDemo;
+    return [...sats, ...air, ...shipTrackingRows];
   });
   const trackingGlobePoints = $derived(
     toTrackingGlobePoints(publicTrackingRows),
@@ -199,15 +224,25 @@
   const trackingFeatureCollection = $derived(
     toTrackingGeoJson(publicTrackingRows),
   );
+  const trackingPathsCollection = $derived.by(() => {
+    if (!showPublicTracking) {
+      return { type: "FeatureCollection" as const, features: [] };
+    }
+    const paths = buildAllTrackingPaths(
+      new Date(simUtcMs),
+      publicTrackingRows,
+    );
+    return trackingPathsToFeatureCollection(paths);
+  });
 
-  const locatedCount = $derived(
-    dashboard.events.filter(
-      (e) =>
-        matchesSelectedDomain(e.domain) &&
-        mapDomainSet.has(e.domain) &&
-        isGeoEvent(e),
-    ).length,
-  );
+  const locatedCount = $derived.by(() => {
+    void dashboardData.revision;
+    let n = 0;
+    for (const e of getGeoEventIndex(dashboard.events).geoEvents) {
+      if (matchesSelectedDomain(e.domain) && mapDomainSet.has(e.domain)) n++;
+    }
+    return n;
+  });
   const mapDomainsActiveLabel = $derived(
     mapDomainSet.size === 0
       ? "none"
@@ -243,10 +278,25 @@
     let m: maplibregl.Map | null = null;
     let ro: ResizeObserver | null = null;
     let cancelled = false;
+    let setupGen = 0;
+
+    const teardownMap = (): void => {
+      setupGen += 1;
+      mapPointHover = null;
+      ro?.disconnect();
+      ro = null;
+      m?.remove();
+      m = null;
+      map = null;
+      loaded = false;
+    };
 
     const setup = async (): Promise<void> => {
+      const theme = readThemeFromDocument();
+      const basemap = mapThemeFor(theme).basemapGlStyle;
+      const gen = ++setupGen;
       await tick();
-      if (cancelled) return;
+      if (cancelled || gen !== setupGen) return;
       if (!container) {
         await new Promise<void>((r) => {
           requestAnimationFrame(() => {
@@ -254,11 +304,11 @@
           });
         });
       }
-      if (cancelled || !container) return;
+      if (cancelled || gen !== setupGen || !container) return;
 
       m = new maplibregl.Map({
         container,
-        style: BASEMAP,
+        style: basemap,
         center: [0, 20],
         zoom: emb ? 1.4 : 1.2,
         minZoom: 0.5,
@@ -305,6 +355,10 @@
         data: buildDemoMapCollection(),
       });
       inst.addSource(SRC_TRACKING, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      inst.addSource(SRC_TRACKING_PATHS, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
@@ -490,6 +544,39 @@
         layout: { "line-cap": "round" },
       });
       inst.addLayer({
+        id: LAYER_TRACKING_PATHS,
+        type: "line",
+        source: SRC_TRACKING_PATHS,
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            0.6,
+            4,
+            1.2,
+            8,
+            2.0,
+            12,
+            2.8,
+          ],
+          "line-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            0.45,
+            6,
+            0.65,
+            12,
+            0.8,
+          ],
+        },
+        layout: { "line-cap": "round", "line-join": "round" },
+      });
+      inst.addLayer({
         id: LAYER_TRACKING,
         type: "circle",
         source: SRC_TRACKING,
@@ -633,12 +720,12 @@
       applyMode(inst, mode);
 
       if (!emb) {
-        applyMapPresentation(inst, { projection: "mercator" });
+        applyMapPresentation(inst, { projection: "mercator" }, theme);
         inst.setMaxPitch(0);
         inst.setPitch(0);
         inst.setBearing(0);
       } else {
-        applyMapPresentation(inst, { projection: "mercator" });
+        applyMapPresentation(inst, { projection: "mercator" }, theme);
       }
 
       const doResize = (): void => {
@@ -722,14 +809,16 @@
     };
 
     void setup();
+    const offTheme = onThemeChange(() => {
+      if (cancelled) return;
+      teardownMap();
+      void setup();
+    });
 
     return () => {
       cancelled = true;
-      mapPointHover = null;
-      ro?.disconnect();
-      m?.remove();
-      map = null;
-      loaded = false;
+      offTheme();
+      teardownMap();
     };
   });
 
@@ -755,6 +844,41 @@
     }
   }
 
+  const flushEventAndCausalLayers = rafCoalesce(() => {
+    const currentMap = map;
+    if (!currentMap || !loaded) return;
+    const events = dashboard.events;
+    const edges = dashboard.recentCausalEdges;
+    const eventsSrc = currentMap.getSource(SRC_EVENTS) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (eventsSrc) {
+      eventsSrc.setData(toFeatureCollection(events));
+    }
+    const causalSrc = currentMap.getSource(SRC_CAUSAL) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (causalSrc) {
+      causalSrc.setData(
+        buildCausalLineCollection(events, edges, { mapDomains: mapDomainSet }),
+      );
+    }
+  });
+
+  const flushTrackingLayers = debounce(() => {
+    const currentMap = map;
+    if (!currentMap || !loaded) return;
+    const src = currentMap.getSource(SRC_TRACKING) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (!src) return;
+    src.setData(trackingFeatureCollection);
+    const pathSrc = currentMap.getSource(SRC_TRACKING_PATHS) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (pathSrc) pathSrc.setData(trackingPathsCollection);
+  }, 250);
+
   function syncMapOverlays(m: MapLibreMap): void {
     const setVis = (id: string, on: boolean): void => {
       if (!m.getLayer(id)) return;
@@ -767,33 +891,15 @@
     setVis(LAYER_TERM, showTerminator);
     setVis(LAYER_SUN, showSubsun);
     setVis(LAYER_TRACKING, showPublicTracking);
+    setVis(LAYER_TRACKING_PATHS, showPublicTracking);
   }
 
   $effect(() => {
-    const currentMap = map;
-    if (!currentMap || !loaded) return;
-    void mapDomainSet;
-    const src = currentMap.getSource(SRC_EVENTS) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (!src) return;
-    src.setData(toFeatureCollection(dashboard.events));
-  });
-
-  $effect(() => {
-    const currentMap = map;
-    if (!currentMap || !loaded) return;
-    const src = currentMap.getSource(SRC_CAUSAL) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (!src) return;
+    if (useWebGlGlobe) return;
+    void dashboardData.revision;
     void dashboard.recentCausalEdges;
     void mapDomainSet;
-    src.setData(
-      buildCausalLineCollection(dashboard.events, dashboard.recentCausalEdges, {
-        mapDomains: mapDomainSet,
-      }),
-    );
+    flushEventAndCausalLayers();
   });
 
   $effect(() => {
@@ -831,19 +937,16 @@
   });
 
   $effect(() => {
-    const currentMap = map;
-    if (!currentMap || !loaded) return;
-    const src = currentMap.getSource(SRC_TRACKING) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (!src) return;
     void tleCacheReady;
     void simUtcMs;
-    void airTrackingRows;
+    void airFromStdb;
+    void airTrackingRowsDemo;
     void shipTrackingRows;
     void showPublicTracking;
     void publicTrackingRows;
-    src.setData(trackingFeatureCollection);
+    void trackingFeatureCollection;
+    void trackingPathsCollection;
+    flushTrackingLayers();
   });
 
   function selectMode(next: Mode): void {
@@ -858,28 +961,22 @@
   }
 
   onMount(() => {
-    let timer: ReturnType<typeof setInterval> | 0 = 0;
     void (async () => {
       try {
         await ensureTleCache();
         tleCacheReady = true;
         shipTrackingRows = await loadMaritimeSample();
-        airTrackingRows = await loadOpenSkyAircraft();
+        if (dashboard.dataMode === "demo") {
+          airTrackingRowsDemo = await loadOpenSkyAircraft();
+        }
       } catch {
-        // Offline / blocked TLE: remaining layers still work.
         tleCacheReady = true;
         shipTrackingRows = await loadMaritimeSample().catch(() => []);
-        airTrackingRows = await loadOpenSkyAircraft().catch(() => []);
+        if (dashboard.dataMode === "demo") {
+          airTrackingRowsDemo = await loadOpenSkyAircraft().catch(() => []);
+        }
       }
     })();
-    timer = setInterval(() => {
-      void loadOpenSkyAircraft().then((r) => {
-        airTrackingRows = r;
-      });
-    }, 55_000);
-    return () => {
-      if (timer) clearInterval(timer);
-    };
   });
 </script>
 
@@ -927,9 +1024,24 @@
     </label>
     <label class="map-ovl-item" title="Subsolar point">
       <input type="checkbox" bind:checked={showSubsun} />
-      <Moon size={13} strokeWidth={1.75} />
-      <span>Sun</span>
+      <SunDim size={13} strokeWidth={1.75} />
+      <span>Subsol</span>
     </label>
+    {#if useWebGlGlobe}
+      <label class="map-ovl-item" title="Approximate moon position">
+        <input type="checkbox" bind:checked={showMoon} />
+        <Moon size={13} strokeWidth={1.75} />
+        <span>Moon</span>
+      </label>
+      <label
+        class="map-ovl-item"
+        title="Day/night Earth shader with city lights on the night side"
+      >
+        <input type="checkbox" bind:checked={showPhotorealEarth} />
+        <GlobeIcon size={13} strokeWidth={1.75} />
+        <span>Earth</span>
+      </label>
+    {/if}
     <label class="map-ovl-item" title="Causal edges when both events have place">
       <input type="checkbox" bind:checked={showCausal} />
       <Link2 size={13} strokeWidth={1.75} />
@@ -1078,11 +1190,15 @@
           {mode}
           {showTerminator}
           {showSubsun}
+          {showMoon}
           {showCausal}
+          {showPhotorealEarth}
+          showTrackingPaths={showPublicTracking}
           {showWeatherOverlays}
           mapDomainSet={mapDomainSet}
           {simUtcMs}
           publicTracking={trackingGlobePoints}
+          trackingPathRows={publicTrackingRows}
           onMapPointScreen={(d) => {
             mapPointHover = d;
           }}
@@ -1191,7 +1307,7 @@
     height: 7px;
     border-radius: 2px;
     flex-shrink: 0;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 0 1px var(--map-swatch-ring);
   }
   .map-dom-txt {
     min-width: 0;
@@ -1264,7 +1380,7 @@
     overflow: visible;
     border: 1px solid var(--border-1);
     /* Slightly above pure black so tile load failures are still readable. */
-    background: #0a1524;
+    background: var(--map-canvas-bg);
     /* Vignette on the *frame* only — no layer on top of the WebGL canvas. */
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-2) 50%, transparent);
   }
@@ -1350,23 +1466,6 @@
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-3);
-  }
-
-  /* Tone down MapLibre controls to fit the design. */
-  :global(.maplibregl-ctrl-group) {
-    background: var(--bg-2) !important;
-    border: 1px solid var(--border-1) !important;
-    box-shadow: var(--shadow) !important;
-  }
-  :global(.maplibregl-ctrl-group button) {
-    background: transparent !important;
-  }
-  :global(.maplibregl-ctrl-attrib) {
-    background: rgba(9, 9, 11, 0.55) !important;
-    color: var(--text-3) !important;
-  }
-  :global(.maplibregl-ctrl-attrib a) {
-    color: var(--text-2) !important;
   }
 
   .map-globe-root {

@@ -34,6 +34,27 @@ export interface LlmSnapshotInput {
  * Produces a plain object suitable for `POST /v1/insight` on the
  * OpenAtlas LLM bridge. Pure — safe to call from any reactive read.
  */
+/** Human-readable counts for the hub LLM panel. */
+export function llmSnapshotCounts(input: LlmSnapshotInput): {
+  events: number;
+  domains: number;
+  signals: number;
+  insights: number;
+  causalEdges: number;
+  narratives: number;
+} {
+  return {
+    events: input.events.length,
+    domains: Object.keys(input.domainState).length,
+    signals: input.recentSignals.length,
+    insights: Object.keys(input.domainInsights).length,
+    causalEdges: input.recentCausalEdges.length,
+    narratives: input.eventNarratives
+      ? Object.keys(input.eventNarratives).length
+      : 0,
+  };
+}
+
 export function buildLlmSnapshot(input: LlmSnapshotInput): Record<string, unknown> {
   const events = [...input.events]
     .sort((a, b) => b.ordinal - a.ordinal)

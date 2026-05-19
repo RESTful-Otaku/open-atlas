@@ -12,7 +12,15 @@ struct ChatRequest {
     messages: Vec<ChatMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<ChatOptions>,
     stream: bool,
+}
+
+#[derive(Serialize)]
+struct ChatOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_gpu: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -35,6 +43,28 @@ struct Choice {
 #[derive(Deserialize)]
 struct OllamaErrorBody {
     message: Option<String>,
+}
+
+/// User-facing hint when Ollama's CUDA backend rejects the local GPU.
+pub fn cuda_incompatibility_hint(raw: &str) -> Option<String> {
+    let lower = raw.to_lowercase();
+    if !lower.contains("cuda error") && !lower.contains("architectural feature absent") {
+        return None;
+    }
+    Some(
+        "Ollama tried to use CUDA but this GPU/build combination is unsupported. \
+         Restart Ollama in CPU-only mode: stop the running `ollama serve`, then run \
+         `./scripts/ollama-serve-cpu.sh` (or `CUDA_VISIBLE_DEVICES=\"\" ollama serve`). \
+         API `num_gpu: 0` alone does not fix this — the server process must be restarted."
+            .to_string(),
+    )
+}
+
+fn chat_options_from_env() -> Option<ChatOptions> {
+    let num_gpu = std::env::var("OPENATLAS_OLLAMA_NUM_GPU")
+        .ok()
+        .and_then(|v| v.parse::<i32>().ok());
+    num_gpu.map(|n| ChatOptions { num_gpu: Some(n) })
 }
 
 /// Call Ollama and return assistant text, or a structured error string.
@@ -62,6 +92,7 @@ pub async fn chat_completion(
         // Lower temperature keeps summaries grounded in the supplied
         // telemetry rather than free-associating.
         temperature: Some(0.25),
+        options: chat_options_from_env(),
         stream: false,
     };
     let resp = client
@@ -73,6 +104,9 @@ pub async fn chat_completion(
     let status = resp.status();
     if !status.is_success() {
         let txt = resp.text().await.unwrap_or_default();
+        if let Some(hint) = cuda_incompatibility_hint(&txt) {
+            anyhow::bail!("ollama HTTP {}: {} — {}", status, txt, hint);
+        }
         anyhow::bail!("ollama HTTP {}: {}", status, txt);
     }
     let parsed: ChatResponse = resp.json().await?;
@@ -95,6 +129,22 @@ pub async fn chat_completion(
 
 /// GET `/api/tags` is not OpenAI; use it for readiness. Returns `Ok` if
 /// the server answers HTTP 2xx.
+#[cfg(test)]
+mod tests {
+    use super::cuda_incompatibility_hint;
+
+    #[test]
+    fn cuda_hint_detects_architecture_error() {
+        let msg = r#"CUDA error: architectural feature absent from the device"#;
+        assert!(cuda_incompatibility_hint(msg).is_some());
+    }
+
+    #[test]
+    fn cuda_hint_ignores_unrelated_errors() {
+        assert!(cuda_incompatibility_hint("connection refused").is_none());
+    }
+}
+
 pub async fn ping_ollama(
     client: &reqwest::Client,
     base: &str,

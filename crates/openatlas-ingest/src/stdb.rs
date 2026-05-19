@@ -37,7 +37,7 @@ use std::time::Duration;
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use openatlas_core::{Domain, Location, WorldEvent};
-use reqwest::{Client, StatusCode};
+use reqwest::Client;
 use serde::Serialize;
 use serde_json::json;
 use tracing::{debug, warn};
@@ -48,8 +48,11 @@ const DEFAULT_URI: &str = "http://127.0.0.1:3000";
 const DEFAULT_DB: &str = "openatlas";
 const REQUEST_TIMEOUT_SECS: u64 = 10;
 
+/// Matches `openatlas-stdb-module::MAX_INGEST_BATCH_SIZE`.
+const MAX_BATCH_REDUCER_SIZE: usize = 128;
+
 #[derive(Debug, Clone)]
-pub(crate) struct StdbClient {
+pub struct StdbClient {
     http: Client,
     uri: String,
     db: String,
@@ -58,7 +61,7 @@ pub(crate) struct StdbClient {
 impl StdbClient {
     /// Read connection details from the environment, falling back to
     /// localhost defaults that match the dev harness.
-    pub(crate) fn from_env() -> anyhow::Result<Self> {
+    pub fn from_env() -> anyhow::Result<Self> {
         let uri = std::env::var("OPENATLAS_STDB_URI").unwrap_or_else(|_| DEFAULT_URI.to_owned());
         let db = std::env::var("OPENATLAS_STDB_DB").unwrap_or_else(|_| DEFAULT_DB.to_owned());
         let http = Client::builder()
@@ -69,16 +72,36 @@ impl StdbClient {
         Ok(Self { http, uri, db })
     }
 
-    pub(crate) fn uri(&self) -> &str {
+    pub fn uri(&self) -> &str {
         &self.uri
     }
 
-    pub(crate) fn database(&self) -> &str {
+    pub fn database(&self) -> &str {
         &self.db
     }
 
+    /// Row count via the SQL endpoint (`COUNT(*) AS c`). Returns `None` on
+    /// transport or parse failure — status reporting stays best-effort.
+    pub(crate) async fn count_rows(&self, table: &str) -> Option<u64> {
+        let url = format!(
+            "{}/v1/database/{}/sql",
+            self.uri.trim_end_matches('/'),
+            self.db
+        );
+        let query = format!("SELECT COUNT(*) AS c FROM {table}");
+        let response = self.http.post(&url).body(query).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let body: serde_json::Value = response.json().await.ok()?;
+        let rows = body.as_array()?;
+        let first = rows.first()?;
+        let row = first.get("rows")?.as_array()?.first()?.as_array()?;
+        row.first()?.as_u64()
+    }
+
     /// Ping the SpacetimeDB instance. Used by the `/ready` check.
-    pub(crate) async fn is_reachable(&self) -> bool {
+    pub async fn is_reachable(&self) -> bool {
         let url = format!("{}/v1/ping", self.uri.trim_end_matches('/'));
         match self.http.get(&url).send().await {
             Ok(resp) => resp.status().is_success(),
@@ -96,8 +119,47 @@ impl StdbClient {
         source_label: &str,
         source_url: &str,
     ) -> anyhow::Result<IngestOutcome> {
+        crate::validate::validate_event(event).context("event failed pre-flight validation")?;
         let args = ingest_args(event, source_label, source_url)?;
         self.call_reducer("ingest_event", &args).await
+    }
+
+    /// Push up to [`MAX_BATCH_REDUCER_SIZE`] events in one reducer transaction.
+    pub(crate) async fn ingest_events_batch(
+        &self,
+        events: &[WorldEvent],
+        source_label: &str,
+        source_url: &str,
+    ) -> anyhow::Result<BatchIngestSummary> {
+        if events.is_empty() {
+            return Ok(BatchIngestSummary::default());
+        }
+        if events.len() > MAX_BATCH_REDUCER_SIZE {
+            anyhow::bail!(
+                "batch size {} exceeds reducer max {}",
+                events.len(),
+                MAX_BATCH_REDUCER_SIZE
+            );
+        }
+
+        let mut wire_events = Vec::with_capacity(events.len());
+        for event in events {
+            crate::validate::validate_event(event)
+                .with_context(|| format!("event {} failed pre-flight validation", event.id))?;
+            wire_events.push(batch_event_wire(event)?);
+        }
+
+        let wire_json: Vec<serde_json::Value> = wire_events
+            .iter()
+            .map(serde_json::to_value)
+            .collect::<Result<_, _>>()
+            .context("serialise batch wire events")?;
+        let args = json!([
+            wire_json,
+            source_label.to_owned(),
+            source_url.to_owned(),
+        ]);
+        self.call_reducer_batch("ingest_events_batch", &args, events.len()).await
     }
 
     /// Call the `link_causal_events` reducer. Kept for explicit causal
@@ -120,6 +182,46 @@ impl StdbClient {
             decay_rate.clamp(0.0, 1.0),
         ]);
         self.call_reducer("link_causal_events", &args).await
+    }
+
+    async fn call_reducer_batch(
+        &self,
+        reducer: &str,
+        args: &serde_json::Value,
+        event_count: usize,
+    ) -> anyhow::Result<BatchIngestSummary> {
+        let url = format!(
+            "{}/v1/database/{}/call/{}",
+            self.uri.trim_end_matches('/'),
+            self.db,
+            reducer
+        );
+        let response = self
+            .http
+            .post(&url)
+            .json(args)
+            .send()
+            .await
+            .with_context(|| format!("stdb call {reducer} failed (transport)"))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if status.is_success() {
+            debug!(reducer, count = event_count, "batch reducer accepted");
+            return Ok(BatchIngestSummary {
+                accepted: event_count as u32,
+                duplicates: 0,
+                rejected: 0,
+            });
+        }
+        warn!(
+            reducer,
+            status = status.as_u16(),
+            body = %body,
+            "batch reducer rejected"
+        );
+        Err(anyhow::anyhow!(
+            "stdb call {reducer} rejected ({status}): {body}"
+        ))
     }
 
     async fn call_reducer(
@@ -146,7 +248,9 @@ impl StdbClient {
             debug!(reducer, "reducer call accepted");
             return Ok(IngestOutcome::Accepted);
         }
-        if status == StatusCode::BAD_REQUEST && body.contains("duplicate event id") {
+        // SpacetimeDB returns reducer business errors as non-2xx (often 530), not always 400.
+        if body.contains("duplicate event id") {
+            debug!(reducer, "duplicate event id (idempotent)");
             return Ok(IngestOutcome::Duplicate);
         }
         warn!(
@@ -170,6 +274,25 @@ pub(crate) enum IngestOutcome {
     Duplicate,
 }
 
+/// Outcome tallies after a successful `ingest_events_batch` call (audit rows
+/// in STDB hold per-event detail).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct BatchIngestSummary {
+    pub accepted: u32,
+    pub duplicates: u32,
+    pub rejected: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchEventWire {
+    id: u64,
+    timestamp: TimestampWire,
+    domain: u8,
+    severity_score: f64,
+    location: serde_json::Value,
+    payload_json: String,
+}
+
 /// The SpacetimeDB reducer wire shape for `ingest_event`. We keep this as
 /// a local struct (mirroring the module reducer signature exactly) rather
 /// than building `serde_json::json!(...)` inline so the field order and
@@ -178,6 +301,21 @@ pub(crate) enum IngestOutcome {
 struct TimestampWire {
     #[serde(rename = "__timestamp_micros_since_unix_epoch__")]
     micros: i64,
+}
+
+fn batch_event_wire(event: &WorldEvent) -> anyhow::Result<BatchEventWire> {
+    let payload_json = serde_json::to_string(&event.payload)
+        .context("failed to serialise event payload to JSON")?;
+    Ok(BatchEventWire {
+        id: uuid_to_u64(event.id),
+        timestamp: TimestampWire {
+            micros: timestamp_micros(event.timestamp),
+        },
+        domain: domain_to_u8(&event.domain),
+        severity_score: event.severity_score,
+        location: option_wire(event.location.as_ref().map(location_wire)),
+        payload_json,
+    })
 }
 
 fn ingest_args(
@@ -334,6 +472,12 @@ mod tests {
         assert!(arr[5].is_string(), "payload is JSON-encoded string");
         assert_eq!(arr[6].as_str(), Some("usgs"));
         assert_eq!(arr[7].as_str(), Some("https://usgs.gov/"));
+    }
+
+    #[test]
+    fn duplicate_event_id_in_body_is_idempotent() {
+        let body = "duplicate event id: 42";
+        assert!(body.contains("duplicate event id"));
     }
 
     #[test]

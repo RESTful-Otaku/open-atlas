@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { initChart, type ECharts } from "../echarts";
+  import { onThemeChange } from "../theme-events";
+  import { tooltipBase } from "../viz/chart-theme";
+  import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard, matchesSelectedDomain } from "../state.svelte";
   import { domainColor } from "../colors";
   import { shortId } from "../format";
@@ -91,21 +94,17 @@
     return { nodes, links, categories };
   }
 
-  const graph = $derived(
-    buildGraph(dashboard.events, dashboard.recentCausalEdges),
-  );
+  const graph = $derived.by(() => {
+    void dashboardData.revision;
+    return buildGraph(dashboard.events, dashboard.recentCausalEdges);
+  });
 
   onMount(() => {
     if (!container) return;
     chart = initChart(container);
     chart.setOption({
       backgroundColor: "transparent",
-      tooltip: {
-        confine: true,
-        backgroundColor: "#101013",
-        borderColor: "rgba(255,255,255,0.1)",
-        textStyle: { color: "#f4f4f5", fontFamily: "Inter, sans-serif" },
-      },
+      tooltip: { ...tooltipBase, confine: true },
       legend: [{ show: false }],
       animationDurationUpdate: 400,
       animationEasingUpdate: "cubicOut",
@@ -140,7 +139,11 @@
 
     const resize = () => chart?.resize();
     window.addEventListener("resize", resize);
+    const offTheme = onThemeChange(() => {
+      chart?.setOption({ tooltip: { ...tooltipBase, confine: true } });
+    });
     return () => {
+      offTheme();
       window.removeEventListener("resize", resize);
       chart?.dispose();
       chart = null;
@@ -151,11 +154,18 @@
     if (!chart) return;
     chart.setOption(
       {
+        animationDurationUpdate: 0,
         series: [
           {
             data: graph.nodes,
             links: graph.links,
             categories: graph.categories,
+            force: {
+              repulsion: 80,
+              edgeLength: [40, 90],
+              gravity: 0.08,
+              layoutAnimation: false,
+            },
           },
         ],
       },
