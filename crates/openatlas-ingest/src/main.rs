@@ -19,13 +19,14 @@ use openatlas_ingest::{
     stdb::StdbClient,
 };
 use tokio::sync::RwLock;
+use openatlas_ingest::logging;
 use tracing::{info, warn};
 
 const BIND_ADDR: &str = "0.0.0.0:8080";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    init_tracing();
+    logging::init_tracing();
 
     let stdb = StdbClient::from_env().context("failed to construct SpacetimeDB client")?;
     info!(
@@ -88,11 +89,3 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await.context("server failed")
 }
 
-fn init_tracing() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "openatlas_ingest=info,info".to_owned()),
-        )
-        .compact()
-        .init();
-}

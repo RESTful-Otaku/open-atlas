@@ -4,6 +4,7 @@
 //! import this crate.
 
 pub mod circuit;
+pub mod logging;
 pub mod feed_config;
 pub mod feed_poll;
 pub mod feeds;

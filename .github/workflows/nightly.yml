@@ -1,0 +1,97 @@
+# Nightly — full matrix (ignored tests, optional live stack). Not required for merge.
+name: CI — Nightly (full suite)
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-rust:
+    name: rust-full
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
+      - run: cargo test --workspace --exclude openatlas-ui-wasm
+      - name: Ignored feed network test
+        run: cargo test -p openatlas-ingest -- --ignored --test-threads=1
+        env:
+          RUN_LIVE_FEED_TEST: "1"
+        continue-on-error: true
+
+  full-web:
+    name: web-full
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Web full suite
+        working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bun run check
+          bun test src/lib
+          bun run build
+          bunx playwright install chromium --with-deps
+          bun run test:e2e
+
+  stdb-module:
+    name: stdb-full
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: spacetime build --module-path crates/openatlas-stdb-module
+
+  qa-stack-smoke:
+    name: qa-stack-smoke
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Start SpacetimeDB
+        run: |
+          spacetime start &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3000/v1/ping && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:3000/v1/ping
+      - name: e2e-qa sim smoke
+        env:
+          OPENATLAS_INGEST_MODE: sim
+        run: ./scripts/e2e-qa.sh
+
+  nightly-gate:
+    name: Nightly gate
+    needs: [full-rust, full-web, stdb-module]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for j in full-rust full-web stdb-module; do
+            echo "check $j"
+          done
+          [[ "${{ needs.full-rust.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.full-web.result }}" == "success" ]] || exit 1
+          [[ "${{ needs.stdb-module.result }}" == "success" ]] || exit 1
+          echo "Nightly gate passed (stack smoke may be continue-on-error)"

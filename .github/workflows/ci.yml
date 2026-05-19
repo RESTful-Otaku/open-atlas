@@ -1,77 +1,216 @@
-name: CI
+# Dev / PR merge checks — path-filtered jobs + single required "Merge gate".
+#
+# Branch protection: require status check "Merge gate" (see docs/CICD.md).
+name: CI — Dev (PR merge checks)
 
 on:
-  push:
-    branches: [main, master]
   pull_request:
     branches: [main, master]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      full_suite:
+        description: Run every slice (ignore path filters)
+        type: boolean
+        default: false
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  rust:
-    name: Rust (fmt, clippy, test)
+  detect-changes:
+    name: Detect changes
     runs-on: ubuntu-latest
+    outputs:
+      secrets: ${{ steps.flags.outputs.secrets }}
+      rust: ${{ steps.flags.outputs.rust }}
+      stdb: ${{ steps.flags.outputs.stdb }}
+      web: ${{ steps.flags.outputs.web }}
+      e2e: ${{ steps.flags.outputs.e2e }}
+      full: ${{ steps.flags.outputs.full }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          fetch-depth: 0
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Format
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
-
-      - name: Test
-        run: cargo test --workspace --exclude openatlas-ui-wasm
-
-      - name: No secrets in git
-        run: ./scripts/check-no-secrets-in-git.sh
-
-  web:
-    name: Web (check + unit tests)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: dorny/paths-filter@v3
+        id: filter
         with:
-          bun-version: latest
+          filters: .github/path-filters.yml
 
-      - name: Install
-        working-directory: web
-        run: bun install --frozen-lockfile
+      - id: flags
+        run: |
+          full="${{ github.event_name == 'workflow_dispatch' && inputs.full_suite == true }}"
+          shared="${{ steps.filter.outputs.shared }}"
+          rust="${{ steps.filter.outputs.rust }}"
+          stdb="${{ steps.filter.outputs.stdb }}"
+          ingest="${{ steps.filter.outputs.ingest }}"
+          web="${{ steps.filter.outputs.web }}"
+          e2e="${{ steps.filter.outputs.e2e }}"
 
-      - name: svelte-check
-        working-directory: web
-        run: bun run check
+          if [[ "$full" == "true" || "$shared" == "true" ]]; then
+            rust=true; stdb=true; web=true; e2e=true
+          else
+            [[ "$stdb" == "true" || "$ingest" == "true" ]] && rust=true
+            [[ "$web" == "true" || "$e2e" == "true" ]] && e2e=true
+          fi
 
-      - name: Unit tests
-        working-directory: web
-        run: bun test src/lib
+          {
+            echo "secrets=true"
+            echo "rust=${rust:-false}"
+            echo "stdb=${stdb:-false}"
+            echo "web=${web:-false}"
+            echo "e2e=${e2e:-false}"
+            echo "full=${full:-false}"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: No secrets in git
-        run: ./scripts/check-no-secrets-in-git.sh
+      - name: Change summary
+        run: |
+          echo "| Slice | Run |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-----|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| secrets | always |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| rust | ${{ steps.flags.outputs.rust }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| stdb | ${{ steps.flags.outputs.stdb }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| web | ${{ steps.flags.outputs.web }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| e2e | ${{ steps.flags.outputs.e2e }} |" >> "$GITHUB_STEP_SUMMARY"
 
-  spacetime-module:
-    name: SpacetimeDB module build
+  secrets-scan:
+    name: secrets-scan
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-no-secrets-in-git.sh
+
+  rust-fmt:
+    name: rust-fmt
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
 
+  rust-clippy:
+    name: rust-clippy
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
+
+  rust-test:
+    name: rust-test
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --exclude openatlas-ui-wasm
+
+  stdb-module-build:
+    name: stdb-module-build
+    needs: detect-changes
+    if: needs.detect-changes.outputs.stdb == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Install SpacetimeDB CLI
         run: |
           curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: spacetime build --module-path crates/openatlas-stdb-module
 
-      - name: Build WASM module
-        run: spacetime build --module-path crates/openatlas-stdb-module
+  web-svelte-check:
+    name: web-svelte-check
+    needs: detect-changes
+    if: needs.detect-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - run: bun run check
+        working-directory: web
+
+  web-unit-tests:
+    name: web-unit-tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - run: bun test src/lib
+        working-directory: web
+
+  web-e2e-smoke:
+    name: web-e2e-smoke
+    needs: detect-changes
+    if: needs.detect-changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - run: bun run build
+        working-directory: web
+      - run: bunx playwright install chromium --with-deps
+        working-directory: web
+      - run: bun run test:e2e
+        working-directory: web
+
+  merge-gate:
+    name: Merge gate
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - secrets-scan
+      - rust-fmt
+      - rust-clippy
+      - rust-test
+      - stdb-module-build
+      - web-svelte-check
+      - web-unit-tests
+      - web-e2e-smoke
+    if: always() && !cancelled()
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify required checks
+        env:
+          GATE_EVENT: ${{ github.event_name }}
+          GATE_FULL_SUITE: ${{ needs.detect-changes.outputs.full }}
+          CHANGES_SECRETS: "true"
+          CHANGES_RUST: ${{ needs.detect-changes.outputs.rust }}
+          CHANGES_STDB: ${{ needs.detect-changes.outputs.stdb }}
+          CHANGES_WEB: ${{ needs.detect-changes.outputs.web }}
+          CHANGES_E2E: ${{ needs.detect-changes.outputs.e2e }}
+          RESULT_SECRETS: ${{ needs.secrets-scan.result }}
+          RESULT_RUST_FMT: ${{ needs.rust-fmt.result }}
+          RESULT_RUST_CLIPPY: ${{ needs.rust-clippy.result }}
+          RESULT_RUST_TEST: ${{ needs.rust-test.result }}
+          RESULT_STDB_BUILD: ${{ needs.stdb-module-build.result }}
+          RESULT_WEB_CHECK: ${{ needs.web-svelte-check.result }}
+          RESULT_WEB_UNIT: ${{ needs.web-unit-tests.result }}
+          RESULT_WEB_E2E: ${{ needs.web-e2e-smoke.result }}
+        run: ./scripts/ci/merge-gate.sh

@@ -49,6 +49,31 @@ impl IngestMetrics {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_reflects_recorded_counters() {
+        let m = IngestMetrics::default();
+        m.record_fetch(10);
+        m.record_batch_push(&crate::pipeline::BatchPushResult {
+            accepted: 7,
+            duplicates: 2,
+            rejected: 1,
+            transport_errors: 0,
+        });
+        m.record_batch_fallback();
+        let snap = m.snapshot();
+        assert_eq!(snap.events_fetched, 10);
+        assert_eq!(snap.events_accepted, 7);
+        assert_eq!(snap.events_duplicate, 2);
+        assert_eq!(snap.events_rejected, 1);
+        assert_eq!(snap.batch_calls, 1);
+        assert_eq!(snap.batch_fallback_calls, 1);
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct IngestMetricsSnapshot {
     pub events_fetched: u64,

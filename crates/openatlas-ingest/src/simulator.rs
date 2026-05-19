@@ -116,6 +116,12 @@ pub fn spawn_simulators(state: AppState) {
     }
 }
 
+/// Deterministic shape checks for simulators (unit tests).
+#[cfg(test)]
+pub(crate) fn generate_event_for_test(source: &str, domain: Domain) -> WorldEvent {
+    generate_event(source, domain)
+}
+
 fn generate_event(source: &str, domain: Domain) -> WorldEvent {
     let mut rng = rand::rng();
     let base_severity = match domain {
@@ -150,5 +156,33 @@ fn generate_event(source: &str, domain: Domain) -> WorldEvent {
             "value": rng.random_range(0.0..100.0),
             "simulated": true
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use openatlas_core::Domain;
+
+    use super::*;
+
+    #[test]
+    fn simulator_catalog_covers_all_domains() {
+        let domains: std::collections::HashSet<_> =
+            SIMULATORS.iter().map(|s| s.domain.clone()).collect();
+        for d in Domain::ALL.iter() {
+            assert!(
+                domains.contains(d),
+                "missing simulator for {:?}",
+                d
+            );
+        }
+    }
+
+    #[test]
+    fn generated_events_are_marked_simulated() {
+        let event = generate_event_for_test("finance", Domain::Finance);
+        assert!(event.payload.get("simulated").and_then(|v| v.as_bool()).unwrap_or(false));
+        assert!(event.severity_score.is_finite());
+        assert!((0.0..=1.0).contains(&event.severity_score));
     }
 }

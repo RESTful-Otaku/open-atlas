@@ -62,6 +62,8 @@ Override secrets file path: `OPENATLAS_FEED_SECRETS=/path/to/file.json`
   the same env var names — do not ship `.dev/` or `.env` in images.
 - Build the web app with `web/.env` or inline `VITE_*` at build time.
 - See [DEPLOY.md](./DEPLOY.md).
+- **GitHub Actions:** [GITHUB_SECRETS.md](./GITHUB_SECRETS.md) — environment-scoped
+  `FRED_API_KEY` / `EIA_API_KEY` and `PRODUCTION_STDB_*` variables.
 
 ## API rate limiting (ingest)
 

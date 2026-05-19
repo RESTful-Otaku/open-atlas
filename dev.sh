@@ -723,6 +723,9 @@ do_test() {
     require_cmd cargo
     style_header "🔬 Running tests"
     spin "cargo test (workspace)" cargo test --workspace --exclude openatlas-ui-wasm --quiet
+    if command -v bun >/dev/null 2>&1 && [[ -d "${FRONTEND_DIR}/node_modules" ]]; then
+        spin "bun test (web unit)" bash -c "cd '${FRONTEND_DIR}' && bun test src/lib"
+    fi
     style_ok "tests passed"
 }
 

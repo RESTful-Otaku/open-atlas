@@ -9,9 +9,14 @@
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun test src/lib"
+    "test": "bun test src/lib",
+    "test:unit": "bun test src/lib",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:all": "bun run check && bun run test:unit"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.0",
     "@sveltejs/vite-plugin-svelte": "^4.0.2",
     "@tsconfig/svelte": "^5.0.4",
     "@types/three": "^0.184.0",
