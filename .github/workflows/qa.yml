@@ -1,0 +1,126 @@
+# QA — post-merge validation on main (compile + demo e2e + artifact build).
+# Runs when shared paths or mainline code change; stricter than PR path-only slices.
+name: CI — QA (main)
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      verify_feeds:
+        description: Run live feed verification (network, slow)
+        type: boolean
+        default: false
+      quick:
+        description: Compile gates only (skip stack smoke)
+        type: boolean
+        default: false
+
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      qa: ${{ steps.flags.outputs.qa }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+      - id: flags
+        run: |
+          qa=false
+          if [[ "${{ steps.filter.outputs.shared }}" == "true" ]] \
+            || [[ "${{ steps.filter.outputs.rust }}" == "true" ]] \
+            || [[ "${{ steps.filter.outputs.stdb }}" == "true" ]] \
+            || [[ "${{ steps.filter.outputs.ingest }}" == "true" ]] \
+            || [[ "${{ steps.filter.outputs.web }}" == "true" ]] \
+            || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            qa=true
+          fi
+          echo "qa=${qa}" >> "$GITHUB_OUTPUT"
+
+  qa-compile:
+    name: qa-compile-gates
+    needs: detect-changes
+    if: needs.detect-changes.outputs.qa == 'true'
+    runs-on: ubuntu-latest
+    environment: qa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+      - name: Materialize feed secrets (verify_feeds only)
+        if: inputs.verify_feeds
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: ./scripts/ci/write-feed-secrets-from-env.sh
+
+      - name: e2e-qa compile gates
+        env:
+          OPENATLAS_INGEST_MODE: sim
+          OPENATLAS_STDB_URI: ${{ vars.OPENATLAS_STDB_URI || 'http://127.0.0.1:3000' }}
+          OPENATLAS_STDB_DB: ${{ vars.OPENATLAS_STDB_DB || 'openatlas' }}
+        run: |
+          args=()
+          [[ "${{ inputs.quick }}" == "true" ]] && args+=(--quick)
+          [[ "${{ inputs.verify_feeds }}" == "true" ]] && args+=(--verify-feeds)
+          ./scripts/e2e-qa.sh "${args[@]}"
+
+  qa-playwright:
+    name: qa-playwright-smoke
+    needs: detect-changes
+    if: needs.detect-changes.outputs.qa == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - run: bun run build
+        working-directory: web
+      - run: bunx playwright install chromium --with-deps
+        working-directory: web
+      - run: bun run test:e2e
+        working-directory: web
+
+  qa-gate:
+    name: QA gate
+    needs: [detect-changes, qa-compile, qa-playwright]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: QA gate
+        env:
+          QA_SCOPE: ${{ needs.detect-changes.outputs.qa }}
+          RESULT_COMPILE: ${{ needs.qa-compile.result }}
+          RESULT_E2E: ${{ needs.qa-playwright.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$QA_SCOPE" != "true" ]]; then
+            echo "QA gate: no QA-scoped changes — pass"
+            exit 0
+          fi
+          if [[ "$RESULT_COMPILE" != "success" ]]; then
+            echo "QA gate FAILED: qa-compile-gates ($RESULT_COMPILE)"
+            exit 1
+          fi
+          if [[ "$RESULT_E2E" != "success" ]]; then
+            echo "QA gate FAILED: qa-playwright-smoke ($RESULT_E2E)"
+            exit 1
+          fi
+          echo "QA gate passed"

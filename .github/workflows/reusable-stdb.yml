@@ -1,0 +1,18 @@
+# Reusable SpacetimeDB module WASM build.
+name: Reusable — STDB module
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: stdb-module-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build WASM module
+        run: spacetime build --module-path crates/openatlas-stdb-module

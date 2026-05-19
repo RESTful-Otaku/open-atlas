@@ -4,6 +4,7 @@
  */
 
 import { sortAndTrimDashboardBuffers } from "./sync-dashboard-cache";
+import { logDebug } from "./telemetry/log";
 
 let flushRaf = 0;
 let flushScheduled = false;
@@ -15,6 +16,7 @@ export function scheduleDashboardFlush(): void {
     flushScheduled = false;
     flushRaf = 0;
     sortAndTrimDashboardBuffers();
+    logDebug("dashboard-flush", "trimmed dashboard buffers");
   });
 }
 

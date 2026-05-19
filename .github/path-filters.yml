@@ -1,0 +1,33 @@
+# Path filters for dorny/paths-filter — see docs/CICD.md
+# Changing `.github/` or `scripts/ci/` forces a full matrix (see ci.yml detect-changes).
+
+shared:
+  - '.github/**'
+  - 'scripts/ci/**'
+  - 'scripts/test-all.sh'
+  - 'scripts/check-no-secrets-in-git.sh'
+  - 'scripts/e2e-qa.sh'
+
+rust:
+  - 'crates/**'
+  - 'Cargo.toml'
+  - 'Cargo.lock'
+  - 'rust-toolchain.toml'
+
+stdb:
+  - 'crates/openatlas-stdb-module/**'
+
+ingest:
+  - 'crates/openatlas-ingest/**'
+
+web:
+  - 'web/**'
+
+e2e:
+  - 'web/e2e/**'
+  - 'web/playwright.config.ts'
+
+docs:
+  - 'docs/**'
+  - '**/*.md'
+  - 'ARCHITECTURE.md'

@@ -1,0 +1,67 @@
+# Reusable web quality gate (svelte-check, unit tests, optional Playwright).
+name: Reusable — Web checks
+
+on:
+  workflow_call:
+    inputs:
+      run-check:
+        type: boolean
+        required: false
+        default: true
+      run-unit:
+        type: boolean
+        required: false
+        default: true
+      run-e2e:
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  check:
+    name: web-svelte-check
+    runs-on: ubuntu-latest
+    if: inputs.run-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+      - name: svelte-check
+        working-directory: web
+        run: bun run check
+
+  unit:
+    name: web-unit-tests
+    runs-on: ubuntu-latest
+    if: inputs.run-unit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+      - name: Unit tests
+        working-directory: web
+        run: bun test src/lib
+
+  e2e:
+    name: web-e2e-smoke
+    runs-on: ubuntu-latest
+    if: inputs.run-e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+      - name: Build
+        working-directory: web
+        run: bun run build
+      - name: Install Playwright browser
+        working-directory: web
+        run: bunx playwright install chromium --with-deps
+      - name: E2E smoke (demo mode)
+        working-directory: web
+        run: bun run test:e2e

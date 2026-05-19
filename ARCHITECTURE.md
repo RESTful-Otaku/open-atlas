@@ -270,18 +270,22 @@ by unit tests; production state lives exclusively in SpacetimeDB.
 
 ## Testing strategy
 
+Full matrix (unit, HTTP integration, optional STDB, Playwright e2e,
+logging): [`docs/TESTING.md`](docs/TESTING.md). CI/CD tiers, path filters,
+and merge gates: [`docs/CICD.md`](docs/CICD.md). Quick local run:
+`./scripts/test-all.sh` or `./dev.sh test`.
+
 - **Module (`openatlas-stdb-module`)**: compile + publish smoke via
-  `dev.sh spacetime:build` / `spacetime:publish`. Reducer behaviour is
-  validated end-to-end by the ingest service test fixtures, which
-  replay deterministic simulator output against a live stdb.
+  `dev.sh spacetime:build` / `spacetime:publish`; host-side unit tests
+  for ingest validation and ring invariants.
 - **Ingest (`openatlas-ingest`)**: unit tests for feed decoders,
-  deterministic id stability, and the `stdb::ingest_args` wire
-  layout. `health::tests::backoff_doubles_until_cap` pins the backoff
-  curve.
+  circuit breaker, pipeline batching, metrics; Axum integration tests
+  for `/health`, `/status`, `/feeds`; optional `OPENATLAS_STDB_INTEGRATION=1`
+  for `/ready` against a live instance.
 - **CLI (`openatlas-cli`)**: unit tests for domain round-trip and
   every row decoder (including the three timestamp wire shapes).
-- **Web**: `svelte-check` in CI; the design is that visual regressions
-  are caught by running the app against the simulator.
+- **Web**: `bun test src/lib` (pure helpers + demo seed); Playwright
+  smoke in demo mode (`bun run test:e2e`); `svelte-check` in CI.
 - **E2E smoke** (`./scripts/e2e-qa.sh` or `./dev.sh e2e`): runs
   compile gates, publishes the module, starts ingest with
   `OPENATLAS_INGEST_MODE=sim` (override via `--ingest-mode=`), and checks

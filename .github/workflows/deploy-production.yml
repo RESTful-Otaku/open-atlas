@@ -1,0 +1,100 @@
+# Production — manual promotion with GitHub Environment approval gate.
+name: CD — Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: Git ref (tag, branch, or SHA) to promote
+        required: true
+        default: main
+      confirm:
+        description: Type "deploy" to confirm production promotion
+        required: true
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate-input:
+    name: Validate promotion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm string
+        if: inputs.confirm != 'deploy'
+        run: |
+          echo "Input confirm must be exactly: deploy"
+          exit 1
+
+  build-artifacts:
+    name: Build production artifacts
+    needs: validate-input
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Materialize feed secrets
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: ./scripts/ci/write-feed-secrets-from-env.sh
+
+      - name: Full compile verification
+        env:
+          OPENATLAS_STDB_URI: ${{ vars.PRODUCTION_STDB_URI || 'http://127.0.0.1:3000' }}
+          OPENATLAS_STDB_DB: ${{ vars.PRODUCTION_STDB_DB || 'openatlas' }}
+        run: ./scripts/e2e-qa.sh --quick
+      - name: Build ingest (release)
+        run: cargo build --release -p openatlas-ingest
+      - name: Build STDB module
+        run: spacetime build --module-path crates/openatlas-stdb-module
+      - name: Build web bundle
+        working-directory: web
+        env:
+          VITE_STDB_URI: ${{ vars.PRODUCTION_STDB_URI || 'wss://maincloud.spacetimedb.com' }}
+          VITE_STDB_DB: ${{ vars.PRODUCTION_STDB_DB || 'openatlas' }}
+          VITE_LLM_BASE: ${{ vars.VITE_LLM_BASE || '' }}
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+      - name: Package artifacts
+        run: |
+          mkdir -p dist-artifacts
+          cp target/release/openatlas-ingest dist-artifacts/
+          cp -r web/dist dist-artifacts/web-dist
+          tar -czf openatlas-production-${{ github.sha }}.tar.gz -C dist-artifacts .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openatlas-production-${{ github.sha }}
+          path: openatlas-production-${{ github.sha }}.tar.gz
+          retention-days: 90
+      - name: Production deploy placeholder
+        run: |
+          echo "Production approval recorded. Add promotion steps:"
+          echo "  spacetime publish --server \$PRODUCTION_STDB_URI ..."
+          echo "  Deploy web-dist to production CDN / object storage"
+          echo "  Roll ingest with OPENATLAS_INGEST_MODE=live and secrets from vault"
+
+  production-gate:
+    name: Production gate
+    needs: build-artifacts
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          [[ "${{ needs.build-artifacts.result }}" == "success" ]] || exit 1
+          echo "Production gate passed"

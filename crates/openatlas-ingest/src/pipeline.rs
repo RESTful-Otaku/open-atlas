@@ -99,6 +99,50 @@ pub async fn push_events_via_state(
     .await
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn batch_push_result_ok_for_cycle() {
+        assert!(BatchPushResult {
+            accepted: 1,
+            ..Default::default()
+        }
+        .ok_for_cycle());
+        assert!(BatchPushResult {
+            duplicates: 2,
+            ..Default::default()
+        }
+        .ok_for_cycle());
+        assert!(!BatchPushResult {
+            transport_errors: 1,
+            ..Default::default()
+        }
+        .ok_for_cycle());
+    }
+
+    #[test]
+    fn batch_push_had_hard_failure() {
+        assert!(BatchPushResult {
+            transport_errors: 1,
+            ..Default::default()
+        }
+        .had_hard_failure(3));
+        assert!(!BatchPushResult {
+            accepted: 1,
+            ..Default::default()
+        }
+        .had_hard_failure(3));
+    }
+
+    #[test]
+    fn stdb_batch_chunk_within_module_max() {
+        assert!(STDB_BATCH_CHUNK <= 128);
+        assert!(STDB_BATCH_CHUNK > 0);
+    }
+}
+
 async fn push_events_single(
     stdb: &StdbClient,
     events: &[WorldEvent],

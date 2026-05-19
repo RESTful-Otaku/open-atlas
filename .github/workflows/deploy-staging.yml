@@ -1,0 +1,122 @@
+# Staging — build release artifacts after QA-scoped changes land on main.
+# Wire your host / SpacetimeDB Cloud publish steps in the staging environment.
+name: CD — Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_qa_wait:
+        description: Deploy without waiting for QA workflow (emergency)
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ["CI — QA (main)"]
+    types: [completed]
+    branches: [main, master]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  detect-changes:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.flags.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+      - id: flags
+        run: |
+          deploy=false
+          if [[ "${{ steps.filter.outputs.rust }}" == "true" ]] \
+            || [[ "${{ steps.filter.outputs.stdb }}" == "true" ]] \
+            || [[ "${{ steps.filter.outputs.web }}" == "true" ]] \
+            || [[ "${{ steps.filter.outputs.shared }}" == "true" ]] \
+            || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            deploy=true
+          fi
+          echo "deploy=${deploy}" >> "$GITHUB_OUTPUT"
+
+  build-artifacts:
+    name: Build staging artifacts
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Materialize feed secrets for deploy
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: ./scripts/ci/write-feed-secrets-from-env.sh
+
+      - name: Build ingest (release)
+        env:
+          OPENATLAS_STDB_URI: ${{ vars.STAGING_STDB_URI || 'http://127.0.0.1:3000' }}
+          OPENATLAS_STDB_DB: ${{ vars.STAGING_STDB_DB || 'openatlas' }}
+          OPENATLAS_INGEST_MODE: ${{ vars.OPENATLAS_INGEST_MODE || 'live' }}
+        run: cargo build --release -p openatlas-ingest
+      - name: Build STDB module
+        run: spacetime build --module-path crates/openatlas-stdb-module
+      - name: Build web bundle
+        working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+      - name: Package artifacts
+        run: |
+          mkdir -p dist-artifacts
+          cp target/release/openatlas-ingest dist-artifacts/
+          cp -r web/dist dist-artifacts/web-dist
+          tar -czf openatlas-staging-${{ github.sha }}.tar.gz -C dist-artifacts .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openatlas-staging-${{ github.sha }}
+          path: openatlas-staging-${{ github.sha }}.tar.gz
+          retention-days: 14
+      - name: Staging deploy placeholder
+        env:
+          STAGING_STDB_URI: ${{ vars.STAGING_STDB_URI }}
+          STAGING_STDB_DB: ${{ vars.STAGING_STDB_DB }}
+        run: |
+          echo "Artifacts uploaded. Add environment-specific steps here:"
+          echo "  spacetime publish --server \${STAGING_STDB_URI:-<set STAGING_STDB_URI variable>} ..."
+          echo "  rsync/scp web-dist/ to staging CDN"
+          echo "  systemctl restart openatlas-ingest on staging host"
+          echo "  Feed keys: injected via environment secrets (never logged)"
+
+  staging-gate:
+    name: Staging gate
+    needs: [detect-changes, build-artifacts]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [[ "${{ needs.detect-changes.outputs.deploy }}" != "true" ]]; then
+            echo "Staging gate: no deploy-scoped changes"
+            exit 0
+          fi
+          [[ "${{ needs.build-artifacts.result }}" == "success" ]] || exit 1
+          echo "Staging gate passed"

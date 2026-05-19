@@ -860,3 +860,76 @@ fn prune_ingest_audit(ctx: &ReducerContext) {
         ctx.db.ingest_audit().id().delete(row.id);
     }
 }
+
+#[cfg(test)]
+mod ingest_rules_tests {
+    use super::*;
+
+    fn sample_args(severity: f64) -> IngestEventArgs {
+        IngestEventArgs {
+            id: 1,
+            timestamp: Timestamp::from_micros_since_unix_epoch(1_700_000_000_000_000),
+            domain: 3,
+            severity_score: severity,
+            location: Some(Location {
+                lat: 10.0,
+                lon: 20.0,
+                region_tags: vec![],
+            }),
+            payload_json: "{}".to_owned(),
+        }
+    }
+
+    #[test]
+    fn validate_rejects_non_finite_severity() {
+        let err = validate_ingest_input(&sample_args(f64::NAN)).unwrap_err();
+        assert!(err.contains("invalid severity"));
+    }
+
+    #[test]
+    fn validate_rejects_oversized_payload() {
+        let mut args = sample_args(0.5);
+        args.payload_json = "x".repeat(8_193);
+        let err = validate_ingest_input(&args).unwrap_err();
+        assert!(err.contains("too large"));
+    }
+
+    #[test]
+    fn validate_rejects_out_of_range_location() {
+        let mut args = sample_args(0.5);
+        args.location = Some(Location {
+            lat: 95.0,
+            lon: 0.0,
+            region_tags: vec![],
+        });
+        let err = validate_ingest_input(&args).unwrap_err();
+        assert!(err.contains("out of range"));
+    }
+
+    #[test]
+    fn batch_size_constant_matches_ingest_client() {
+        assert_eq!(MAX_INGEST_BATCH_SIZE, 128);
+    }
+
+    #[test]
+    fn ring_sizes_are_positive_and_ordered() {
+        assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE);
+        assert!(SIGNAL_RING_SIZE > 0);
+        assert!(CAUSAL_EDGE_RING_SIZE > 0);
+        assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE);
+    }
+
+    #[test]
+    fn compute_trend_label_insufficient_data() {
+        let events = vec![Event {
+            id: 1,
+            ordinal: 1,
+            timestamp: Timestamp::from_micros_since_unix_epoch(0),
+            domain: 1,
+            severity_score: 0.5,
+            location: None,
+            payload_json: "{}".to_owned(),
+        }];
+        assert_eq!(compute_trend_label(&events), "insufficient-data");
+    }
+}
