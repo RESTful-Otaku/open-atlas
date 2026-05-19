@@ -2,7 +2,11 @@
   import { onMount } from "svelte";
   import { navigate } from "../router.svelte";
   import { VIEW_CATALOG, hrefForNavEntry, type ViewCatalogEntry } from "../views";
-  import { matrixById, MATRIX_CATALOG, type MatrixCatalogEntry } from "../matrices";
+  import {
+    matrixById,
+    MATRIX_CATALOG,
+    type MatrixCatalogEntry,
+  } from "../matrices/catalog";
 
   interface Props {
     open: boolean;

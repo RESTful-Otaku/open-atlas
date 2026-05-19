@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard, matchesSelectedDomain } from "../state.svelte";
   import { domainColor, domainLabel } from "../colors";
   import { fmtFixed, severityPercent, shortId } from "../format";
@@ -9,12 +10,13 @@
 
   const MAX_ROWS = 40;
 
-  const rows = $derived(
-    dashboard.recentSignals
+  const rows = $derived.by(() => {
+    void dashboardData.revision;
+    return dashboard.recentSignals
       .filter((signal) => matchesSelectedDomain(signal.domain))
       .slice(-MAX_ROWS)
-      .reverse(),
-  );
+      .reverse();
+  });
 </script>
 
 <Panel title="Anomaly indicators" {span} scroll flush>

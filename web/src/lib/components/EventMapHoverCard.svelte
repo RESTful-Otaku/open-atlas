@@ -6,6 +6,7 @@
   import { fade } from "svelte/transition";
 
   import { domainLabel, domainColor } from "../colors";
+  import { resolveEventNarrative } from "../event-narrative-fallback";
   import { dashboard } from "../state.svelte";
   import { navigate } from "../router.svelte";
   import { clampCardPosition, signalsForEvent, countCausalForEvent } from "../map/event-map-hover";
@@ -23,7 +24,11 @@
   let { event, x, y, container }: Props = $props();
 
   const narrative = $derived(
-    event ? (dashboard.eventNarratives[event.id] ?? null) : null,
+    resolveEventNarrative(
+      event,
+      dashboard.eventNarratives,
+      event ? dashboard.domainInsights[event.domain] : undefined,
+    ),
   );
   const signals = $derived(
     event ? signalsForEvent(event.id, dashboard.recentSignals) : [],

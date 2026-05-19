@@ -7,7 +7,7 @@
 import { DOMAIN_CATALOG } from "./colors";
 import { navigate } from "./router.svelte";
 import { setSelectedDomain } from "./state.svelte";
-import { MATRIX_CATALOG } from "./matrices";
+import { MATRIX_CATALOG } from "./matrices/catalog";
 
 const DOMAIN_IDS = new Set(DOMAIN_CATALOG.map((d) => d.id));
 const MATRIX_IDS = new Set(MATRIX_CATALOG.map((m) => m.id));

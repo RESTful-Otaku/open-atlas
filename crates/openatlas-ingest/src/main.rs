@@ -27,6 +27,16 @@ const BIND_ADDR: &str = "0.0.0.0:8080";
 async fn main() -> anyhow::Result<()> {
     logging::init_tracing();
 
+    // Load .env before StdbClient::from_env (local or cloud URI comes from here or the shell).
+    local_env::load_gitignored_env_files();
+    let env_files = local_env::env_file_paths();
+    if !env_files.is_empty() {
+        info!(files = ?env_files, "loaded local env files");
+    }
+
+    let secrets = feed_config::load_secrets_file();
+    feed_config::apply_secrets_to_env(&secrets);
+
     let stdb = StdbClient::from_env().context("failed to construct SpacetimeDB client")?;
     info!(
         stdb_uri = stdb.uri(),
@@ -39,15 +49,6 @@ async fn main() -> anyhow::Result<()> {
             "SpacetimeDB is not reachable yet; ingest will start anyway and retry per-event"
         );
     }
-
-    local_env::load_gitignored_env_files();
-    let env_files = local_env::env_file_paths();
-    if !env_files.is_empty() {
-        info!(files = ?env_files, "loaded local env files");
-    }
-
-    let secrets = feed_config::load_secrets_file();
-    feed_config::apply_secrets_to_env(&secrets);
     info!(
         secrets_path = %feed_config::secrets_file_display(),
         keys = secrets.secrets.len(),

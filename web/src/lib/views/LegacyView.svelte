@@ -15,6 +15,7 @@
   import Anomalies from "../components/Anomalies.svelte";
   import SeverityHeatmap from "../components/SeverityHeatmap.svelte";
   import CausalGraph from "../components/CausalGraph.svelte";
+  import MountWhenVisible from "../components/MountWhenVisible.svelte";
   import LayoutEditBar from "../layout/LayoutEditBar.svelte";
   import { loadPanelLayout, savePanelLayout, clearPanelLayout } from "../layout/panel-layout-persist";
   import {
@@ -216,21 +217,37 @@
       {/if}
       <div class="legacy-slot-in">
         {#if id === "kpi"}
-          <KpiStrip />
+          <MountWhenVisible minHeight="120px">
+            <KpiStrip />
+          </MountWhenVisible>
         {:else if id === "map"}
-          <WorldMap embedded={true} panelSpan={12} />
+          <MountWhenVisible minHeight="420px">
+            <WorldMap embedded={true} panelSpan={12} />
+          </MountWhenVisible>
         {:else if id === "domain-cards"}
-          <DomainCards span={12} />
+          <MountWhenVisible minHeight="200px">
+            <DomainCards span={12} />
+          </MountWhenVisible>
         {:else if id === "insights"}
-          <Insights span={12} />
+          <MountWhenVisible minHeight="200px">
+            <Insights span={12} />
+          </MountWhenVisible>
         {:else if id === "heatmap"}
-          <SeverityHeatmap span={12} />
+          <MountWhenVisible minHeight="420px">
+            <SeverityHeatmap span={12} />
+          </MountWhenVisible>
         {:else if id === "causal"}
-          <CausalGraph span={12} />
+          <MountWhenVisible minHeight="420px">
+            <CausalGraph span={12} />
+          </MountWhenVisible>
         {:else if id === "events"}
-          <EventStream span={12} />
+          <MountWhenVisible minHeight="280px">
+            <EventStream span={12} />
+          </MountWhenVisible>
         {:else if id === "anomalies"}
-          <Anomalies span={12} />
+          <MountWhenVisible minHeight="200px">
+            <Anomalies span={12} />
+          </MountWhenVisible>
         {/if}
       </div>
     </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { debounce } from "../debounce-raf";
 
   import { initChart, type ECharts } from "../echarts";
   import { onThemeChange } from "../theme-events";
@@ -100,7 +101,7 @@
   }
 
   let container: HTMLDivElement | undefined = $state();
-  let chart: ECharts | null = null;
+  let chart: ECharts | null = $state(null);
 
   const grid = $derived.by(() => {
     void dashboardData.revision;
@@ -204,6 +205,7 @@
       });
     });
     return () => {
+      applyGridToChart.cancel();
       offTheme();
       window.removeEventListener("resize", resize);
       chart?.dispose();
@@ -211,13 +213,19 @@
     };
   });
 
-  $effect(() => {
-    if (!chart) return;
-    chart.setOption({
+  const applyGridToChart = debounce(() => {
+    const c = chart;
+    if (!c) return;
+    c.setOption({
       xAxis: { data: grid.cols },
       yAxis: { data: grid.rows },
       series: [{ type: "heatmap", data: grid.data }],
     });
+  }, 250);
+
+  $effect(() => {
+    void dashboardData.revision;
+    applyGridToChart();
   });
 </script>
 

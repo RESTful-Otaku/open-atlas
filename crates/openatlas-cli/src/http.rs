@@ -122,7 +122,7 @@ pub(crate) async fn fetch_events(
         .into_iter()
         .map(decode_event_row)
         .collect::<Result<Vec<_>>>()?;
-    decoded.sort_by(|a, b| b.ordinal.cmp(&a.ordinal));
+    decoded.sort_by_key(|b| std::cmp::Reverse(b.ordinal));
     decoded.truncate(limit);
     Ok(decoded)
 }
@@ -179,7 +179,7 @@ pub(crate) async fn fetch_signals(
         .into_iter()
         .map(decode_signal_row)
         .collect::<Result<Vec<_>>>()?;
-    decoded.sort_by(|a, b| b.event_id.cmp(&a.event_id));
+    decoded.sort_by_key(|b| std::cmp::Reverse(b.event_id));
     decoded.truncate(limit);
     Ok(decoded)
 }

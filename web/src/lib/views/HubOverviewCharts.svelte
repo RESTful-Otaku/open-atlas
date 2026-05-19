@@ -17,7 +17,10 @@
       hubActivityHeatmap(dashboard.events),
     );
   });
-  const hasEvents = $derived(dashboard.events.length > 0);
+  const hasEvents = $derived.by(() => {
+    void dashboardData.revision;
+    return dashboard.events.length > 0;
+  });
 </script>
 
 <section class="hub-overview" aria-label="Cross-domain overview charts">

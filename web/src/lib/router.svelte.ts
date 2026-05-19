@@ -63,14 +63,39 @@ export const router = $state<{ match: RouteMatch }>({
   match: matchPath(currentHashPath()),
 });
 
+let disposeRouter: (() => void) | null = null;
+
+function sameMatch(a: RouteMatch, b: RouteMatch): boolean {
+  if (a.pattern !== b.pattern || a.path !== b.path) return false;
+  const aKeys = Object.keys(a.params);
+  const bKeys = Object.keys(b.params);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (a.params[k] !== b.params[k]) return false;
+  }
+  return true;
+}
+
+/** Apply `path` to reactive router state (does not touch `location.hash`). */
+export function applyRoute(path: string): RouteMatch {
+  const normalized = normalizePath(path);
+  const next = matchPath(normalized);
+  if (!sameMatch(router.match, next)) {
+    router.match = next;
+  }
+  return next;
+}
+
 /**
- * Navigate to `path`, updating the hash and the reactive state. Safe to
- * call from event handlers; same-path navigation is a no-op so buttons
- * bound to the current view don't trigger re-renders.
+ * Navigate to `path`, updating reactive state and the hash. State is
+ * committed synchronously so the shell swaps views even if `hashchange`
+ * is delayed or lost (e.g. dev HMR). Same-path navigation is a no-op.
  */
 export function navigate(path: string): void {
   const normalized = normalizePath(path);
-  if (normalized === router.match.path) return;
+  const prev = router.match;
+  const next = applyRoute(normalized);
+  if (currentHashPath() === next.path && sameMatch(prev, next)) return;
   window.location.hash = normalized;
 }
 
@@ -94,7 +119,7 @@ function normalizePath(path: string): string {
  * pattern; the UI never renders "404" — it silently falls home so a
  * stale bookmark still lands somewhere useful.
  */
-function matchPath(path: string): RouteMatch {
+export function matchPath(path: string): RouteMatch {
   for (const pattern of ROUTE_TABLE) {
     const params = tryMatch(pattern, path);
     if (params !== null) return { pattern, params, path };
@@ -128,13 +153,19 @@ function splitSegments(path: string): string[] {
   return path.replace(/^\//, "").split("/");
 }
 
+function syncRouterFromHash(): void {
+  applyRoute(currentHashPath());
+}
+
 /**
- * Wire up hashchange listening. Call once at app mount. Returns a
- * teardown fn so tests can opt out of the global listener.
+ * Wire up hashchange listening. Idempotent — safe to call from `main.ts`
+ * and `Shell` onMount. Returns a teardown fn so tests can opt out.
  */
 export function installRouter(): () => void {
+  if (disposeRouter) disposeRouter();
+
   const onChange = () => {
-    router.match = matchPath(currentHashPath());
+    syncRouterFromHash();
   };
   window.addEventListener("hashchange", onChange);
   // Ensure the hash is canonical on first mount (e.g. "" → "/").
@@ -143,5 +174,16 @@ export function installRouter(): () => void {
   } else {
     onChange();
   }
-  return () => window.removeEventListener("hashchange", onChange);
+
+  disposeRouter = () => {
+    window.removeEventListener("hashchange", onChange);
+    disposeRouter = null;
+  };
+  return disposeRouter;
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    disposeRouter?.();
+  });
 }

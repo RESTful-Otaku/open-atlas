@@ -41,7 +41,6 @@ import {
   MAX_SEVERITY_HISTORY,
   MAX_SIGNALS,
 } from "./data-limits";
-import { bumpDomainsRevision } from "./dashboard-revision.svelte";
 import type {
   ConnectionState,
   UiCausalEdge,
@@ -287,6 +286,8 @@ let batchEvents: UiEvent[] | null = null;
 let batchSignals: UiSignal[] | null = null;
 let batchCausalEdges: UiCausalEdge[] | null = null;
 let batchNarratives: Record<string, UiEventNarrative> | null = null;
+let batchDomainState: Record<string, UiWorldState> | null = null;
+let batchDomainInsights: Record<string, UiDomainInsight> | null = null;
 const batchSeverityEvents: UiEvent[] = [];
 
 /** Suppress per-row reactive fan-out while hydrating or replaying many rows. */
@@ -297,6 +298,8 @@ export function beginDashboardBatch(): void {
     batchSignals = [];
     batchCausalEdges = [];
     batchNarratives = {};
+    batchDomainState = {};
+    batchDomainInsights = {};
     batchSeverityEvents.length = 0;
   }
 }
@@ -314,21 +317,54 @@ export function endDashboardBatch(): void {
   if (batchSignals !== null) {
     dashboard.recentSignals = batchSignals;
     batchSignals = null;
+    rebuildSignalIdIndex();
   }
   if (batchCausalEdges !== null) {
     dashboard.recentCausalEdges = batchCausalEdges;
     batchCausalEdges = null;
+    rebuildCausalIdIndex();
   }
   if (batchNarratives !== null) {
     evictOldestNarratives(batchNarratives, MAX_EVENT_NARRATIVES);
     dashboard.eventNarratives = batchNarratives;
     batchNarratives = null;
   }
+  if (batchDomainState !== null) {
+    dashboard.domainState = batchDomainState;
+    batchDomainState = null;
+  }
+  if (batchDomainInsights !== null) {
+    dashboard.domainInsights = batchDomainInsights;
+    batchDomainInsights = null;
+  }
   flushPendingSeverityUpdates();
-  eventIdToIndex.clear();
+  rebuildEventIdIndex();
 }
 
 const eventIdToIndex = new Map<string, number>();
+const signalIdToIndex = new Map<string, number>();
+const causalIdToIndex = new Map<string, number>();
+
+/** O(1) event lookup by id (index rebuilt on flush / hydrate). */
+export function lookupEventById(id: string): UiEvent | undefined {
+  const idx = eventIdToIndex.get(id);
+  if (idx === undefined) return undefined;
+  return dashboard.events[idx];
+}
+
+function rebuildSignalIdIndex(): void {
+  signalIdToIndex.clear();
+  dashboard.recentSignals.forEach((row, i) => {
+    signalIdToIndex.set(row.id, i);
+  });
+}
+
+function rebuildCausalIdIndex(): void {
+  causalIdToIndex.clear();
+  dashboard.recentCausalEdges.forEach((row, i) => {
+    causalIdToIndex.set(row.id, i);
+  });
+}
 
 /** Live STDB rows buffer here until `flushPendingDashboardPatches` (one reactive commit/frame). */
 const pendingEvents = new Map<string, UiEvent>();
@@ -339,10 +375,17 @@ const pendingDomainInsights: Record<string, UiDomainInsight> = {};
 const pendingEventDeletes = new Set<string>();
 const pendingSignalDeletes = new Set<string>();
 const pendingCausalDeletes = new Set<string>();
+const pendingNarratives = new Map<string, UiEventNarrative>();
+
+export type PendingDashboardFlush = {
+  streamDirty: boolean;
+  domainsDirty: boolean;
+};
 
 /** Merge pending patches then trim — called from `sortAndTrimDashboardBuffers`. */
-export function flushPendingDashboardPatches(): void {
+export function flushPendingDashboardPatches(): PendingDashboardFlush {
   let domainsDirty = false;
+  let streamDirty = false;
 
   if (pendingEventDeletes.size > 0) {
     dashboard.events = dashboard.events.filter(
@@ -350,15 +393,39 @@ export function flushPendingDashboardPatches(): void {
     );
     pendingEventDeletes.clear();
     eventIdToIndex.clear();
+    streamDirty = true;
   }
 
   if (pendingEvents.size > 0) {
-    const merged = new Map<string, UiEvent>();
-    for (const e of dashboard.events) merged.set(e.id, e);
-    for (const e of pendingEvents.values()) merged.set(e.id, e);
+    if (eventIdToIndex.size === 0 && dashboard.events.length > 0) {
+      rebuildEventIdIndex();
+    }
+    let buf = dashboard.events;
+    let mutated = false;
+    for (const next of pendingEvents.values()) {
+      const idx = eventIdToIndex.get(next.id);
+      if (idx !== undefined) {
+        if (buf[idx] !== next) {
+          if (!mutated) {
+            buf = buf.slice();
+            mutated = true;
+          }
+          buf[idx] = next;
+        }
+      } else {
+        if (!mutated) {
+          buf = buf.slice();
+          mutated = true;
+        }
+        buf.push(next);
+      }
+    }
     pendingEvents.clear();
-    dashboard.events = [...merged.values()];
-    eventIdToIndex.clear();
+    if (mutated) {
+      dashboard.events = buf;
+      rebuildEventIdIndex();
+      streamDirty = true;
+    }
   }
 
   if (pendingSignalDeletes.size > 0) {
@@ -366,14 +433,40 @@ export function flushPendingDashboardPatches(): void {
       (s) => !pendingSignalDeletes.has(s.id),
     );
     pendingSignalDeletes.clear();
+    rebuildSignalIdIndex();
+    streamDirty = true;
   }
 
   if (pendingSignals.size > 0) {
-    const merged = new Map<string, UiSignal>();
-    for (const s of dashboard.recentSignals) merged.set(s.id, s);
-    for (const s of pendingSignals.values()) merged.set(s.id, s);
+    if (signalIdToIndex.size === 0 && dashboard.recentSignals.length > 0) {
+      rebuildSignalIdIndex();
+    }
+    let buf = dashboard.recentSignals;
+    let mutated = false;
+    for (const next of pendingSignals.values()) {
+      const idx = signalIdToIndex.get(next.id);
+      if (idx !== undefined) {
+        if (buf[idx] !== next) {
+          if (!mutated) {
+            buf = buf.slice();
+            mutated = true;
+          }
+          buf[idx] = next;
+        }
+      } else {
+        if (!mutated) {
+          buf = buf.slice();
+          mutated = true;
+        }
+        buf.push(next);
+      }
+    }
     pendingSignals.clear();
-    dashboard.recentSignals = [...merged.values()];
+    if (mutated) {
+      dashboard.recentSignals = buf;
+      rebuildSignalIdIndex();
+      streamDirty = true;
+    }
   }
 
   if (pendingCausalDeletes.size > 0) {
@@ -381,14 +474,51 @@ export function flushPendingDashboardPatches(): void {
       (e) => !pendingCausalDeletes.has(e.id),
     );
     pendingCausalDeletes.clear();
+    rebuildCausalIdIndex();
+    streamDirty = true;
   }
 
   if (pendingCausalEdges.size > 0) {
-    const merged = new Map<string, UiCausalEdge>();
-    for (const e of dashboard.recentCausalEdges) merged.set(e.id, e);
-    for (const e of pendingCausalEdges.values()) merged.set(e.id, e);
+    if (causalIdToIndex.size === 0 && dashboard.recentCausalEdges.length > 0) {
+      rebuildCausalIdIndex();
+    }
+    let buf = dashboard.recentCausalEdges;
+    let mutated = false;
+    for (const next of pendingCausalEdges.values()) {
+      const idx = causalIdToIndex.get(next.id);
+      if (idx !== undefined) {
+        if (buf[idx] !== next) {
+          if (!mutated) {
+            buf = buf.slice();
+            mutated = true;
+          }
+          buf[idx] = next;
+        }
+      } else {
+        if (!mutated) {
+          buf = buf.slice();
+          mutated = true;
+        }
+        buf.push(next);
+      }
+    }
     pendingCausalEdges.clear();
-    dashboard.recentCausalEdges = [...merged.values()];
+    if (mutated) {
+      dashboard.recentCausalEdges = buf;
+      rebuildCausalIdIndex();
+      streamDirty = true;
+    }
+  }
+
+  if (pendingNarratives.size > 0) {
+    const merged = { ...dashboard.eventNarratives };
+    for (const n of pendingNarratives.values()) {
+      merged[n.event_id] = n;
+    }
+    pendingNarratives.clear();
+    evictOldestNarratives(merged, MAX_EVENT_NARRATIVES);
+    dashboard.eventNarratives = merged;
+    streamDirty = true;
   }
 
   if (Object.keys(pendingWorldState).length > 0) {
@@ -410,11 +540,7 @@ export function flushPendingDashboardPatches(): void {
     domainsDirty = true;
   }
 
-  if (domainsDirty) bumpDomainsRevision();
-}
-
-function narrativesBucket(): Record<string, UiEventNarrative> {
-  return batchNarratives ?? dashboard.eventNarratives;
+  return { streamDirty, domainsDirty };
 }
 
 function commitEventsBuffer(buf: UiEvent[]): void {
@@ -428,17 +554,18 @@ function commitEventsBuffer(buf: UiEvent[]): void {
 
 function commitSignalsBuffer(buf: UiSignal[]): void {
   if (batchSignals !== null) batchSignals = buf;
-  else dashboard.recentSignals = buf;
+  else {
+    dashboard.recentSignals = buf;
+    rebuildSignalIdIndex();
+  }
 }
 
 function commitCausalBuffer(buf: UiCausalEdge[]): void {
   if (batchCausalEdges !== null) batchCausalEdges = buf;
-  else dashboard.recentCausalEdges = buf;
-}
-
-function commitNarrativesBucket(bucket: Record<string, UiEventNarrative>): void {
-  if (batchNarratives !== null) batchNarratives = bucket;
-  else dashboard.eventNarratives = bucket;
+  else {
+    dashboard.recentCausalEdges = buf;
+    rebuildCausalIdIndex();
+  }
 }
 
 const pendingSeverityByDomain = new Map<string, number[]>();
@@ -457,7 +584,7 @@ function queueSeverity(event: UiEvent): void {
 }
 
 /** Called from `sortAndTrimDashboardBuffers` (debounced per frame). */
-export function flushPendingSeverityUpdates(): void {
+export function flushPendingSeverityUpdates(): boolean {
   if (batchSeverityEvents.length > 0) {
     const nextHist = { ...dashboard.domainSeverityHistory };
     for (const event of batchSeverityEvents) {
@@ -470,9 +597,9 @@ export function flushPendingSeverityUpdates(): void {
     }
     batchSeverityEvents.length = 0;
     dashboard.domainSeverityHistory = nextHist;
-    return;
+    return true;
   }
-  if (pendingSeverityByDomain.size === 0) return;
+  if (pendingSeverityByDomain.size === 0) return false;
   const nextHist = { ...dashboard.domainSeverityHistory };
   for (const [domain, scores] of pendingSeverityByDomain) {
     let hist = nextHist[domain] ?? [];
@@ -486,6 +613,7 @@ export function flushPendingSeverityUpdates(): void {
   }
   pendingSeverityByDomain.clear();
   dashboard.domainSeverityHistory = nextHist;
+  return true;
 }
 
 function mergeEventInPlace(next: UiEvent): void {
@@ -582,8 +710,8 @@ export function removeCausalEdge(id: bigint): void {
 
 export function applyWorldState(row: WorldStateRow): void {
   const next = projectWorldState(row);
-  if (batchDepth > 0) {
-    dashboard.domainState = { ...dashboard.domainState, [next.domain]: next };
+  if (batchDomainState !== null) {
+    batchDomainState[next.domain] = next;
     return;
   }
   pendingWorldState[next.domain] = next;
@@ -591,11 +719,8 @@ export function applyWorldState(row: WorldStateRow): void {
 
 export function applyDomainInsight(row: DomainInsight): void {
   const next = projectDomainInsight(row);
-  if (batchDepth > 0) {
-    dashboard.domainInsights = {
-      ...dashboard.domainInsights,
-      [next.domain]: next,
-    };
+  if (batchDomainInsights !== null) {
+    batchDomainInsights[next.domain] = next;
     return;
   }
   pendingDomainInsights[next.domain] = next;
@@ -603,14 +728,11 @@ export function applyDomainInsight(row: DomainInsight): void {
 
 export function applyEventNarrative(row: EventNarrative): void {
   const next = projectEventNarrative(row);
-  const merged: Record<string, UiEventNarrative> = {
-    ...narrativesBucket(),
-    [next.event_id]: next,
-  };
-  if (batchNarratives === null) {
-    evictOldestNarratives(merged, MAX_EVENT_NARRATIVES);
+  if (batchNarratives !== null) {
+    batchNarratives[next.event_id] = next;
+    return;
   }
-  commitNarrativesBucket(merged);
+  pendingNarratives.set(next.event_id, next);
 }
 
 export function removeEventNarrative(eventId: bigint): void {

@@ -7,6 +7,7 @@
   store — no timers, no wall-clock reads.
 -->
 <script lang="ts">
+  import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard, setSelectedDomain } from "../state.svelte";
   import { domainLabel } from "../colors";
 
@@ -18,7 +19,10 @@
     readonly domain: string;
   }
 
-  const entries = $derived<readonly TickerEntry[]>(buildEntries());
+  const entries = $derived.by((): readonly TickerEntry[] => {
+    void dashboardData.domainsRevision;
+    return buildEntries();
+  });
 
   function buildEntries(): readonly TickerEntry[] {
     const rows = Object.values(dashboard.domainState).sort((a, b) =>

@@ -7,6 +7,8 @@
  */
 
 const DEFAULT_BASE = "/api/llm";
+/** Match openatlas-llm-bridge default timeout (300s) with headroom. */
+const INSIGHT_TIMEOUT_MS = 320_000;
 
 function llmBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_LLM_BASE as string | undefined;
@@ -67,6 +69,7 @@ export async function requestLlmInsight(
     r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(INSIGHT_TIMEOUT_MS),
       body: JSON.stringify({
         snapshot,
         user_prompt: userPrompt?.trim() || undefined,

@@ -14,7 +14,7 @@
   import { ingestModeLabel } from "../ingest-status";
   import { buildLlmSnapshot } from "../llm-snapshot";
   import { requestLlmInsight } from "../llm";
-  import { readiness, refreshRemoteReadiness } from "../readiness.svelte";
+  import { ensureLlmReady, readiness, refreshRemoteReadiness } from "../readiness.svelte";
   import FeedApisPanel from "../components/FeedApisPanel.svelte";
   import {
     readStoredTheme,
@@ -43,10 +43,10 @@
     llmTestRunning = true;
     llmTestResult = null;
     try {
-      await refreshRemoteReadiness();
-      if (!readiness.llmReady) {
+      const ready = await ensureLlmReady(true);
+      if (!ready) {
         llmTestResult =
-          "Bridge or Ollama not ready. Run: ollama serve && ollama pull llama3.2 && ./dev.sh llm:start";
+          "Bridge or Ollama not ready (ping or model smoke test failed). Run: ollama serve && ollama pull llama3.2 && ./dev.sh llm:start";
         return;
       }
       const snapshot = buildLlmSnapshot({

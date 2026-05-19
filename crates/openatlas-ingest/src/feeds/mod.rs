@@ -133,9 +133,12 @@ pub async fn spawn_all(state: AppState) {
     );
 }
 
+/// GDELT DOC queries often take 30–60s; keep this above typical upstream latency.
+const FEED_HTTP_TIMEOUT_SECS: u64 = 60;
+
 fn build_client() -> Client {
     Client::builder()
-        .timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(FEED_HTTP_TIMEOUT_SECS))
         .user_agent("OpenAtlas/0.1 (+https://github.com/)")
         .build()
         .unwrap_or_else(|_| Client::new())

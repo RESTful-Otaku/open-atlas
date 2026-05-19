@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard, matchesSelectedDomain } from "../state.svelte";
   import { domainColor, domainLabel } from "../colors";
   import { fmtFixed, severityPercent, shortId, shortTime } from "../format";
@@ -9,12 +10,13 @@
 
   const MAX_ROWS = 60;
 
-  const rows = $derived(
-    dashboard.events
+  const rows = $derived.by(() => {
+    void dashboardData.revision;
+    return dashboard.events
       .filter((event) => matchesSelectedDomain(event.domain))
       .slice(-MAX_ROWS)
-      .reverse(),
-  );
+      .reverse();
+  });
 </script>
 
 <Panel title="Live event stream" {span} scroll flush>

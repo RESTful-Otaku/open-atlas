@@ -6,6 +6,41 @@ use reqwest::Client;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
+fn transport_error(url: &str, err: reqwest::Error) -> anyhow::Error {
+    if err.is_timeout() {
+        anyhow::anyhow!(
+            "GET {url} timed out (upstream slow or unreachable — will retry on next poll)"
+        )
+    } else {
+        anyhow::anyhow!("GET {url} transport error: {err}")
+    }
+}
+
+fn upstream_error_detail(body: &str) -> String {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(msg) = value.get("error_message").and_then(|v| v.as_str()) {
+            return format!(" — {msg}");
+        }
+        if let Some(msg) = value
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(|v| v.as_str())
+        {
+            return format!(" — {msg}");
+        }
+    }
+    let snippet: String = trimmed.chars().take(120).collect();
+    if snippet.is_empty() {
+        String::new()
+    } else {
+        format!(" — {snippet}")
+    }
+}
+
 /// GET + status check + JSON body as `T`.
 pub async fn fetch_json<T: DeserializeOwned>(client: &Client, feed: &str, url: &str) -> Result<T> {
     let text = fetch_text(client, feed, url).await?;
@@ -20,11 +55,7 @@ pub async fn fetch_text(client: &Client, _feed: &str, url: &str) -> Result<Strin
             limiter.wait_host_request(&host).await;
         }
 
-        let response = client
-            .get(url)
-            .send()
-            .await
-            .with_context(|| format!("GET {url} transport error"))?;
+        let response = client.get(url).send().await.map_err(|err| transport_error(url, err))?;
 
         let status = response.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
@@ -45,13 +76,21 @@ pub async fn fetch_text(client: &Client, _feed: &str, url: &str) -> Result<Strin
             );
         }
 
-        let response = response
-            .error_for_status()
-            .with_context(|| format!("GET {url} returned error status"))?;
-        let body = response
-            .text()
-            .await
-            .with_context(|| format!("GET {url} body read failed"))?;
+        let body = if status.is_success() {
+            response
+                .text()
+                .await
+                .with_context(|| format!("GET {url} body read failed"))?
+        } else {
+            let body = response
+                .text()
+                .await
+                .unwrap_or_default();
+            bail!(
+                "GET {url} returned {status}{}",
+                upstream_error_detail(&body)
+            );
+        };
 
         if let Some(limiter) = rate_limiter() {
             limiter.record_host_request(&host).await;
@@ -61,17 +100,19 @@ pub async fn fetch_text(client: &Client, _feed: &str, url: &str) -> Result<Strin
     }
 
     // Fallback without host-based throttle (should not happen for https URLs).
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .with_context(|| format!("GET {url} transport error"))?
-        .error_for_status()
-        .with_context(|| format!("GET {url} returned error status"))?;
-    response
-        .text()
-        .await
-        .with_context(|| format!("GET {url} body read failed"))
+    let response = client.get(url).send().await.map_err(|err| transport_error(url, err))?;
+    let status = response.status();
+    if status.is_success() {
+        return response
+            .text()
+            .await
+            .with_context(|| format!("GET {url} body read failed"));
+    }
+    let body = response.text().await.unwrap_or_default();
+    bail!(
+        "GET {url} returned {status}{}",
+        upstream_error_detail(&body)
+    );
 }
 
 /// Reject HTML error pages and empty bodies before `serde_json::from_str`.
@@ -132,5 +173,11 @@ mod tests {
         let v = serde_json::json!([{"pages": 1}, [{"country": {"id": "US"}}]]);
         let obs = world_bank_observations(&v).unwrap();
         assert_eq!(obs.len(), 1);
+    }
+
+    #[test]
+    fn upstream_error_detail_extracts_fred_message() {
+        let body = r#"{"error_message":"Bad Request. invalid api_key"}"#;
+        assert!(upstream_error_detail(body).contains("invalid api_key"));
     }
 }

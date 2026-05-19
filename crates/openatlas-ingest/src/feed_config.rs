@@ -60,8 +60,66 @@ pub fn apply_secrets_to_env(file: &FeedSecretsFile) {
 
 pub fn env_key_present(key: &str) -> bool {
     std::env::var(key)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
+        .ok()
+        .is_some_and(|value| secret_value_valid(key, value.trim()).is_ok())
+}
+
+/// Validate a feed API key before persisting or treating a feed as enabled.
+pub fn secret_value_valid(key: &str, value: &str) -> Result<()> {
+    if value.is_empty() {
+        anyhow::bail!("{key} must not be empty");
+    }
+    if is_placeholder_secret(value) {
+        anyhow::bail!(
+            "{key} looks like a placeholder — use a real key from {}",
+            env_key_description(key)
+        );
+    }
+    match key {
+        "FRED_API_KEY" => validate_fred_key(value),
+        "EIA_API_KEY" => validate_eia_key(value),
+        _ => Ok(()),
+    }
+}
+
+fn is_placeholder_secret(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    const PLACEHOLDERS: &[&str] = &[
+        "test-fred",
+        "test-eia",
+        "your-fred",
+        "your-eia",
+        "your-fred-key",
+        "your-eia-key",
+        "changeme",
+        "example",
+        "placeholder",
+        "xxx",
+    ];
+    PLACEHOLDERS.iter().any(|p| lower.contains(p))
+}
+
+fn validate_fred_key(value: &str) -> Result<()> {
+    let len = value.len();
+    let alphanumeric = value.chars().all(|c| c.is_ascii_alphanumeric());
+    if len == 32 && alphanumeric {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "FRED_API_KEY must be a 32-character alphanumeric string (see fred.stlouisfed.org/docs/api/api_key.html)"
+    );
+}
+
+fn validate_eia_key(value: &str) -> Result<()> {
+    if value.len() < 20 {
+        anyhow::bail!(
+            "EIA_API_KEY is too short — register at eia.gov/opendata/register.php"
+        );
+    }
+    if !value.chars().all(|c| c.is_ascii_alphanumeric()) {
+        anyhow::bail!("EIA_API_KEY must contain only letters and digits");
+    }
+    Ok(())
 }
 
 pub fn mask_secret(value: &str) -> String {
@@ -118,11 +176,16 @@ pub fn env_key_description(key: &str) -> &'static str {
 
 pub fn validate_secret_keys(updates: &HashMap<String, String>) -> Result<()> {
     let allowed = known_secret_keys();
-    for key in updates.keys() {
+    for (key, value) in updates {
         if !allowed.contains(&key.as_str()) {
             let names = allowed.join(", ");
             anyhow::bail!("unknown secret key '{key}' — only feed API keys are accepted: {names}");
         }
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        secret_value_valid(key, trimmed)?;
     }
     Ok(())
 }
@@ -163,5 +226,21 @@ mod tests {
         let mut bad = HashMap::new();
         bad.insert("PATH".to_owned(), "/tmp".to_owned());
         assert!(validate_secret_keys(&bad).is_err());
+    }
+
+    #[test]
+    fn rejects_placeholder_and_invalid_fred_keys() {
+        assert!(secret_value_valid("FRED_API_KEY", "test-fred").is_err());
+        assert!(secret_value_valid("FRED_API_KEY", "your-fred-key-from-fred.stlouisfed.org").is_err());
+        assert!(secret_value_valid("FRED_API_KEY", "short").is_err());
+        let valid = "a".repeat(32);
+        assert!(secret_value_valid("FRED_API_KEY", &valid).is_ok());
+    }
+
+    #[test]
+    fn rejects_short_eia_keys() {
+        assert!(secret_value_valid("EIA_API_KEY", "test-eia").is_err());
+        let valid = "a".repeat(32);
+        assert!(secret_value_valid("EIA_API_KEY", &valid).is_ok());
     }
 }

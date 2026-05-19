@@ -31,7 +31,8 @@
   );
 
   let el: HTMLDivElement | undefined = $state();
-  let chart: ECharts | null = $state(null);
+  /** Plain let — must NOT be $state or the mount $effect loops (read + write chart). */
+  let chart: ECharts | null = null;
   let chartTheme = $state<ThemeId>(readThemeFromDocument());
 
   const handlers = $state({
@@ -61,16 +62,11 @@
     return offTheme;
   });
 
-  /** Mount once per container; theme changes re-init without reading `mergedOption`. */
+  /** Mount once per container; theme changes re-init. Prior instance cleaned in effect return. */
   $effect(() => {
     const node = el;
     const theme = chartTheme;
     if (!node) return;
-
-    chart?.off("click");
-    chart?.off("brushSelected");
-    chart?.off("datazoom");
-    chart?.dispose();
 
     const c = mountChart(node, theme);
     chart = c;
@@ -78,10 +74,20 @@
       c.setOption(latestOption, { notMerge: false, lazyUpdate: true });
     }
 
-    const ro = new ResizeObserver(() => c.resize());
+    let resizeRaf = 0;
+    const ro = new ResizeObserver(() => {
+      if (!node.isConnected) return;
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        if (node.isConnected) c.resize();
+      });
+    });
     ro.observe(node);
 
     return () => {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      applyChartOption.cancel();
       ro.disconnect();
       c.off("click");
       c.off("brushSelected");
@@ -95,7 +101,8 @@
   const applyChartOption = rafCoalesce(() => {
     const c = chart;
     const opt = latestOption;
-    if (!c || !opt) return;
+    const node = el;
+    if (!c || !opt || !node?.isConnected) return;
     c.setOption(opt, {
       notMerge: false,
       lazyUpdate: true,
@@ -104,6 +111,7 @@
 
   $effect(() => {
     latestOption = mergedOption;
+    if (!el?.isConnected) return;
     applyChartOption();
   });
 </script>

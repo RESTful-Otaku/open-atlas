@@ -46,11 +46,20 @@ Production-like static hosting (ingest serves `web/dist` on :8080):
 2. Publish the module (replace host/name with your cloud database):
 
 ```bash
-spacetime build --module-path crates/openatlas-stdb-module
-spacetime publish --server "https://maincloud.spacetimedb.com" \
-  --module-path crates/openatlas-stdb-module \
-  --yes openatlas
+spacetime login   # once per machine
+./dev.sh spacetime:publish:cloud
+# or: ./scripts/publish-stdb-cloud.sh
 ```
+
+Then run the full cloud test stack from the repo root:
+
+```bash
+./dev.sh run:cloud:sim
+# or backend only: ./dev.sh up:cloud:sim  then  ./dev.sh web:cloud
+```
+
+`run:cloud:sim` sets ingest + Vite to Maincloud (no local `spacetime start`).
+Open the app **without** `?demo=1`.
 
 3. Note the database name and HTTP/WebSocket base URL from the SpacetimeDB dashboard.
 

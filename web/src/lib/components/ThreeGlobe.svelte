@@ -10,6 +10,8 @@
   import { onThemeChange, readThemeFromDocument } from "../theme-events";
   import type { ThemeId } from "../theme.svelte";
   import { debounce } from "../debounce-raf";
+  import { isRouteTransitioning } from "../route-transition";
+  import { releaseWebGlCanvases } from "../webgl-teardown";
   import { navigate } from "../router.svelte";
   import { dashboardData } from "../dashboard-revision.svelte";
   import { getGeoEventIndex } from "../geo-event-index";
@@ -29,6 +31,7 @@
     zoomScaleFromAltitude,
   } from "../map/globe-zoom-scale";
   import { buildAllTrackingPaths } from "../map/tracking-paths";
+  import { globeLayerFingerprint } from "../map/globe-layer-fingerprint";
   import {
     buildGlobeArcs,
     buildGlobePoints,
@@ -88,6 +91,8 @@
   let dayNightMaterial: DayNightGlobeMaterial | null = $state(null);
   let cameraAltitude = $state(2.28);
   let photorealActive = $state(false);
+  let lastLayerFingerprint = "";
+  let offVisibility: (() => void) | undefined;
 
   function applyCartoTheme(g: GlobeInstance, theme: ThemeId): void {
     const spec = mapThemeFor(theme);
@@ -126,14 +131,38 @@
 
   function updateLayers(): void {
     const g = globe;
-    if (!g) return;
+    if (!g || document.hidden) return;
+
+    const geo = getGeoEventIndex(dashboard.events);
+    const fp = globeLayerFingerprint({
+      revision: dashboardData.revision,
+      simUtcMs,
+      mode,
+      mapDomains: [...mapDomainSet].sort().join(","),
+      showCausal,
+      showTerminator,
+      showSubsun,
+      showMoon,
+      showWeather: showWeatherOverlays,
+      showTrackingPaths,
+      trackingCount: publicTracking.length,
+      geoCount: geo.geoEvents.length,
+      causalCount: dashboard.recentCausalEdges.length,
+    });
+    if (fp === lastLayerFingerprint) {
+      if (photorealActive && dayNightMaterial) {
+        updateDayNightSun(dayNightMaterial, simUtcMs);
+      }
+      return;
+    }
+    lastLayerFingerprint = fp;
 
     if (photorealActive && dayNightMaterial) {
       updateDayNightSun(dayNightMaterial, simUtcMs);
     }
 
     const z = zoomScaleFromAltitude(cameraAltitude);
-    const events = getGeoEventIndex(dashboard.events).events;
+    const events = geo.geoEvents;
     const wantPointsMode = mode === "points" || mode === "both";
     const wantHeat = mode === "heat" || mode === "both";
 
@@ -149,11 +178,13 @@
       if (moon) eventPts = [...eventPts, moon];
     }
     const tr = publicTracking.length ? publicTracking : [];
-    const arcs = buildGlobeArcs(events, dashboard.recentCausalEdges, mapDomainSet);
+    const arcs = buildGlobeArcs(
+      geo.events,
+      dashboard.recentCausalEdges,
+      mapDomainSet,
+    );
 
-    const heatData = wantHeat
-      ? buildPerDomainHeatmaps(events, mapDomainSet)
-      : [];
+    const heatData = wantHeat ? buildPerDomainHeatmaps(geo, mapDomainSet) : [];
     g.heatmapsData(heatData)
       .heatmapPoints((d) => (d as GlobeHeatmapDatum).points)
       .heatmapPointLat((p) => (p as [number, number, number])[0])
@@ -179,7 +210,7 @@
         const base = p.r * (p.kind === "sun" ? 1.35 : p.kind === "moon" ? 1.1 : 1);
         return scaledPointRadius(base, cameraAltitude);
       })
-      .pointResolution(16)
+      .pointResolution(8)
       .pointLabel((d) => {
         const p = d as GlobeEventPoint;
         if (p.kind === "sun") return "Subsolar point";
@@ -288,7 +319,7 @@
           rendererConfig: {
             antialias: true,
             alpha: true,
-            powerPreference: "high-performance",
+            powerPreference: "default",
           },
         });
         globe = g;
@@ -377,6 +408,29 @@
         g.onZoom(() => onCameraChange(g));
         g.controls().addEventListener("change", () => onCameraChange(g));
 
+        const renderer = g.renderer();
+        const scene = g.scene();
+        const camera = g.camera();
+        const renderFrame = (): void => {
+          ctrls.update();
+          renderer.render(scene, camera);
+        };
+        renderer.setAnimationLoop(renderFrame);
+        const onVis = (): void => {
+          if (document.hidden) {
+            renderer.setAnimationLoop(null);
+            ctrls.enabled = false;
+          } else {
+            renderer.setAnimationLoop(renderFrame);
+            ctrls.enabled = true;
+            lastLayerFingerprint = "";
+            scheduleUpdateLayersThrottled();
+          }
+        };
+        document.addEventListener("visibilitychange", onVis);
+        offVisibility = () =>
+          document.removeEventListener("visibilitychange", onVis);
+
         onLeaveHandler = (): void => {
           if (!onMapPointScreen) return;
           lastHover = null;
@@ -406,7 +460,10 @@
       scheduleUpdateLayers();
     });
     return () => {
+      scheduleUpdateLayersThrottled.cancel();
       offTheme();
+      offVisibility?.();
+      offVisibility = undefined;
       cancelled = true;
       if (loadSafetyTimer !== undefined) window.clearTimeout(loadSafetyTimer);
       if (_layerRaf) {
@@ -427,18 +484,24 @@
       ro = null;
       if (globe) {
         try {
+          const renderer = globe.renderer();
+          renderer.setAnimationLoop(null);
           globe._destructor();
+          renderer.dispose();
         } catch {
           /* */
         }
         globe = null;
       }
+      releaseWebGlCanvases(root);
+      dayNightMaterial = null;
+      photorealActive = false;
     };
   });
 
   let _layerRaf: number = 0;
   function scheduleUpdateLayers(): void {
-    if (!globe) return;
+    if (!globe || isRouteTransitioning()) return;
     if (_layerRaf) cancelAnimationFrame(_layerRaf);
     _layerRaf = requestAnimationFrame(() => {
       _layerRaf = 0;
@@ -447,7 +510,7 @@
   }
 
   /** Coalesce burst STDB updates; camera moves no longer rebuild all layers. */
-  const scheduleUpdateLayersThrottled = debounce(scheduleUpdateLayers, 200);
+  const scheduleUpdateLayersThrottled = debounce(scheduleUpdateLayers, 500);
 
   $effect(() => {
     void showPhotorealEarth;
@@ -457,9 +520,7 @@
 
   $effect(() => {
     void dashboardData.revision;
-    void dashboard.recentCausalEdges;
     void mapDomainSet;
-    void simUtcMs;
     void showTerminator;
     void showSubsun;
     void showMoon;
@@ -471,7 +532,15 @@
     void trackingPathRows;
     void showWeatherOverlays;
     void dayNightMaterial;
+    if (!globe || document.hidden) return;
     scheduleUpdateLayersThrottled();
+    return () => {
+      scheduleUpdateLayersThrottled.cancel();
+      if (_layerRaf) {
+        cancelAnimationFrame(_layerRaf);
+        _layerRaf = 0;
+      }
+    };
   });
 </script>
 

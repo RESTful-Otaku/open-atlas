@@ -24,12 +24,11 @@
 //! trivially unit-testable and keeps `lib.rs` focused on table/reducer
 //! wiring.
 
-/// Severity threshold above which an event is worth narrating. Below
-/// this the UI falls back to rendering the raw event + signal panel.
-///
-/// Tuned to match [`crate::ANOMALY_THRESHOLD`] — everything that raises
-/// a signal also gets a narrative.
-pub const NARRATIVE_SEVERITY_THRESHOLD: f64 = 0.85;
+/// Severity threshold above which an event gets an `event_narrative` row.
+/// Signals still use [`crate::ANOMALY_THRESHOLD`] (0.85); narratives are
+/// written for moderate+ events so operators see inference and disruption
+/// text on typical feed severities, not only anomaly-tier spikes.
+pub const NARRATIVE_SEVERITY_THRESHOLD: f64 = 0.5;
 
 /// Stable numeric domain tag → human-readable domain label. Kept
 /// colocated with the narrative builders because the labels are
@@ -78,6 +77,32 @@ pub struct NarrativeContext<'a> {
     pub dominant_source: &'a str,
     pub anomaly_count_recent: u32,
     pub trend: &'a str,
+}
+
+/// Operator-facing domain desk summary (stored on `domain_insight.narrative`).
+pub fn build_domain_insight_narrative(
+    domain: u8,
+    trend: &str,
+    anomaly_count_recent: u32,
+    dominant_source: &str,
+    risk_index: f64,
+) -> String {
+    let label = domain_label(domain);
+    let posture = match trend {
+        "up" => "worsening",
+        "down" => "improving",
+        "flat" => "stable",
+        _ => "uncertain",
+    };
+    let risk_pct = (risk_index.clamp(0.0, 1.0) * 100.0).round() as u32;
+    format!(
+        "{} domain posture is {} (risk index {}%) with {} recent anomaly signals. Primary feed: {}.",
+        capitalise_first(label),
+        posture,
+        risk_pct,
+        anomaly_count_recent,
+        display_source(dominant_source),
+    )
 }
 
 /// Build a deterministic narrative from the context. Safe to call from
@@ -345,5 +370,14 @@ mod tests {
         c.severity_score = 0.1;
         let out = build_narrative(&c);
         assert!(out.headline.contains("nominal"));
+    }
+
+    #[test]
+    fn domain_insight_narrative_is_human_readable() {
+        let text = build_domain_insight_narrative(0, "up", 4, "EIA", 0.62);
+        assert!(text.contains("Energy"));
+        assert!(text.contains("worsening"));
+        assert!(text.contains("62%"));
+        assert!(text.contains("EIA"));
     }
 }

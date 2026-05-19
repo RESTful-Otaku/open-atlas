@@ -1,12 +1,10 @@
 /**
- * Lazy `event_narrative` subscription — call from views that need headlines.
+ * Lazy `event_narrative` subscription — only while a mounted view needs it.
  */
 import { onMount } from "svelte";
-import { ensureNarrativeSubscription } from "./connection.svelte";
+import { acquireNarrativeSubscription } from "./connection.svelte";
 
-/** Mount hook: starts narrative table sync when the component loads. */
+/** Mount hook: subscribe on enter, stop processing on leave. */
 export function useNarrativeSubscription(): void {
-  onMount(() => {
-    ensureNarrativeSubscription();
-  });
+  onMount(() => acquireNarrativeSubscription());
 }

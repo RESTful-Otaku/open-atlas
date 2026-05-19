@@ -3,6 +3,8 @@
   state and renders one {@link MatrixChartKind} per tab / matrix id.
 -->
 <script lang="ts">
+  import { memoMatrixChart } from "../../chart-cache";
+  import { dashboardData } from "../../dashboard-revision.svelte";
   import { dashboard } from "../../state.svelte";
   import { domainColor } from "../../colors";
   import EChartsPanel from "../../viz/EChartsPanel.svelte";
@@ -27,14 +29,18 @@
   }: Props = $props();
 
   const accent = $derived(domainColor(accentDomain));
-  const option = $derived(
-    matrixChartOption(kind, {
-      events: dashboard.events,
-      domainState: dashboard.domainState,
-      domains,
-      accent,
-    }),
-  );
+  const option = $derived.by(() => {
+    void dashboardData.revision;
+    void dashboardData.domainsRevision;
+    return memoMatrixChart(kind, () =>
+      matrixChartOption(kind, {
+        events: dashboard.events,
+        domainState: dashboard.domainState,
+        domains,
+        accent,
+      }),
+    );
+  });
 
   function handleChartClick(raw: unknown): void {
     const id = resolveDomainFromChartClick(domains, raw);
