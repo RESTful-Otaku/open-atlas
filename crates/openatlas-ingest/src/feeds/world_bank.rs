@@ -8,9 +8,7 @@ use reqwest::Client;
 use super::{
     adapter::FeedDescriptor,
     http::{fetch_text, parse_json_value, world_bank_observations},
-    normalize::{
-        drafts_to_events, parse_date_ymd, ratio_severity, ObservationDraft,
-    },
+    normalize::{drafts_to_events, parse_date_ymd, ratio_severity, ObservationDraft},
 };
 
 const POLL_INTERVAL: Duration = Duration::from_secs(3600);
@@ -61,28 +59,20 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
             .and_then(|v| v.as_str())
             .unwrap_or("unknown")
             .to_owned();
-        let date_str = obs
-            .get("date")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let date_str = obs.get("date").and_then(|v| v.as_str()).unwrap_or("");
         let Some(gdp_growth) = obs.get("value").and_then(|v| v.as_f64()) else {
             continue;
         };
         let observed_at = parse_date_ymd(date_str).unwrap_or_else(chrono::Utc::now);
         let severity = ratio_severity(gdp_growth, GDP_SWING_SATURATION_PCT);
         let external_key = format!("{country_code}-{date_str}");
-        let draft = ObservationDraft::new(
-            external_key,
-            observed_at,
-            Domain::Economy,
-            severity,
-        )
-        .field("indicator", INDICATOR)
-        .field("indicator_label", INDICATOR_LABEL)
-        .field("country_code", country_code.clone())
-        .field("country", country_name)
-        .field("year", date_str)
-        .field("value", gdp_growth);
+        let draft = ObservationDraft::new(external_key, observed_at, Domain::Economy, severity)
+            .field("indicator", INDICATOR)
+            .field("indicator_label", INDICATOR_LABEL)
+            .field("country_code", country_code.clone())
+            .field("country", country_name)
+            .field("year", date_str)
+            .field("value", gdp_growth);
         if let Some(loc) = country_centroid(&country_code) {
             if let Ok(d) = draft.with_location(loc) {
                 drafts.push(d);

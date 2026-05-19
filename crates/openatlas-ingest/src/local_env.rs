@@ -70,10 +70,7 @@ mod tests {
             parse_env_line("FRED_API_KEY=abc"),
             Some(("FRED_API_KEY".into(), "abc".into()))
         );
-        assert_eq!(
-            parse_env_line("  # comment"),
-            None
-        );
+        assert_eq!(parse_env_line("  # comment"), None);
         assert_eq!(
             parse_env_line(r#"EIA_API_KEY="x=y""#),
             Some(("EIA_API_KEY".into(), "x=y".into()))

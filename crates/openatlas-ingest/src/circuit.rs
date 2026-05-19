@@ -8,9 +8,7 @@ pub const CIRCUIT_FAILURE_THRESHOLD: u32 = 5;
 
 pub async fn is_circuit_open(state: &AppState, feed: &str) -> bool {
     let feeds = state.feed_runtime.read().await;
-    feeds
-        .get(feed)
-        .is_some_and(|h| h.circuit_open)
+    feeds.get(feed).is_some_and(|h| h.circuit_open)
 }
 
 pub async fn on_poll_success(state: &AppState, feed: &str) {
@@ -46,12 +44,8 @@ mod tests {
     use tokio::sync::RwLock;
 
     use crate::{
-        health::initialize_feed_runtime,
-        ingest_mode::IngestMode,
-        metrics::IngestMetrics,
-        rate_limit,
-        state::AppState,
-        stdb::StdbClient,
+        health::initialize_feed_runtime, ingest_mode::IngestMode, metrics::IngestMetrics,
+        rate_limit, state::AppState, stdb::StdbClient,
     };
 
     use super::*;

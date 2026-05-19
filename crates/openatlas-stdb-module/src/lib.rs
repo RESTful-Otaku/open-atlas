@@ -358,7 +358,13 @@ pub fn ingest_events_batch(
 
     let insight_ts = ctx.timestamp;
     for domain in touched_domains {
-        rebuild_domain_insight(ctx, domain, source_label.clone(), source_url.clone(), insight_ts);
+        rebuild_domain_insight(
+            ctx,
+            domain,
+            source_label.clone(),
+            source_url.clone(),
+            insight_ts,
+        );
     }
 
     prune_rings(ctx);

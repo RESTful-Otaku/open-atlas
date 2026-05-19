@@ -7,9 +7,8 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 /// Initialise the global tracing subscriber once per process.
 pub fn init_tracing() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new("openatlas_ingest=info,info")
-    });
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("openatlas_ingest=info,info"));
 
     if std::env::var("OPENATLAS_LOG_JSON").ok().as_deref() == Some("1") {
         fmt()
@@ -22,4 +21,3 @@ pub fn init_tracing() {
         fmt().compact().with_env_filter(filter).init();
     }
 }
-

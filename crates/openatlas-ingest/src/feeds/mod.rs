@@ -186,10 +186,7 @@ pub async fn ensure_feed_worker(state: &AppState, name: &str) -> anyhow::Result<
 }
 
 /// One-shot fetch for operator testing (does not write to SpacetimeDB).
-pub async fn test_feed_fetch(
-    state: &AppState,
-    name: &str,
-) -> anyhow::Result<FeedTestResult> {
+pub async fn test_feed_fetch(state: &AppState, name: &str) -> anyhow::Result<FeedTestResult> {
     let descriptor = descriptor_for(name).ok_or_else(|| anyhow::anyhow!("unknown feed: {name}"))?;
     if let Some(key) = descriptor.requires_env {
         if !env_is_set(key) {
@@ -273,10 +270,7 @@ fn spawn_feed(
         let source_url = descriptor.source_url;
         loop {
             let interval = feed_poll::effective_interval(name, descriptor.poll_interval);
-            state
-                .rate_limiter
-                .wait_scheduled_poll(name, interval)
-                .await;
+            state.rate_limiter.wait_scheduled_poll(name, interval).await;
             state.rate_limiter.record_scheduled_poll(name).await;
 
             if is_circuit_open(&state, name).await {
@@ -322,14 +316,8 @@ fn spawn_feed(
                         .await;
                         circuit::on_poll_failure(&state, name).await;
                     } else {
-                        record_feed_success(
-                            &state,
-                            name,
-                            push.accepted,
-                            push.duplicates,
-                            interval,
-                        )
-                        .await;
+                        record_feed_success(&state, name, push.accepted, push.duplicates, interval)
+                            .await;
                         circuit::on_poll_success(&state, name).await;
                     }
                 }

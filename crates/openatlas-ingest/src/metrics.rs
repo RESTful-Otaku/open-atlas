@@ -32,8 +32,7 @@ impl IngestMetrics {
     }
 
     pub fn record_batch_fallback(&self) {
-        self.batch_fallback_calls
-            .fetch_add(1, Ordering::Relaxed);
+        self.batch_fallback_calls.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn snapshot(&self) -> IngestMetricsSnapshot {

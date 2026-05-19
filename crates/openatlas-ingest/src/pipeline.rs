@@ -25,7 +25,8 @@ pub struct BatchPushResult {
 
 impl BatchPushResult {
     pub fn ok_for_cycle(&self) -> bool {
-        self.transport_errors == 0 && (self.accepted > 0 || self.duplicates > 0 || self.rejected == 0)
+        self.transport_errors == 0
+            && (self.accepted > 0 || self.duplicates > 0 || self.rejected == 0)
     }
 
     pub fn had_hard_failure(&self, fetched: usize) -> bool {
@@ -49,7 +50,10 @@ pub async fn push_events(
     let mut total = BatchPushResult::default();
 
     for chunk in events.chunks(STDB_BATCH_CHUNK) {
-        match stdb.ingest_events_batch(chunk, source_label, source_url).await {
+        match stdb
+            .ingest_events_batch(chunk, source_label, source_url)
+            .await
+        {
             Ok(partial) => {
                 total.accepted += partial.accepted;
                 total.duplicates += partial.duplicates;

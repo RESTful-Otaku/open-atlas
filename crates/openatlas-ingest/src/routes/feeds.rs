@@ -114,18 +114,17 @@ pub async fn list_feeds(State(state): State<AppState>) -> impl IntoResponse {
                 .map(|v| mask_secret(v))
         });
 
-        let (enabled, worker_running, success_count, failure_count, consecutive_failures) =
-            health
-                .map(|h| {
-                    (
-                        h.enabled,
-                        h.worker_running,
-                        h.success_count,
-                        h.failure_count,
-                        h.consecutive_failures,
-                    )
-                })
-                .unwrap_or((false, false, 0, 0, 0));
+        let (enabled, worker_running, success_count, failure_count, consecutive_failures) = health
+            .map(|h| {
+                (
+                    h.enabled,
+                    h.worker_running,
+                    h.success_count,
+                    h.failure_count,
+                    h.consecutive_failures,
+                )
+            })
+            .unwrap_or((false, false, 0, 0, 0));
 
         let connection = connection_status(
             mode.live_feeds_enabled(),
@@ -189,11 +188,16 @@ fn build_secret_fields(
 ) -> Vec<SecretFieldRow> {
     let mut rows = Vec::new();
     for key in known_secret_keys() {
-        let value = file.secrets.get(key).cloned().or_else(|| {
-            std::env::var(key).ok()
-        });
+        let value = file
+            .secrets
+            .get(key)
+            .cloned()
+            .or_else(|| std::env::var(key).ok());
         let configured = value.as_ref().is_some_and(|v| !v.trim().is_empty());
-        let preview = value.as_ref().filter(|v| !v.is_empty()).map(|v| mask_secret(v));
+        let preview = value
+            .as_ref()
+            .filter(|v| !v.is_empty())
+            .map(|v| mask_secret(v));
         let linked: Vec<String> = feeds::REGISTRY
             .iter()
             .filter(|d| d.requires_env == Some(key))
@@ -279,7 +283,10 @@ pub async fn update_secrets(
         Ok(_) => {
             refresh_feed_enabled_flags(&state).await;
             for descriptor in feeds::REGISTRY {
-                if descriptor.requires_env.is_some_and(feed_config::env_key_present) {
+                if descriptor
+                    .requires_env
+                    .is_some_and(feed_config::env_key_present)
+                {
                     let _ = feeds::ensure_feed_worker(&state, descriptor.name).await;
                 }
             }

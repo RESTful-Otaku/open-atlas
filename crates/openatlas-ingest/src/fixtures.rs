@@ -29,7 +29,8 @@ pub async fn push_static_fixtures(state: &AppState) {
         accepted = push.accepted,
         duplicate = push.duplicates,
         rejected = push.rejected,
-        total, "static fixture burst complete"
+        total,
+        "static fixture burst complete"
     );
 }
 

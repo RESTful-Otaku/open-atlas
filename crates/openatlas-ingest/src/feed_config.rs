@@ -72,7 +72,14 @@ pub fn mask_secret(value: &str) -> String {
     if trimmed.len() <= 4 {
         return "••••".to_owned();
     }
-    let tail: String = trimmed.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+    let tail: String = trimmed
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("••••{tail}")
 }
 
@@ -120,7 +127,10 @@ pub fn validate_secret_keys(updates: &HashMap<String, String>) -> Result<()> {
     Ok(())
 }
 
-pub fn merge_and_persist(mut current: FeedSecretsFile, updates: HashMap<String, String>) -> Result<FeedSecretsFile> {
+pub fn merge_and_persist(
+    mut current: FeedSecretsFile,
+    updates: HashMap<String, String>,
+) -> Result<FeedSecretsFile> {
     validate_secret_keys(&updates)?;
     for (key, value) in updates {
         if value.trim().is_empty() {

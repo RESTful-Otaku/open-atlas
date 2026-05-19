@@ -71,10 +71,7 @@ pub(crate) async fn service_status(State(state): State<AppState>) -> impl IntoRe
         feeds,
     };
     let body = serde_json::to_value(&status).unwrap_or_default();
-    let mut envelope = body
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let mut envelope = body.as_object().cloned().unwrap_or_default();
     envelope.insert("ingest_metrics".to_owned(), json!(ingest_metrics));
     envelope.insert(
         "data_plane".to_owned(),

@@ -70,9 +70,7 @@ struct Source {
 }
 
 async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>> {
-    let url = format!(
-        "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit={MAX_EVENTS}"
-    );
+    let url = format!("https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit={MAX_EVENTS}");
     let payload: Response = fetch_json(&client, "nasa-eonet", &url).await?;
 
     let drafts = payload

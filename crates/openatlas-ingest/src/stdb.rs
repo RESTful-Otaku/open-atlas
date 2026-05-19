@@ -154,12 +154,9 @@ impl StdbClient {
             .map(serde_json::to_value)
             .collect::<Result<_, _>>()
             .context("serialise batch wire events")?;
-        let args = json!([
-            wire_json,
-            source_label.to_owned(),
-            source_url.to_owned(),
-        ]);
-        self.call_reducer_batch("ingest_events_batch", &args, events.len()).await
+        let args = json!([wire_json, source_label.to_owned(), source_url.to_owned(),]);
+        self.call_reducer_batch("ingest_events_batch", &args, events.len())
+            .await
     }
 
     /// Call the `link_causal_events` reducer. Kept for explicit causal

@@ -116,9 +116,7 @@ impl FeedRateLimiter {
 
     pub async fn record_scheduled_poll(&self, feed: &str) {
         let mut inner = self.inner.write().await;
-        inner
-            .last_feed_poll
-            .insert(feed.to_owned(), Instant::now());
+        inner.last_feed_poll.insert(feed.to_owned(), Instant::now());
     }
 
     pub async fn record_host_request(&self, host: &str) {
@@ -133,9 +131,7 @@ impl FeedRateLimiter {
         inner
             .last_operator_fetch
             .insert(feed.to_owned(), Instant::now());
-        inner
-            .last_feed_poll
-            .insert(feed.to_owned(), Instant::now());
+        inner.last_feed_poll.insert(feed.to_owned(), Instant::now());
     }
 }
 
