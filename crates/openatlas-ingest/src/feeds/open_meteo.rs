@@ -1,15 +1,19 @@
 //! Open-Meteo current-weather snapshot for a fixed sample of metro regions.
-//! No API key required; generous 10k/day anonymous quota.
 
 use std::time::Duration;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use openatlas_core::{Domain, Location, WorldEvent};
+use openatlas_core::Domain;
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::json;
 
-use super::{adapter::FeedDescriptor, deterministic_event_id};
+use super::{
+    adapter::FeedDescriptor,
+    http::fetch_json,
+    normalize::{
+        drafts_to_events, location_from_coords, ratio_severity, ObservationDraft,
+    },
+};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(60);
 const SOURCE_URL: &str = "https://open-meteo.com/";
@@ -28,7 +32,6 @@ struct Region {
     lon: f64,
 }
 
-/// Fixed rotating sample of globally significant metropolitan regions.
 const REGIONS: &[Region] = &[
     Region {
         tag: "tokyo",
@@ -62,9 +65,7 @@ const REGIONS: &[Region] = &[
     },
 ];
 
-/// Hurricane-equivalent wind speed at which severity saturates (km/h).
 const WIND_SATURATION_KMH: f64 = 120.0;
-/// Flood-equivalent precipitation at which severity saturates (mm/hour).
 const PRECIP_SATURATION_MM: f64 = 30.0;
 
 #[derive(Debug, Deserialize)]
@@ -82,21 +83,18 @@ struct Current {
     precipitation: Option<f64>,
 }
 
-async fn fetch(client: Client) -> anyhow::Result<Vec<WorldEvent>> {
-    let mut events = Vec::new();
+async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>> {
+    let mut drafts = Vec::new();
     for region in REGIONS.iter() {
         let url = format!(
             "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,wind_speed_10m,precipitation",
             lat = region.lat,
             lon = region.lon,
         );
-        let payload = client
-            .get(url)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<Response>()
-            .await?;
+        let payload: Response = match fetch_json(&client, "open-meteo", &url).await {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
 
         let Some(current) = payload.current else {
             continue;
@@ -107,29 +105,25 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<WorldEvent>> {
             .unwrap_or_else(Utc::now);
         let wind = current.wind_speed_10m.unwrap_or(0.0);
         let precipitation = current.precipitation.unwrap_or(0.0);
-        let severity_score =
-            ((wind / WIND_SATURATION_KMH) + (precipitation / PRECIP_SATURATION_MM)).clamp(0.0, 1.0);
+        let severity_score = (ratio_severity(wind, WIND_SATURATION_KMH)
+            + ratio_severity(precipitation, PRECIP_SATURATION_MM))
+        .clamp(0.0, 1.0);
         let external_key = format!("{}-{}", region.tag, current.time);
-
-        events.push(WorldEvent {
-            id: deterministic_event_id("open-meteo", &external_key),
-            timestamp,
-            domain: Domain::Climate,
-            location: Some(Location {
-                lat: payload.latitude,
-                lon: payload.longitude,
-                region_tags: vec![region.tag.to_owned(), "open-meteo".to_owned()],
-            }),
-            severity_score,
-            payload: json!({
-                "source": "open-meteo",
-                "source_url": SOURCE_URL,
-                "temperature_2m": current.temperature_2m,
-                "wind_speed_10m": current.wind_speed_10m,
-                "precipitation": current.precipitation,
-                "region": region.tag
-            }),
-        });
+        let Ok(location) = location_from_coords(
+            payload.latitude,
+            payload.longitude,
+            vec![region.tag.to_owned(), "open-meteo".to_owned()],
+        ) else {
+            continue;
+        };
+        let draft = ObservationDraft::new(external_key, timestamp, Domain::Climate, severity_score)
+            .field("temperature_2m", current.temperature_2m)
+            .field("wind_speed_10m", current.wind_speed_10m)
+            .field("precipitation", current.precipitation)
+            .field("region", region.tag);
+        if let Ok(d) = draft.with_location(location) {
+            drafts.push(d);
+        }
     }
-    Ok(events)
+    Ok(drafts_to_events("open-meteo", SOURCE_URL, drafts))
 }

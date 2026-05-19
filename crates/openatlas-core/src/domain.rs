@@ -110,4 +110,11 @@ mod tests {
     fn rejects_unknown_domain() {
         assert!("not-a-domain".parse::<Domain>().is_err());
     }
+
+    /// SpacetimeDB module rejects `domain > 12`; keep this test when appending variants.
+    #[test]
+    fn domain_count_matches_stdb_tag_cap() {
+        const STDB_MAX_DOMAIN_TAG: u8 = 12;
+        assert_eq!(Domain::ALL.len(), STDB_MAX_DOMAIN_TAG as usize + 1);
+    }
 }

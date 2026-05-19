@@ -5,18 +5,26 @@
 //! per-feed health for `/status`. Everything domain-related lives in the
 //! SpacetimeDB module.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
 
-use crate::{health::FeedHealth, stdb::StdbClient};
+use crate::{
+    health::FeedHealth, metrics::IngestMetrics, rate_limit::FeedRateLimiter, stdb::StdbClient,
+};
+
+type FeedRuntimeMap = std::collections::HashMap<String, FeedHealth>;
 
 /// Service-wide state handed to every feed worker, simulator, and
 /// HTTP handler. Cheap to clone (all fields are `Arc` or `Copy`).
 #[derive(Clone)]
-pub(crate) struct AppState {
-    pub(crate) started_at: DateTime<Utc>,
-    pub(crate) feed_runtime: Arc<RwLock<HashMap<String, FeedHealth>>>,
-    pub(crate) stdb: StdbClient,
+pub struct AppState {
+    pub started_at: DateTime<Utc>,
+    pub feed_runtime: Arc<RwLock<FeedRuntimeMap>>,
+    /// Feed supervisor tasks already spawned (avoids duplicate workers).
+    pub spawned_feeds: Arc<RwLock<HashSet<String>>>,
+    pub stdb: StdbClient,
+    pub rate_limiter: Arc<FeedRateLimiter>,
+    pub metrics: Arc<IngestMetrics>,
 }

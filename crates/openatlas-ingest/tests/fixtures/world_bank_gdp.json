@@ -1,0 +1,12 @@
+[
+  { "page": 1, "pages": 1, "total": 1 },
+  [
+    {
+      "country": { "id": "US", "value": "United States" },
+      "countryiso3code": "USA",
+      "date": "2023",
+      "value": 2.5,
+      "indicator": { "id": "NY.GDP.MKTP.KD.ZG", "value": "GDP growth" }
+    }
+  ]
+]

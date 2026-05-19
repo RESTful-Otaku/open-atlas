@@ -1,0 +1,16 @@
+{
+  "response": {
+    "data": [
+      {
+        "period": "2024-06-01T13",
+        "respondent": "US48",
+        "value": 450000
+      },
+      {
+        "period": "2024-06-01T12",
+        "respondent": "US48",
+        "value": 420000
+      }
+    ]
+  }
+}

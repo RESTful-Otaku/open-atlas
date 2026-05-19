@@ -52,26 +52,47 @@ database, cache, message bus, or REST read surface.
   `Signal`, …) shared between the ingest service and the module at the
   wire boundary.
 
-## Quick Start with `dev.sh`
+## Quick Start with `dev.sh` / `make`
 
-`dev.sh` orchestrates the whole stack. It uses
-[charmbracelet/gum](https://github.com/charmbracelet/gum) for a polished
-interactive menu when installed and falls back to plain shell otherwise.
+`dev.sh` (and the thin `Makefile`) orchestrate build, run, verify, and tear-down.
+Use [charmbracelet/gum](https://github.com/charmbracelet/gum) for a nicer menu, or
+run commands directly / via `make`.
 
 ```bash
-./dev.sh                   # short interactive menu
-./dev.sh all               # full stack with live open-data; opens browser
-./dev.sh all:sim|up        # same with simulated feeds only (safe default)
-./dev.sh up:live           # alias for "all" (live feeds)
-./dev.sh down              # stop ingest, LLM bridge, SpacetimeDB
-./dev.sh web|web:demo      # Vite on :5173 (normal); demo = no SpacetimeDB
-./dev.sh check             # test + lint
-./dev.sh spacetime:*       # start|stop|publish|build|logs  (unchanged)
-./dev.sh start|start:sim   # ingest only, live or sim
-./dev.sh stop|stop:all|clean
-./dev.sh e2e|e2e:quick|cli|tail|status|test|lint|dashboard
-# ./dev.sh help  —  full non-interactive command list
+# Daily workflow (two terminals, or one with `run`)
+make up              # SpacetimeDB + hybrid ingest + LLM bridge
+make web             # Vite UI → http://localhost:5173
+make down            # stop ingest, LLM, SpacetimeDB
+
+# Same via dev.sh
+./dev.sh up          # default: hybrid (live APIs + simulators for all domains)
+./dev.sh web
+./dev.sh down
+
+# One terminal: backend + UI (Ctrl+C stops Vite only)
+make run             # or  ./dev.sh run
+
+# Fast restart (skip wasm/web rebuild)
+./dev.sh up:fast
+
+# Test & verify
+make test            # fmt + clippy + unit tests
+make verify          # test + subscription SQL + runtime health (if stack up)
+make verify-full     # + prove-live (+ prove-llm when bridge/Ollama up)
+
+Principal-engineering review notes: [docs/REVIEW_REPORT.md](docs/REVIEW_REPORT.md)
+
+# Ingest modes
+./dev.sh up:sim      # simulators only
+./dev.sh up:live     # live public APIs only
+./dev.sh web:demo    # UI only, no SpacetimeDB
+
+./dev.sh help        # full command list
 ```
+
+Local config and API keys stay **out of git**. Run `./scripts/init-local-config.sh`
+(or `./dev.sh init-config`) and see **[docs/CONFIG.md](docs/CONFIG.md)** for
+`.env`, `.dev/local.env`, `.dev/feed-secrets.json`, and `web/.env`.
 
 Ingest PID and logs live under `.dev/server.{pid,log}`; SpacetimeDB
 state lives under `.dev/spacetime-data/` with logs in
@@ -93,15 +114,15 @@ spacetime start --listen-addr 127.0.0.1:3000 &
 spacetime publish --server http://127.0.0.1:3000 \
   --module-path crates/openatlas-stdb-module --yes openatlas
 
-# 2. Run the ingest service (simulators on, live feeds off by default).
-cargo run -p openatlas-ingest
+# 2. Run the ingest service (simulated feeds by default).
+OPENATLAS_INGEST_MODE=sim cargo run -p openatlas-ingest
 
 # 3. Run the Svelte dev server.
 cd web && bun install && bun run dev
 # → http://localhost:5173
 ```
 
-`./dev.sh all` and `./dev.sh start` already set `OPENATLAS_ENABLE_LIVE_FEEDS=1`
+`./dev.sh up` (hybrid/live) and `./dev.sh start` already set `OPENATLAS_ENABLE_LIVE_FEEDS=1`
 and start **`openatlas-llm-bridge`** (unless `OPENATLAS_START_LLM=0`). The bridge
 listens on `127.0.0.1:3847` and forwards to Ollama; the Vite dev server proxies
 `/api/llm` there (see `web/vite.config.ts`).
@@ -113,9 +134,8 @@ If the bridge starts before Ollama, you still get ingest and the UI, but
 
 For the Svelte app with the proxy, use **`./dev.sh web`** (same as
 `dev:frontend`, or `cd web && bun run dev`) on port **5173** while the stack
-from `./dev.sh` is running. The non-interactive **`./dev.sh all`** does not
-start Vite; it only opens the browser URL, which needs a dev server (or use
-ingest’s static host on :8080 if you built `web/dist`).
+from `./dev.sh` is running. **`./dev.sh up`** does not start Vite by default; use
+**`./dev.sh web`** or **`make run`** for the dev UI (or serve `web/dist` via ingest on :8080).
 
 For ad-hoc bridge only: `cargo run -p openatlas-llm-bridge` (same env vars as
 `crates/openatlas-llm-bridge` / `./dev.sh llm:start`).
@@ -140,8 +160,18 @@ and `/status` seeding are all driven by `feeds::REGISTRY`.
 | FRED (St. Louis)  | `finance`      | `FRED_API_KEY`   | 600 s        |
 | EIA               | `energy`       | `EIA_API_KEY`    | 900 s        |
 
-Feeds that require a secret stay dormant until the corresponding env
-var is set. All feeds are gated behind `OPENATLAS_ENABLE_LIVE_FEEDS=1`.
+Outbound calls are rate-limited per provider and per API host; Settings **Test** has a
+30s cooldown per feed. See [docs/RATE_LIMITS.md](docs/RATE_LIMITS.md).
+
+Data path: APIs → ingest → SpacetimeDB → WebSocket subscriptions → bounded UI cache.
+See [docs/DATA_PLANE.md](docs/DATA_PLANE.md).
+
+Feeds that require a secret stay dormant until `FRED_API_KEY` / `EIA_API_KEY`
+are set in **`.dev/feed-secrets.json`** (gitignored) or via **Settings → API keys**.
+See [docs/CONFIG.md](docs/CONFIG.md). Live adapters require `hybrid` or `live`
+(default for `./dev.sh up`).
+
+Deploying to SpacetimeDB Cloud or a single host: see [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## CLI
 
@@ -192,9 +222,11 @@ transaction.
 | ---------------------------- | ----------------------- | ------------------------------------------- |
 | `OPENATLAS_STDB_URI`         | `http://127.0.0.1:3000` | SpacetimeDB HTTP endpoint (ingest + CLI)    |
 | `OPENATLAS_STDB_DB`          | `openatlas`             | Database/module name                        |
-| `OPENATLAS_ENABLE_LIVE_FEEDS`| unset                   | `1` enables live-feed adapters              |
+| `OPENATLAS_INGEST_MODE`      | `sim` (or `live` via `./dev.sh start`) | `sim` · `live` · `static` — how ingest sources events |
+| `OPENATLAS_ENABLE_LIVE_FEEDS`| unset                   | Legacy: `1` implies `live` when ingest mode is unset |
 | `OPENATLAS_API_KEY`          | unset                   | Reject `/status`-adjacent admin writes unless `x-openatlas-key` matches |
-| `FRED_API_KEY`, `EIA_API_KEY`| unset                   | Enable the respective feeds                 |
+| `FRED_API_KEY`, `EIA_API_KEY`| unset (or `.dev/feed-secrets.json`) | FRED / EIA feeds; see Settings or `docs/feed-secrets.example.json` |
+| `OPENATLAS_FEED_SECRETS`     | `.dev/feed-secrets.json`| Alternate path for persisted feed API keys  |
 | `VITE_STDB_URI`, `VITE_STDB_DB` | same as above        | Used by the Svelte dashboard at build time  |
 | `VITE_LLM_BASE`            | unset (`/api/llm` in Vite) | Public URL of the LLM bridge for production |
 | `OPENATLAS_OLLAMA_BASE`    | `http://127.0.0.1:11434` | Ollama HTTP API (bridge → model)         |

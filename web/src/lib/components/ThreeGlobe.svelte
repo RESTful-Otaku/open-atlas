@@ -1,16 +1,38 @@
 <!--
-  3D Earth: Three.js + globe.gl — full orbit (polar 0..π), zoom, pan.
+  3D Earth: Three.js + globe.gl — photoreal day/night, orbit/flight/ship paths,
+  zoom-aware layers, causal arcs above the surface.
 -->
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import type { GlobeInstance } from "globe.gl";
 
+  import { cartoRasterTileUrl, mapThemeFor } from "../theme-map";
+  import { onThemeChange, readThemeFromDocument } from "../theme-events";
+  import type { ThemeId } from "../theme.svelte";
+  import { debounce } from "../debounce-raf";
   import { navigate } from "../router.svelte";
+  import { dashboardData } from "../dashboard-revision.svelte";
+  import { getGeoEventIndex } from "../geo-event-index";
   import { dashboard } from "../state.svelte";
   import { buildDemoWeatherPathsForGlobe, type GlobePathDatum } from "../map/map-weather-globe";
   import {
+    GLOBE_STARS_BACKGROUND,
+    loadDayNightGlobeMaterial,
+    updateDayNightGlobeRotation,
+    updateDayNightSun,
+    type DayNightGlobeMaterial,
+  } from "../map/globe-day-night";
+  import {
+    heatmapBandwidthForZoom,
+    scaledArcStroke,
+    scaledPointRadius,
+    zoomScaleFromAltitude,
+  } from "../map/globe-zoom-scale";
+  import { buildAllTrackingPaths } from "../map/tracking-paths";
+  import {
     buildGlobeArcs,
     buildGlobePoints,
+    buildMoonMarkerPoint,
     buildPerDomainHeatmaps,
     buildSunMarkerPoint,
     buildTerminatorPath,
@@ -28,27 +50,31 @@
     mode: Mode;
     showTerminator: boolean;
     showSubsun: boolean;
+    showMoon: boolean;
     showCausal: boolean;
+    /** Photoreal day/night shader with city lights (disables raster tiles). */
+    showPhotorealEarth?: boolean;
+    /** Orbit rings, flight trails, shipping lanes. */
+    showTrackingPaths?: boolean;
     mapDomainSet: ReadonlySet<string>;
     simUtcMs: number;
-    /** NORAD / ADS-B / maritime (see `public/tracking/`) */
     publicTracking: GlobeEventPoint[];
-    /**
-     * Wind + pressure-style contours (static demo, aligned with 2D `SRC_DEMO` wind
-     * and contour).
-     */
+    trackingPathRows?: readonly import("../tracking/public-tracking").PublicTrackRow[];
     showWeatherOverlays?: boolean;
-    /** Local px + event id for hover cards (excludes sun + public tracking). */
     onMapPointScreen?: (d: MapPointScreen | null) => void;
   }
   let {
     mode = "both",
     showTerminator = true,
     showSubsun = true,
+    showMoon = true,
     showCausal = true,
+    showPhotorealEarth = true,
+    showTrackingPaths = true,
     mapDomainSet,
     simUtcMs,
     publicTracking = [],
+    trackingPathRows = [],
     showWeatherOverlays = true,
     onMapPointScreen = undefined,
   }: Props = $props();
@@ -57,22 +83,57 @@
   let ro: ResizeObserver | null = null;
   let globe: GlobeInstance | null = null;
   let lastHover: GlobeEventPoint | null = null;
-  /** False until globe.gl reports the textured globe is ready (or fallback timeout). */
   let globeReady = $state(false);
+  let themeId = $state<ThemeId>(readThemeFromDocument());
+  let dayNightMaterial: DayNightGlobeMaterial | null = $state(null);
+  let cameraAltitude = $state(2.28);
+  let photorealActive = $state(false);
 
-  const BG = "#040a14";
+  function applyCartoTheme(g: GlobeInstance, theme: ThemeId): void {
+    const spec = mapThemeFor(theme);
+    g.globeTileEngineMaxLevel(6)
+      .globeTileEngineUrl((x, y, level) =>
+        cartoRasterTileUrl(theme, x, y, level),
+      )
+      .backgroundColor(spec.globeBackground)
+      .atmosphereColor(spec.globeAtmosphereColor)
+      .atmosphereAltitude(0.16);
+  }
 
-  /** CARTO dark-matter *raster* (XYZ Web Mercator), aligned with 2D map lat/lon. */
-  const CARTO_SUBS = "abcd" as const;
-  function cartoDarkAllTileUrl(x: number, y: number, level: number): string {
-    const s = CARTO_SUBS[(x + y + level) % CARTO_SUBS.length];
-    return `https://${s}.basemaps.cartocdn.com/dark_all/${level}/${x}/${y}.png`;
+  function applyPhotorealGlobe(g: GlobeInstance): void {
+    if (!dayNightMaterial) return;
+    photorealActive = true;
+    g.showGlobe(true)
+      .globeTileEngineMaxLevel(0)
+      .globeMaterial(dayNightMaterial)
+      .backgroundImageUrl(GLOBE_STARS_BACKGROUND)
+      .atmosphereColor("rgba(120, 180, 255, 0.42)")
+      .atmosphereAltitude(0.2);
+    updateDayNightSun(dayNightMaterial, simUtcMs);
+    const pov = g.pointOfView();
+    updateDayNightGlobeRotation(dayNightMaterial, pov.lng ?? 0, pov.lat ?? 0);
+  }
+
+  function applyGlobeTheme(g: GlobeInstance, theme: ThemeId): void {
+    if (showPhotorealEarth && dayNightMaterial) {
+      applyPhotorealGlobe(g);
+      return;
+    }
+    photorealActive = false;
+    applyCartoTheme(g, theme);
+    g.backgroundImageUrl(null);
   }
 
   function updateLayers(): void {
     const g = globe;
     if (!g) return;
-    const events = dashboard.events;
+
+    if (photorealActive && dayNightMaterial) {
+      updateDayNightSun(dayNightMaterial, simUtcMs);
+    }
+
+    const z = zoomScaleFromAltitude(cameraAltitude);
+    const events = getGeoEventIndex(dashboard.events).events;
     const wantPointsMode = mode === "points" || mode === "both";
     const wantHeat = mode === "heat" || mode === "both";
 
@@ -82,6 +143,10 @@
     if (showSubsun) {
       const sun = buildSunMarkerPoint(simUtcMs);
       if (sun) eventPts = [...eventPts, sun];
+    }
+    if (showMoon) {
+      const moon = buildMoonMarkerPoint(simUtcMs);
+      if (moon) eventPts = [...eventPts, moon];
     }
     const tr = publicTracking.length ? publicTracking : [];
     const arcs = buildGlobeArcs(events, dashboard.recentCausalEdges, mapDomainSet);
@@ -98,10 +163,10 @@
         (d: object) => (t: number) =>
           heatColorForDomain((d as GlobeHeatmapDatum).color, t),
       )
-      .heatmapBandwidth(5.4)
+      .heatmapBandwidth(heatmapBandwidthForZoom(cameraAltitude))
       .heatmapColorSaturation(2.1)
-      .heatmapBaseAltitude(0.0048)
-      .heatmapTopAltitude(0.0048)
+      .heatmapBaseAltitude(0.0048 * Math.min(1.4, z))
+      .heatmapTopAltitude(0.0048 * Math.min(1.4, z))
       .heatmapsTransitionDuration(0);
 
     g.pointsData([...eventPts, ...tr])
@@ -111,12 +176,14 @@
       .pointAltitude((d) => (d as GlobeEventPoint).altitude ?? 0.006)
       .pointRadius((d) => {
         const p = d as GlobeEventPoint;
-        return p.r * (p.kind === "sun" ? 1.4 : 1);
+        const base = p.r * (p.kind === "sun" ? 1.35 : p.kind === "moon" ? 1.1 : 1);
+        return scaledPointRadius(base, cameraAltitude);
       })
-      .pointResolution(14)
+      .pointResolution(16)
       .pointLabel((d) => {
         const p = d as GlobeEventPoint;
         if (p.kind === "sun") return "Subsolar point";
+        if (p.kind === "moon") return "Moon (approx.)";
         if (p.kind === "tracking" && p.trackLabel)
           return `${p.trackClass ?? "track"} · ${p.trackLabel}`;
         return `${p.domain} · ${p.id.slice(0, 12)}`;
@@ -127,8 +194,11 @@
         (a: object) =>
           [((a as GlobeArc).color), (a as GlobeArc).color] as [string, string],
       )
-      .arcStroke((a: object) => (a as GlobeArc).w * 0.5)
-      .arcAltitude(0.1)
+      .arcStroke((a: object) =>
+        scaledArcStroke((a as GlobeArc).w * 0.5, cameraAltitude),
+      )
+      .arcAltitude((a: object) => (a as GlobeArc).altitude)
+      .arcAltitudeAutoScale(0)
       .arcLabel((a: object) => (a as GlobeArc).id);
 
     const termCoords: [number, number, number][] = showTerminator
@@ -138,8 +208,8 @@
     if (termCoords.length > 2) {
       pathRows.push({
         path: termCoords,
-        color: "rgba(180, 210, 255, 0.5)",
-        stroke: 0.45,
+        color: mapThemeFor(themeId).terminatorStroke,
+        stroke: 0.45 * Math.sqrt(z),
         dashLength: 1,
         dashGap: 0,
       });
@@ -147,16 +217,43 @@
     if (showWeatherOverlays) {
       pathRows.push(...buildDemoWeatherPathsForGlobe());
     }
+    if (showTrackingPaths) {
+      pathRows.push(
+        ...buildAllTrackingPaths(new Date(simUtcMs), trackingPathRows),
+      );
+    }
+
     g.pathsData(pathRows)
       .pathPoints((d) => (d as GlobePathDatum).path)
       .pathPointLat((p) => (p as [number, number, number])[0])
       .pathPointLng((p) => (p as [number, number, number])[1])
       .pathPointAlt((p) => (p as [number, number, number])[2] ?? 0.0025)
       .pathColor((d: object) => (d as GlobePathDatum).color)
-      .pathStroke((d: object) => (d as GlobePathDatum).stroke)
+      .pathStroke((d: object) => (d as GlobePathDatum).stroke * Math.sqrt(z))
       .pathDashLength((d) => (d as GlobePathDatum).dashLength ?? 1)
       .pathDashGap((d) => (d as GlobePathDatum).dashGap ?? 0)
       .pathDashInitialGap(0);
+  }
+
+  function onCameraChange(g: GlobeInstance): void {
+    const pov = g.pointOfView();
+    if (Number.isFinite(pov.altitude)) {
+      cameraAltitude = pov.altitude;
+    }
+    if (photorealActive && dayNightMaterial) {
+      updateDayNightGlobeRotation(
+        dayNightMaterial,
+        pov.lng ?? 0,
+        pov.lat ?? 0,
+      );
+    }
+    if (onMapPointScreen && lastHover) {
+      const al = lastHover.altitude ?? 0.006;
+      const xy = g.getScreenCoords(lastHover.lat, lastHover.lng, al);
+      if (xy) {
+        onMapPointScreen({ x: xy.x, y: xy.y, id: lastHover.id });
+      }
+    }
   }
 
   onMount(() => {
@@ -172,9 +269,13 @@
       const failOpen = (): void => {
         if (!cancelled) globeReady = true;
       };
-      loadSafetyTimer = window.setTimeout(failOpen, 12_000);
+      loadSafetyTimer = window.setTimeout(failOpen, 14_000);
 
       try {
+        if (showPhotorealEarth) {
+          dayNightMaterial = await loadDayNightGlobeMaterial();
+        }
+
         const { default: GConstructor } = await import("globe.gl");
         if (cancelled || !root) {
           if (loadSafetyTimer !== undefined) window.clearTimeout(loadSafetyTimer);
@@ -184,7 +285,11 @@
         const g: GlobeInstance = new GConstructor(root, {
           animateIn: false,
           waitForGlobeReady: true,
-          rendererConfig: { antialias: false, alpha: true, powerPreference: "high-performance" },
+          rendererConfig: {
+            antialias: true,
+            alpha: true,
+            powerPreference: "high-performance",
+          },
         });
         globe = g;
 
@@ -199,16 +304,15 @@
           });
         };
 
-        g.backgroundColor(BG)
-          .showGlobe(true)
-          .globeTileEngineUrl(cartoDarkAllTileUrl)
-          .globeTileEngineMaxLevel(6)
+        applyGlobeTheme(g, themeId);
+        g.showGlobe(true)
+          .globeTileEngineMaxLevel(showPhotorealEarth ? 0 : 6)
           .showAtmosphere(true)
-          .atmosphereColor("rgb(80, 130, 190)")
-          .atmosphereAltitude(0.16)
+          .atmosphereAltitude(showPhotorealEarth ? 0.2 : 0.16)
           .enablePointerInteraction(true);
 
         g.pointOfView({ lat: 12, lng: -25, altitude: 2.28 }, 0);
+        cameraAltitude = 2.28;
 
         const ctrls = g.controls();
         ctrls.enableDamping = true;
@@ -233,12 +337,6 @@
 
         g.pathTransitionDuration(0);
 
-        /**
-         * OrbitControl wheel zoom is disabled unless Ctrl (or ⌘) is held — same idea as
-         * MapLibre `cooperativeGestures`. Stopping delivery to the canvas avoids
-         * `preventDefault` so the shell main column can scroll; when the modifier
-         * is down, the canvas receives the wheel and zooms.
-         */
         onWheelBlock = (e: WheelEvent) => {
           if (!e.ctrlKey && !e.metaKey) e.stopImmediatePropagation();
         };
@@ -261,7 +359,7 @@
             return;
           }
           const p = pt as GlobeEventPoint;
-          if (p.kind === "sun" || p.kind === "tracking") {
+          if (p.kind === "sun" || p.kind === "moon" || p.kind === "tracking") {
             lastHover = null;
             onMapPointScreen(null);
             return;
@@ -276,18 +374,8 @@
           }
         });
 
-        g.controls().addEventListener("change", () => {
-          if (!onMapPointScreen || !lastHover) return;
-          const al = lastHover.altitude ?? 0.006;
-          const xy = g.getScreenCoords(
-            lastHover.lat,
-            lastHover.lng,
-            al,
-          );
-          if (xy) {
-            onMapPointScreen({ x: xy.x, y: xy.y, id: lastHover.id });
-          }
-        });
+        g.onZoom(() => onCameraChange(g));
+        g.controls().addEventListener("change", () => onCameraChange(g));
 
         onLeaveHandler = (): void => {
           if (!onMapPointScreen) return;
@@ -312,7 +400,13 @@
       }
     };
     void run();
+    const offTheme = onThemeChange((t) => {
+      themeId = t;
+      if (globe) applyGlobeTheme(globe, t);
+      scheduleUpdateLayers();
+    });
     return () => {
+      offTheme();
       cancelled = true;
       if (loadSafetyTimer !== undefined) window.clearTimeout(loadSafetyTimer);
       if (_layerRaf) {
@@ -342,7 +436,6 @@
     };
   });
 
-  /** Coalesce rapid state churn to one `updateLayers` per animation frame. */
   let _layerRaf: number = 0;
   function scheduleUpdateLayers(): void {
     if (!globe) return;
@@ -353,18 +446,32 @@
     });
   }
 
+  /** Coalesce burst STDB updates; camera moves no longer rebuild all layers. */
+  const scheduleUpdateLayersThrottled = debounce(scheduleUpdateLayers, 200);
+
   $effect(() => {
-    void dashboard.events;
+    void showPhotorealEarth;
+    void dayNightMaterial;
+    if (globe) applyGlobeTheme(globe, themeId);
+  });
+
+  $effect(() => {
+    void dashboardData.revision;
     void dashboard.recentCausalEdges;
     void mapDomainSet;
     void simUtcMs;
     void showTerminator;
     void showSubsun;
+    void showMoon;
     void showCausal;
+    void showPhotorealEarth;
+    void showTrackingPaths;
     void mode;
     void publicTracking;
+    void trackingPathRows;
     void showWeatherOverlays;
-    scheduleUpdateLayers();
+    void dayNightMaterial;
+    scheduleUpdateLayersThrottled();
   });
 </script>
 
@@ -373,15 +480,10 @@
     bind:this={root}
     class="oa-three-globe"
     role="img"
-    aria-label="Rotatable three-dimensional Earth globe with data overlays"
+    aria-label="Rotatable three-dimensional Earth globe with live data overlays"
   >
     <p class="oa-three-globe-attr" aria-hidden="true">
-      © CARTO ·
-      <a
-        href="https://www.openstreetmap.org/copyright"
-        rel="noreferrer"
-        target="_blank">OSM</a>
-      ·
+      Earth © NASA / three-globe ·
       <a href="https://celestrak.org" rel="noreferrer" target="_blank">CelesTrak</a> ·
       <a href="https://opensky-network.org" rel="noreferrer" target="_blank">OpenSky</a>
     </p>
@@ -427,16 +529,16 @@
     bottom: 0.25rem;
     margin: 0;
     z-index: 2;
-    max-width: min(12rem, 100%);
+    max-width: min(14rem, 100%);
     font-size: 0.65rem;
     line-height: 1.2;
-    color: rgba(200, 210, 220, 0.55);
+    color: var(--globe-attrib);
     pointer-events: auto;
   }
   .oa-three-globe-attr a {
     color: inherit;
     text-decoration: underline;
-    text-decoration-color: rgba(200, 210, 220, 0.45);
+    text-decoration-color: color-mix(in srgb, var(--globe-attrib) 80%, transparent);
   }
 
   .oa-globe-load-overlay {
@@ -447,9 +549,9 @@
     place-items: center;
     background: radial-gradient(
       ellipse 85% 70% at 50% 45%,
-      rgba(6, 14, 28, 0.55) 0%,
-      rgba(4, 10, 20, 0.92) 62%,
-      rgba(2, 6, 14, 0.97) 100%
+      var(--globe-overlay-from) 0%,
+      var(--globe-overlay-mid) 62%,
+      var(--globe-overlay-to) 100%
     );
     backdrop-filter: blur(2px);
     opacity: 1;

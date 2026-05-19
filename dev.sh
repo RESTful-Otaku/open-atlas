@@ -17,6 +17,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Gitignored .env / .dev/local.env / feed-secrets.json (see docs/CONFIG.md).
+# shellcheck source=scripts/load-local-env.sh
+source "${SCRIPT_DIR}/scripts/load-local-env.sh"
+
 # ----------------------------------------------------------------------------
 # Configuration (override via environment variables before invoking)
 # ----------------------------------------------------------------------------
@@ -323,21 +327,34 @@ do_spacetime_logs() {
 # ----------------------------------------------------------------------------
 # Server lifecycle
 # ----------------------------------------------------------------------------
+ingest_mode_running() {
+    curl -sf "${STATUS_URL}" 2>/dev/null | jq -r '.ingest_mode // ""' 2>/dev/null || true
+}
+
 start_server() {
-    local with_live_feeds="$1"
+  # Ingest mode: live (real APIs), sim, hybrid (both), static (fixture burst).
+    local ingest_mode="${1:-live}"
     if server_pid >/dev/null; then
-        style_warn "ingest already running (pid=$(server_pid))"
-        return 0
+        local running
+        running="$(ingest_mode_running)"
+        if [[ -n "$running" && "$running" != "$ingest_mode" ]]; then
+            style_warn "ingest running in mode=${running}; restarting as ${ingest_mode}"
+            stop_server
+        else
+            style_warn "ingest already running (pid=$(server_pid), mode=${running:-unknown})"
+            return 0
+        fi
     fi
     if ! stdb_pid >/dev/null; then
         style_warn "spacetimedb not running; starting and publishing module"
         do_spacetime_start
         do_spacetime_publish
     fi
-    style_header "▶️  Starting openatlas-ingest (feeds → spacetimedb)"
+    style_header "▶️  Starting openatlas-ingest (mode=${ingest_mode} → spacetimedb)"
     : > "$LOG_FILE"
     (
-        if [[ "$with_live_feeds" == "1" ]]; then
+        export OPENATLAS_INGEST_MODE="$ingest_mode"
+        if [[ "$ingest_mode" == "live" || "$ingest_mode" == "hybrid" ]]; then
             export OPENATLAS_ENABLE_LIVE_FEEDS=1
         else
             unset OPENATLAS_ENABLE_LIVE_FEEDS
@@ -442,8 +459,15 @@ wait_for_llm_bridge_healthy() {
             style_ok "LLM bridge healthy at $LLM_HEALTH_URL"
             if curl -sf "http://${LLM_LISTEN_ADDR}/v1/ready" >/dev/null 2>&1; then
                 style_ok "Ollama reachable through bridge (GET /v1/ready OK)"
+                if curl -sf --max-time 120 "http://${LLM_LISTEN_ADDR}/v1/capable" >/dev/null 2>&1; then
+                    style_ok "Model inference OK (GET /v1/capable)"
+                else
+                    style_warn "Ollama is up but inference failed (CUDA/GPU mismatch is common on GTX 10xx)."
+                    style_muted "Stop \`ollama serve\`, then: ./scripts/ollama-serve-cpu.sh  (or CUDA_VISIBLE_DEVICES=\"\" ollama serve)"
+                fi
             else
                 style_warn "Ollama not ready — start \`ollama serve\` and \`ollama pull ${OPENATLAS_OLLAMA_MODEL:-llama3.2}\` (see bridge log: $LLM_LOG_FILE)"
+                style_muted "GPU/CUDA errors: ./dev.sh ollama:cpu"
             fi
             return 0
         fi
@@ -454,6 +478,22 @@ wait_for_llm_bridge_healthy() {
         fi
         sleep 0.4
     done
+}
+
+do_ollama_cpu() {
+    style_header "🦙 Ollama CPU-only (CUDA_VISIBLE_DEVICES=\"\")"
+    style_muted "Use when inference fails with: architectural feature absent from the device"
+  chmod +x "$SCRIPT_DIR/scripts/ollama-serve-cpu.sh" 2>/dev/null || true
+    if pgrep -x ollama >/dev/null 2>&1; then
+        style_warn "An ollama process is already running. Stop it first, e.g.:"
+        style_muted "  systemctl --user stop ollama   # if using systemd"
+        style_muted "  kill \$(pgrep -x ollama)       # ad-hoc serve"
+        style_muted "Then re-run: ./dev.sh ollama:cpu"
+        return 1
+    fi
+    "$SCRIPT_DIR/scripts/ollama-serve-cpu.sh" --background
+    style_ok "CPU-only Ollama started. Pull a model if needed: ollama pull ${OPENATLAS_OLLAMA_MODEL:-llama3.2}"
+    style_muted "Then: ./dev.sh llm:start  and test Hub → AI analysis"
 }
 
 stop_llm_bridge() {
@@ -510,11 +550,15 @@ stop_server() {
 
 do_status() {
     style_header "📊 Status"
-    if pid="$(server_pid)"; then
-        style_ok "server running (pid=${pid})"
+    if pid="$(stdb_pid)"; then
+        style_ok "spacetimedb running (pid=${pid})"
     else
-        style_warn "server not running"
-        return 0
+        style_warn "spacetimedb not running"
+    fi
+    if pid="$(server_pid)"; then
+        style_ok "ingest running (pid=${pid})"
+    else
+        style_warn "ingest not running"
     fi
     require_cmd curl
     if curl -sf "$HEALTH_URL" >/dev/null; then
@@ -523,13 +567,65 @@ do_status() {
     local status
     if status="$(curl -sf "$STATUS_URL" 2>/dev/null)"; then
         if command -v jq >/dev/null 2>&1; then
-            echo "$status" | jq '.'
+            echo "$status" | jq '{ingest_mode, simulators_enabled, live_feeds_enabled, stdb_reachable, uptime_seconds, feeds: [.feeds[] | {name, enabled, success_count, failure_count, last_error}]}'
         else
             echo "$status"
         fi
     else
         style_warn "/status not reachable yet"
     fi
+}
+
+do_feed_status() {
+    require_cmd curl
+    require_cmd jq
+    style_header "📡 Live feed status"
+    if ! server_pid >/dev/null; then
+        style_warn "ingest not running — start with: ./dev.sh start"
+        return 1
+    fi
+    curl -sf "$STATUS_URL" | jq -r '
+      "ingest_mode: \(.ingest_mode)  live_feeds: \(.live_feeds_enabled)  stdb: \(.stdb_reachable)",
+      "",
+      (.feeds[] | "\(.name)\t enabled=\(.enabled)\t ok=\(.success_count)\t fail=\(.failure_count)\t \(if .last_error then .last_error[0:72] else "-" end)")'
+}
+
+do_prove_llm() {
+    require_cmd curl
+    require_cmd jq
+    style_header "🔬 Proving LLM bridge → Ollama"
+    if ! llm_bridge_pid >/dev/null; then
+        start_llm_bridge || return 1
+    fi
+  "$SCRIPT_DIR/scripts/prove-llm-stack.sh"
+    style_ok "LLM STACK VERIFIED"
+}
+
+do_prove_live() {
+    require_cmd jq
+    style_header "🔬 Proving live API → SpacetimeDB pipeline"
+  if ! stdb_pid >/dev/null; then
+        do_spacetime_start
+        do_spacetime_publish
+    fi
+    if server_pid >/dev/null; then
+        local running
+        running="$(ingest_mode_running)"
+        if [[ "$running" != "live" ]]; then
+            stop_server
+        fi
+    fi
+    if ! server_pid >/dev/null; then
+        start_server live || return 1
+    fi
+    "$SCRIPT_DIR/scripts/prove-live-stack.sh"
+}
+
+do_down() {
+    stop_server
+    stop_llm_bridge
+    do_spacetime_stop
+    style_ok "full stack stopped"
 }
 
 do_logs() {
@@ -547,7 +643,7 @@ do_logs() {
 do_open_dashboard() {
     if ! server_pid >/dev/null; then
         style_warn "server not running; starting (simulated feeds)"
-        start_server 0
+        start_server sim
     fi
     style_header "🌐 Opening ${DASHBOARD_URL}"
     if command -v xdg-open >/dev/null; then
@@ -656,32 +752,110 @@ do_clean() {
 # ----------------------------------------------------------------------------
 # Composite tasks
 # ----------------------------------------------------------------------------
-do_all() {
-    style_header "Full stack (live open-data feeds)"
-    do_spacetime_build
+
+print_web_hint() {
+    style_muted "UI: ./dev.sh web  or  make web  →  ${DASHBOARD_URL}  (proxies ingest + /api/llm)"
+}
+
+# Bring up SpacetimeDB + ingest + LLM. Mode: sim | live | hybrid | static.
+# Set OPENATLAS_SKIP_BUILD=1 to skip wasm + web dist rebuild (faster restarts).
+stack_up() {
+    local ingest_mode="${1:-${OPENATLAS_INGEST_MODE:-hybrid}}"
+    if [[ "${OPENATLAS_SKIP_BUILD:-0}" != "1" ]]; then
+        do_spacetime_build
+    else
+        style_muted "OPENATLAS_SKIP_BUILD=1 — skipping spacetime wasm build"
+    fi
     do_spacetime_start
     do_spacetime_publish
-    do_build_frontend
-    start_server 1
+    if [[ "${OPENATLAS_SKIP_BUILD:-0}" != "1" ]]; then
+        do_build_frontend
+    fi
+    start_server "$ingest_mode"
+}
+
+do_all() {
+    style_header "Up — hybrid ingest (live APIs + simulators)"
+    stack_up hybrid
     do_open_dashboard
-    style_muted "Start the web app with: ./dev.sh web  (Vite on :5173; proxies ingest + /api/llm → ${LLM_LISTEN_ADDR})"
+    print_web_hint
 }
 
 do_all_sim() {
-    style_header "Full stack (simulated feeds only)"
-    do_spacetime_build
-    do_spacetime_start
-    do_spacetime_publish
-    do_build_frontend
-    start_server 0
+    style_header "Up — simulated ingest only"
+    stack_up sim
     do_open_dashboard
-    style_muted "Start the web app with: ./dev.sh web  (Vite on :5173)"
+    print_web_hint
+}
+
+do_up_fast() {
+    OPENATLAS_SKIP_BUILD=1 stack_up "${OPENATLAS_INGEST_MODE:-hybrid}"
+    style_ok "stack up (fast — no rebuild). Run: ./dev.sh web"
+}
+
+do_run() {
+    style_header "Run — backend + Vite UI (Ctrl+C stops the UI only)"
+    if ! stdb_pid >/dev/null || ! server_pid >/dev/null; then
+        stack_up "${OPENATLAS_INGEST_MODE:-hybrid}"
+    else
+        style_muted "backend already running — starting Vite only"
+    fi
+    do_dev_frontend
+}
+
+do_verify() {
+    local extra=()
+    if [[ "${1:-}" == "--full" ]]; then
+        extra+=(--full)
+    fi
+    if [[ "${1:-}" == "--quick" ]]; then
+        extra+=(--quick)
+    fi
+    require_cmd bash
+    chmod +x "$SCRIPT_DIR/scripts/verify-stack.sh" 2>/dev/null || true
+    "$SCRIPT_DIR/scripts/verify-stack.sh" "${extra[@]}"
+}
+
+do_clean_force() {
+    style_header "Clean (non-interactive)"
+    stop_server
+    stop_llm_bridge
+    do_spacetime_stop
+    spin "cargo clean" cargo clean
+    rm -rf "$FRONTEND_DIST_DIR" "${FRONTEND_DIR}/node_modules"
+    rm -rf "$STDB_DATA_DIR"
+    style_ok "workspace cleaned"
+}
+
+do_web_check() {
+    require_cmd bun "install from https://bun.sh"
+    style_header "🌐 Web typecheck + unit tests"
+    if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
+        spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
+    fi
+    spin "svelte-check" bash -c "cd '${FRONTEND_DIR}' && bun run check"
+    spin "bun test (web)" bash -c "cd '${FRONTEND_DIR}' && bun test src/lib"
+    style_ok "web checks passed"
+}
+
+do_config_check() {
+    style_header "🔒 Secret path guard"
+    spin "check-no-secrets-in-git" bash "${SCRIPT_DIR}/scripts/check-no-secrets-in-git.sh"
+    style_ok "no tracked secret files"
+}
+
+do_init_config() {
+    style_header "📁 Local config templates"
+    bash "${SCRIPT_DIR}/scripts/init-local-config.sh"
+    style_ok "see docs/CONFIG.md"
 }
 
 do_check() {
     local ec=0
+    do_config_check || ec=1
     do_test || ec=1
     do_lint || ec=1
+    do_web_check || ec=1
     return "$ec"
 }
 
@@ -699,40 +873,39 @@ do_dev_frontend_demo() {
 # ----------------------------------------------------------------------------
 print_help() {
     cat <<'HELP'
-OpenAtlas dev harness  —  ./dev.sh   or   ./dev.sh <command>
+OpenAtlas dev harness  —  ./dev.sh <cmd>   or   make <target>
 
-Common (automation / CI)
-  all                 Full stack: build + SpacetimeDB + ingest (live open-data) + open browser
-  all:sim             Same with simulated feeds only (no live API adapters)
-  up                  Alias for all:sim (safe default)
-  up:live             Alias for all
-  down                Stop ingest, LLM bridge, and SpacetimeDB
-  web                 Vite dev on :5173 (expects backend; proxies to ingest/LLM)
-  web:demo            Vite on :5173 with VITE_DEMO_DATA=1 (UI only, no SpacetimeDB)
-  status              /health and ingest /status
-  build               Spacetime module + web dist + cargo release build
-  check               test + lint
-  clean               Stops services; cargo clean; optional wipe .dev stdb data (prompt)
+Daily (use these)
+  up              SpacetimeDB + publish + hybrid ingest + LLM  (OPENATLAS_INGEST_MODE)
+  up:fast         Same without wasm/web rebuild (OPENATLAS_SKIP_BUILD=1)
+  down            Stop ingest, LLM bridge, SpacetimeDB
+  run             up (if needed) + Vite on :5173 — one terminal
+  web             Vite only (backend must be up)
+  web:demo        UI with synthetic data (no SpacetimeDB)
+  status          Health summary + /status JSON
 
-  test | lint
-  e2e | e2e:quick
-  stop | restart | logs | dashboard
-  spacetime:* | start | start:sim | llm:*   (unchanged, see "Advanced" below)
+Test & build
+  test            fmt + clippy + unit tests
+  build           spacetime wasm + web dist + cargo release
+  verify          test + subscription SQL + runtime checks (if stack up)
+  verify --full   + prove-live (+ prove-llm when bridge up)
+  e2e             Full compile + optional stack smoke (scripts/e2e-qa.sh)
+  e2e:quick       Compile gates only
 
-Advanced (same as before; useful for one-off control)
-  spacetime:build|start|publish|stop|logs
-  start               Ingest with OPENATLAS_ENABLE_LIVE_FEEDS=1
-  start:sim           Ingest simulators only
-  stop                Ingest only
-  stop:all            Ingest + LLM + SpacetimeDB
-  llm:start|stop|logs
-  build:frontend      web/dist only
-  build:cargo         Rust only
-  dev:frontend        Same as "web"
-  tail | cli
-  help                This text
+Ingest modes (with up / stack_up)
+  up:sim          Simulators only
+  up:live         Live public APIs only
+  up:hybrid       Live + simulators (default)
 
-State under .dev/  (PID + logs).  Install gum for a better menu TUI: https://github.com/charmbracelet/gum
+Optional / advanced
+  prove:live | prove:llm | feeds | logs | clean | clean:force
+  start | start:sim | start:hybrid | stop | restart
+  spacetime:build|start|publish|stop|logs | llm:start|stop|logs | ollama:cpu
+  cli | tail | dashboard
+
+Config: ./scripts/init-local-config.sh  or  ./dev.sh init-config  (see docs/CONFIG.md)
+Env: .env, .dev/local.env, .dev/feed-secrets.json, web/.env  — all gitignored
+State: .dev/   Menu: ./dev.sh   Makefile: make help
 HELP
 }
 
@@ -755,8 +928,11 @@ menu_advanced() {
         "Spacetime — logs" \
         "Ingest — start (live)" \
         "Ingest — start (sim)" \
+        "Ingest — start (hybrid)" \
         "Ingest — stop" \
         "Ingest — restart (live)" \
+        "Prove live" \
+        "Feed status" \
         "LLM — start" \
         "LLM — stop" \
         "LLM — logs" \
@@ -771,21 +947,22 @@ menu_advanced() {
         "Spacetime — start")        do_spacetime_start ;;
         "Spacetime — publish")      do_spacetime_publish ;;
         "Spacetime — stop")         do_spacetime_stop ;;
-        "Spacetime — logs")        do_spacetime_logs ;;
-        "Ingest — start (live)")   start_server 1 ;;
-        "Ingest — start (sim)")    start_server 0 ;;
+        "Spacetime — logs")         do_spacetime_logs ;;
+        "Ingest — start (live)")    start_server live ;;
+        "Ingest — start (sim)")     start_server sim ;;
+        "Ingest — start (hybrid)")  start_server hybrid ;;
         "Ingest — stop")            stop_server ;;
-        "Ingest — restart (live)")  stop_server; start_server 1 ;;
+        "Ingest — restart (live)") stop_server; start_server live ;;
+        "Prove live")               do_prove_live ;;
+        "Feed status")              do_feed_status ;;
         "LLM — start")              start_llm_bridge ;;
         "LLM — stop")               stop_llm_bridge ;;
         "LLM — logs")               do_llm_logs ;;
         "Tail — ingest")            do_logs ;;
-        "Tail — SpacetimeDB")      do_spacetime_logs ;;
-        "E2E QA")                  "$SCRIPT_DIR/scripts/e2e-qa.sh" ;;
+        "Tail — SpacetimeDB")       do_spacetime_logs ;;
+        "E2E QA")                   "$SCRIPT_DIR/scripts/e2e-qa.sh" ;;
         "E2E quick")                "$SCRIPT_DIR/scripts/e2e-qa.sh" --quick ;;
-        "Print full command list")
-            style_muted "Primary commands in ./dev.sh help. Granular: spacetime:* start:sim start …"
-            ;;
+        "Print full command list")  print_help ;;
         "Back"|"")                  return ;;
         *)                          style_warn "unknown: $a" ;;
     esac
@@ -798,59 +975,49 @@ menu() {
         print_status_line
         # Short labels: easy to read, script / gum friendly (no emoji in match strings)
         choice="$(choose \
-            "1  Full stack - LIVE (build+open-data+open browser)" \
-            "2  Full stack - SIM only (build+ingest+open browser)" \
-            "3  Web - Vite :5173 (HMR, use with backend running)" \
-            "4  Web - DEMO (VITE_DEMO_DATA, no SpacetimeDB)" \
-            "5  Open browser" \
-            "6  Stop ALL" \
+            "1  Up — hybrid stack (STDB + ingest + LLM)" \
+            "2  Down — stop everything" \
+            "3  Run — up + web UI (this terminal)" \
+            "4  Web only — Vite :5173" \
+            "5  Verify — test + health checks" \
+            "6  Demo web — no backend" \
             "7  Status" \
-            "8  Build (module + web + rust release)" \
-            "9  Check (test + lint)" \
-            "10 Clean" \
-            "11 Advanced..." \
-            "12 Help" \
-            "13 Quit")" || break
+            "8  Test (fmt/clippy/unit)" \
+            "9  Advanced..." \
+            "10 Help" \
+            "11 Quit")" || break
         case "$choice" in
-            "1  Full stack - LIVE (build+open-data+open browser)")
+            "1  Up — hybrid stack (STDB + ingest + LLM)")
                 do_all
                 ;;
-            "2  Full stack - SIM only (build+ingest+open browser)")
-                do_all_sim
+            "2  Down — stop everything")
+                do_down
                 ;;
-            "3  Web - Vite :5173 (HMR, use with backend running)")
+            "3  Run — up + web UI (this terminal)")
+                do_run
+                ;;
+            "4  Web only — Vite :5173")
                 do_dev_frontend
                 ;;
-            "4  Web - DEMO (VITE_DEMO_DATA, no SpacetimeDB)")
+            "5  Verify — test + health checks")
+                do_verify
+                ;;
+            "6  Demo web — no backend")
                 do_dev_frontend_demo
-                ;;
-            "5  Open browser")
-                do_open_dashboard
-                ;;
-            "6  Stop ALL")
-                stop_server
-                stop_llm_bridge
-                do_spacetime_stop
                 ;;
             "7  Status")
                 do_status
                 ;;
-            "8  Build (module + web + rust release)")
-                do_build_all
-                ;;
-            "9  Check (test + lint)")
+            "8  Test (fmt/clippy/unit)")
                 do_check
                 ;;
-            "10 Clean")
-                do_clean
-                ;;
-            "11 Advanced...")
+            "9  Advanced...")
                 menu_advanced
                 ;;
-            "12 Help")
+            "10 Help")
                 print_help
                 ;;
-            "13 Quit"|"")
+            "11 Quit"|"")
                 break
                 ;;
             *)
@@ -858,8 +1025,8 @@ menu() {
                 ;;
         esac
         case "$choice" in
-            "3  Web - Vite :5173 (HMR, use with backend running)"|"4  Web - DEMO (VITE_DEMO_DATA, no SpacetimeDB)"|"13 Quit"|"")
-                : # Vite runs until Ctrl+C; Quit leaves
+            "3  Run — up + web UI (this terminal)"|"4  Web only — Vite :5173"|"6  Demo web — no backend"|"11 Quit"|"")
+                : # blocking or quit
                 ;;
             *)
                 if [[ -n "$choice" ]]; then
@@ -878,14 +1045,22 @@ main() {
     fi
     case "$1" in
         help|-h|--help)      print_help ;;
-        all)                 do_all ;;
-        all:sim)             do_all_sim ;;
-        up)                  do_all_sim ;;
-        up:live)             do_all ;;
-        down)                stop_server; stop_llm_bridge; do_spacetime_stop ;;
+        all|up|up:hybrid)    do_all ;;
+        up:fast)             do_up_fast ;;
+        up:live)             stack_up live; do_open_dashboard; print_web_hint ;;
+        all:sim|up:sim)      do_all_sim ;;
+        down)                do_down ;;
+        run)                 do_run ;;
+        verify)              do_verify "${2:-}" ;;
+        test)                do_check ;;
+        prove:live)          do_prove_live ;;
+        prove:llm)           do_prove_llm ;;
+        feeds|feed:status)   do_feed_status ;;
         web)                 do_dev_frontend ;;
         web:demo)            do_dev_frontend_demo ;;
         check)               do_check ;;
+        init-config)         do_init_config ;;
+        clean:force)         do_clean_force ;;
         build)               do_build_all ;;
         build:frontend)      do_build_frontend ;;
         dev:frontend)        do_dev_frontend ;;
@@ -895,14 +1070,17 @@ main() {
         spacetime:publish)   do_spacetime_publish ;;
         spacetime:stop)      do_spacetime_stop ;;
         spacetime:logs)      do_spacetime_logs ;;
-        start)               start_server 1 ;;
-        start:sim)           start_server 0 ;;
+        start)               start_server live ;;
+        start:sim)           start_server sim ;;
+        start:hybrid)        start_server hybrid ;;
+        start:static)        start_server static ;;
         stop)                stop_server ;;
         stop:all)            stop_server; stop_llm_bridge; do_spacetime_stop ;;
         llm:start)            start_llm_bridge ;;
         llm:stop)            stop_llm_bridge ;;
         llm:logs)            do_llm_logs ;;
-        restart)             stop_server; start_server 1 ;;
+        ollama:cpu)          do_ollama_cpu ;;
+        restart)             stop_server; start_server live ;;
         status)              do_status ;;
         logs)                do_logs ;;
         dashboard)           do_open_dashboard ;;
@@ -912,6 +1090,7 @@ main() {
         lint)                do_lint ;;
         e2e)                 "$SCRIPT_DIR/scripts/e2e-qa.sh" ;;
         e2e:quick)          "$SCRIPT_DIR/scripts/e2e-qa.sh" --quick ;;
+        e2e:feeds)          "$SCRIPT_DIR/scripts/e2e-qa.sh" --verify-feeds ;;
         clean)               do_clean ;;
         *)
             style_err "unknown command: $1"

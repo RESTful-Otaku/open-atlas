@@ -1,7 +1,10 @@
 /**
- * Public, read-only “live” tracking: NORAD TLEs (Celestrak) + OpenSky (ADS-B) +
- * bundled maritime sample positions. This is a visualization layer only; coverage
- * and license limits apply to each source.
+ * Map decoration layers that are **not** in SpacetimeDB:
+ *   - NORAD TLE files under `/public/tracking/` (propagated client-side)
+ *   - Bundled maritime sample JSON
+ *
+ * **ADS-B aircraft in live mode** come from SpacetimeDB (`stdb-aircraft.ts`),
+ * fed by the ingest `opensky` adapter — do not poll OpenSky from the browser.
  */
 import {
   degreesLat,
@@ -47,6 +50,10 @@ export type PublicTrackRow = {
   lat: number;
   lon: number;
   hKm: number;
+  /** OpenSky true track (degrees). */
+  trueTrackDeg?: number;
+  /** OpenSky horizontal velocity (m/s). */
+  velocityMs?: number;
 };
 
 type TleWork = {
@@ -82,6 +89,24 @@ function geoHint(name: string, line2: string): "geo" | "leo" {
   const inc = parseFloat(line2.slice(8, 16).trim());
   if (Number.isFinite(inc) && inc < 2.0) return "geo";
   return "leo";
+}
+
+export function getTleWorkList(): readonly TleWork[] {
+  return tleWorkList ?? [];
+}
+
+/** Propagate a single TLE at `when` (for orbit path rendering). */
+export function propagateTleAt(
+  name: string,
+  l1: string,
+  l2: string,
+  when: Date,
+  cls: PublicTrackClass,
+  id: string,
+): { lat: number; lon: number; hKm: number } | null {
+  const p = propagateOne(name, l1, l2, when, cls, id);
+  if (!p) return null;
+  return { lat: p.lat, lon: p.lon, hKm: p.hKm };
 }
 
 function propagateOne(
@@ -175,6 +200,8 @@ export function satelliteRowsAtTime(when: Date): PublicTrackRow[] {
 type OpenSkyRow = (number | string | boolean | null)[] | null;
 
 /**
+ * Demo-only fallback. Live dashboards must use {@link aircraftRowsFromTransportEvents}.
+ *
  * @see https://opensky-network.org/apidoc/rest.html — anonymous API; rate-limited.
  */
 export async function loadOpenSkyAircraft(): Promise<PublicTrackRow[]> {
@@ -204,6 +231,8 @@ export async function loadOpenSkyAircraft(): Promise<PublicTrackRow[]> {
     if (typeof lat !== "number" || typeof lon !== "number") continue;
     const altM = typeof baro === "number" ? baro : row[13] as number;
     if (typeof altM !== "number" || !Number.isFinite(altM)) continue;
+    const vel = row[9] as number | null;
+    const track = row[10] as number | null;
     const call = (row[1] != null && String(row[1]).trim()) || icao;
     out.push({
       id: `adsb-${icao}`,
@@ -212,6 +241,8 @@ export async function loadOpenSkyAircraft(): Promise<PublicTrackRow[]> {
       lat,
       lon,
       hKm: altM / 1000,
+      velocityMs: typeof vel === "number" && Number.isFinite(vel) ? vel : undefined,
+      trueTrackDeg: typeof track === "number" && Number.isFinite(track) ? track : undefined,
     });
   }
   return out;
@@ -256,12 +287,17 @@ export function toTrackingGeoJson(rows: PublicTrackRow[]): GeoJSON.FeatureCollec
 export function toTrackingGlobePoints(rows: PublicTrackRow[]): GlobeEventPoint[] {
   return rows.map((r) => {
     const baseAlt = Math.min(0.14, 0.002 + (r.hKm / EARTH_R_KM) * ALT_SCALE);
+    const isIss =
+      r.class.startsWith("sat") && /ISS|CSS|TIANGONG|STATION|HUBBLE/i.test(r.name);
+    const isAir = r.class === "air";
+    let pointR = r.class.startsWith("sat") ? 0.52 : isAir ? 0.4 : 0.36;
+    if (isIss) pointR = 0.78;
     return {
       kind: "tracking" as const,
       lat: r.lat,
       lng: r.lon,
-      color: COLORS[r.class],
-      r: r.class.startsWith("sat") ? 0.55 : r.class === "air" ? 0.42 : 0.38,
+      color: isIss ? "rgba(253, 224, 71, 0.98)" : COLORS[r.class],
+      r: pointR,
       id: r.id,
       domain: "tracking",
       trackLabel: r.name,

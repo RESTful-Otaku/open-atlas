@@ -5,11 +5,15 @@
 
 import type { EChartsOption } from "echarts";
 import type { DeskProfile } from "./domain-desk-types";
+import type { DataMode } from "../../data-source-copy";
+import { deskGeoNote } from "../../data-source-copy";
 import type { UiEvent, UiWorldState } from "../../types";
-
-const textMuted = "#a1a1aa";
-const textMain = "#e4e4e7";
-const gridLine = "rgba(255,255,255,0.06)";
+import {
+  chartGridLine,
+  chartItemBorder,
+  chartTextMain,
+  chartTextMuted,
+} from "../../viz/chart-theme";
 
 function hashStr(s: string): number {
   let h = 2166136261;
@@ -48,21 +52,21 @@ export function rollingStressLine(
   return {
     backgroundColor: "transparent",
     animationDuration: 420,
-    textStyle: { color: textMuted },
+    textStyle: { color: chartTextMuted() },
     tooltip: { trigger: "axis" },
     grid: { left: 44, right: 12, top: 28, bottom: 28 },
     xAxis: {
       type: "category",
       data: labels,
-      axisLabel: { color: textMuted, fontSize: 10 },
-      axisLine: { lineStyle: { color: gridLine } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
     },
     yAxis: {
       type: "value",
       min: 0,
       max: 1,
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     series: [
       {
@@ -99,13 +103,13 @@ export function hourOfDayBars(events: readonly UiEvent[], accent: string): EChar
     xAxis: {
       type: "category",
       data: data.map((_, h) => `${h}h`),
-      axisLabel: { color: textMuted, fontSize: 9, rotate: 45 },
-      axisLine: { lineStyle: { color: gridLine } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9, rotate: 45 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
     },
     yAxis: {
       type: "value",
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     series: [
       {
@@ -151,13 +155,13 @@ export function marketsCandles(domainId: string, accent: string): EChartsOption 
     xAxis: {
       type: "category",
       data: cat,
-      axisLabel: { color: textMuted, fontSize: 9 },
-      axisLine: { lineStyle: { color: gridLine } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
     },
     yAxis: {
       scale: true,
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     series: [
       {
@@ -190,8 +194,8 @@ export function syntheticVolume(domainId: string): EChartsOption {
     },
     yAxis: {
       type: "value",
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     series: [{ type: "line", smooth: 0.4, areaStyle: { opacity: 0.12 }, data: v, lineStyle: { color: "#22d3ee" } }],
   };
@@ -214,14 +218,14 @@ export function cyberKillChainBar(domainId: string, accent: string): EChartsOpti
     grid: { left: 72, right: 16, top: 12, bottom: 12 },
     xAxis: {
       type: "value",
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     yAxis: {
       type: "category",
       data: stages,
-      axisLabel: { color: textMuted, fontSize: 10 },
-      axisLine: { lineStyle: { color: gridLine } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
     },
     series: [
       {
@@ -248,10 +252,10 @@ export function healthRadar(domainId: string, accent: string): EChartsOption {
     tooltip: {},
     radar: {
       indicator: axes.map((n) => ({ name: n, max: 100 })),
-      splitLine: { lineStyle: { color: gridLine } },
+      splitLine: { lineStyle: { color: chartGridLine() } },
       splitArea: { show: false },
-      axisLine: { lineStyle: { color: gridLine } },
-      axisName: { color: textMuted, fontSize: 10 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
+      axisName: { color: chartTextMuted(), fontSize: 10 },
     },
     series: [
       {
@@ -284,12 +288,12 @@ export function spaceGauge(domainId: string, accent: string): EChartsOption {
           },
         },
         pointer: { itemStyle: { color: accent } },
-        title: { offsetCenter: [0, "72%"], color: textMuted, fontSize: 11 },
+        title: { offsetCenter: [0, "72%"], color: chartTextMuted(), fontSize: 11 },
         detail: {
           valueAnimation: true,
           offsetCenter: [0, "42%"],
           fontSize: 22,
-          color: textMain,
+          color: chartTextMain(),
           formatter: "{value}%",
         },
         data: [{ value: v, name: "Conjunction readiness (synthetic)" }],
@@ -314,16 +318,16 @@ export function spaceScatter(domainId: string, accent: string): EChartsOption {
     xAxis: {
       type: "value",
       name: "Orbit phase (arb.)",
-      nameTextStyle: { color: textMuted, fontSize: 10 },
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      nameTextStyle: { color: chartTextMuted(), fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     yAxis: {
       type: "value",
       name: "Alt. km (mock)",
-      nameTextStyle: { color: textMuted, fontSize: 10 },
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      nameTextStyle: { color: chartTextMuted(), fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     series: [
       {
@@ -344,17 +348,17 @@ export function demographicsPyramid(domainId: string, accent: string): EChartsOp
   return {
     backgroundColor: "transparent",
     tooltip: { trigger: "axis" },
-    legend: { textStyle: { color: textMuted }, top: 0 },
+    legend: { textStyle: { color: chartTextMuted() }, top: 0 },
     grid: { left: 48, right: 12, top: 28, bottom: 28 },
     xAxis: {
       type: "value",
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     yAxis: {
       type: "category",
       data: bands,
-      axisLabel: { color: textMuted, fontSize: 10 },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     series: [
       { name: "Cohort A", type: "bar", stack: "t", data: m, itemStyle: { color: accent } },
@@ -363,32 +367,87 @@ export function demographicsPyramid(domainId: string, accent: string): EChartsOp
   };
 }
 
-export function geopoliticalStack(domainId: string): EChartsOption {
-  const rng = pseudoRng(hashStr(domainId) ^ 0x901);
-  const regions = ["AMER", "EMEA", "APAC", "POLAR", "MENA"];
-  const s1 = regions.map(() => Math.floor(rng() * 40));
-  const s2 = regions.map(() => Math.floor(rng() * 35));
-  const s3 = regions.map(() => Math.floor(rng() * 25));
+type GeoRegion = "AMER" | "EMEA" | "APAC" | "MENA" | "POLAR";
+
+function regionBand(lat: number, lon: number): GeoRegion {
+  if (lat > 66.5 || lat < -66.5) return "POLAR";
+  if (lat >= 10 && lon >= -30 && lon < 60) return "MENA";
+  if (lon >= -130 && lon < -30) return "AMER";
+  if (lon >= -30 && lon < 60) return "EMEA";
+  return "APAC";
+}
+
+/** Event counts by coarse region × severity band (geotagged events only). */
+export function geopoliticalRegionBars(events: readonly UiEvent[], accent: string): EChartsOption {
+  const regions: readonly GeoRegion[] = ["AMER", "EMEA", "APAC", "MENA", "POLAR"];
+  const low = new Map(regions.map((r) => [r, 0]));
+  const med = new Map(regions.map((r) => [r, 0]));
+  const hi = new Map(regions.map((r) => [r, 0]));
+  let untagged = 0;
+
+  for (const e of events) {
+    if (!e.location) {
+      untagged += 1;
+      continue;
+    }
+    const band = regionBand(e.location.lat, e.location.lon);
+    const bucket =
+      e.severity_score >= 0.67 ? hi : e.severity_score >= 0.34 ? med : low;
+    bucket.set(band, (bucket.get(band) ?? 0) + 1);
+  }
+
   return {
     backgroundColor: "transparent",
     tooltip: { trigger: "axis" },
-    legend: { textStyle: { color: textMuted }, top: 0 },
-    grid: { left: 44, right: 12, top: 32, bottom: 28 },
+    legend: { textStyle: { color: chartTextMuted() }, top: 0 },
+    grid: { left: 44, right: 12, top: 32, bottom: untagged > 0 ? 40 : 28 },
     xAxis: {
       type: "category",
-      data: regions,
-      axisLabel: { color: textMuted, fontSize: 10 },
+      data: [...regions],
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     yAxis: {
       type: "value",
-      splitLine: { lineStyle: { color: gridLine } },
-      axisLabel: { color: textMuted, fontSize: 10 },
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     series: [
-      { name: "Diplomatic", type: "bar", stack: "a", data: s1, itemStyle: { color: "#f97316" } },
-      { name: "Sanctions", type: "bar", stack: "a", data: s2, itemStyle: { color: "#fb923c" } },
-      { name: "Security", type: "bar", stack: "a", data: s3, itemStyle: { color: "#fdba74" } },
+      {
+        name: "Low",
+        type: "bar",
+        stack: "a",
+        data: regions.map((r) => low.get(r) ?? 0),
+        itemStyle: { color: `${accent}44` },
+      },
+      {
+        name: "Medium",
+        type: "bar",
+        stack: "a",
+        data: regions.map((r) => med.get(r) ?? 0),
+        itemStyle: { color: `${accent}aa` },
+      },
+      {
+        name: "High",
+        type: "bar",
+        stack: "a",
+        data: regions.map((r) => hi.get(r) ?? 0),
+        itemStyle: { color: accent },
+      },
     ],
+    graphic: untagged > 0
+      ? [
+          {
+            type: "text",
+            left: "center",
+            bottom: 4,
+            style: {
+              text: `${untagged} events without coordinates (not shown)`,
+              fill: chartTextMuted(),
+              fontSize: 10,
+            },
+          },
+        ]
+      : undefined,
   };
 }
 
@@ -422,7 +481,7 @@ export function deskTertiarySunburstUtc(events: readonly UiEvent[], accent: stri
   });
   return {
     backgroundColor: "transparent",
-    textStyle: { color: textMuted },
+    textStyle: { color: chartTextMuted() },
     series: [
       {
         type: "sunburst",
@@ -442,7 +501,7 @@ export function deskTertiaryFunnelPipeline(events: readonly UiEvent[]): EChartsO
   const w = events.filter((x) => x.severity_score >= 0.7).length;
   return {
     backgroundColor: "transparent",
-    textStyle: { color: textMuted },
+    textStyle: { color: chartTextMuted() },
     series: [
       {
         type: "funnel",
@@ -484,7 +543,7 @@ export function deskTertiarySankeyStages(events: readonly UiEvent[], accent: str
   ];
   return {
     backgroundColor: "transparent",
-    textStyle: { color: textMuted },
+    textStyle: { color: chartTextMuted() },
     series: [
       {
         type: "sankey",
@@ -492,7 +551,7 @@ export function deskTertiarySankeyStages(events: readonly UiEvent[], accent: str
         data: nodes,
         links,
         lineStyle: { color: "gradient", curveness: 0.35, opacity: 0.4 },
-        label: { color: textMuted, fontSize: 10 },
+        label: { color: chartTextMuted(), fontSize: 10 },
         itemStyle: { color: accent },
       },
     ],
@@ -522,19 +581,19 @@ export function deskTertiaryHeatmapWeekHour(
   const maxV = Math.max(1, ...data.map((x) => x[2]));
   return {
     backgroundColor: "transparent",
-    textStyle: { color: textMuted },
+    textStyle: { color: chartTextMuted() },
     tooltip: { trigger: "item" },
     grid: { left: 40, right: 8, top: 8, bottom: 24 },
     xAxis: {
       type: "category",
       data: hours,
-      axisLabel: { color: textMuted, fontSize: 8, interval: 3 },
+      axisLabel: { color: chartTextMuted(), fontSize: 8, interval: 3 },
       splitArea: { show: true },
     },
     yAxis: {
       type: "category",
       data: days,
-      axisLabel: { color: textMuted, fontSize: 10 },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
     },
     visualMap: {
       min: 0,
@@ -545,7 +604,7 @@ export function deskTertiaryHeatmapWeekHour(
       itemWidth: 12,
       itemHeight: 80,
       inRange: { color: ["#0f172a", accent] },
-      textStyle: { color: textMuted, fontSize: 9 },
+      textStyle: { color: chartTextMuted(), fontSize: 9 },
     },
     series: [{ type: "heatmap", data }],
   };
@@ -570,14 +629,14 @@ export function deskTertiaryThemeRiverOrdinal(
   }
   return {
     backgroundColor: "transparent",
-    textStyle: { color: textMuted },
+    textStyle: { color: chartTextMuted() },
     color: [accent, "#94a3b8", "#22d3ee", "#f97316"],
     singleAxis: {
       top: 36,
       bottom: 24,
       type: "category",
       data: labels,
-      axisLabel: { color: textMuted, fontSize: 9 },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
     },
     series: [{ type: "themeRiver", data }],
   };
@@ -594,7 +653,7 @@ export function deskTertiaryTreemapSeverity(events: readonly UiEvent[], accent: 
   ];
   return {
     backgroundColor: "transparent",
-    textStyle: { color: textMuted },
+    textStyle: { color: chartTextMuted() },
     series: [
       {
         type: "treemap",
@@ -602,7 +661,11 @@ export function deskTertiaryTreemapSeverity(events: readonly UiEvent[], accent: 
         breadcrumb: { show: false },
         data,
         label: { fontSize: 11, color: "#fafafa" },
-        itemStyle: { borderColor: "#09090b", borderWidth: 1, gapWidth: 2 },
+        itemStyle: {
+          borderColor: chartItemBorder(),
+          borderWidth: 1,
+          gapWidth: 2,
+        },
       },
     ],
   };
@@ -620,7 +683,7 @@ export function deskTertiaryParallelSignals(events: readonly UiEvent[]): ECharts
   if (rows.length === 0) rows.push([12, 40, 45, 120]);
   return {
     backgroundColor: "transparent",
-    textStyle: { color: textMuted },
+    textStyle: { color: chartTextMuted() },
     parallelAxis: [
       { dim: 0, name: "Hour (UTC)", min: 0, max: 23 },
       { dim: 1, name: "Severity ×100", min: 0, max: 100 },
@@ -655,81 +718,85 @@ export function deskChartPack(
     events: readonly UiEvent[];
     severityHistory: readonly number[];
     state?: UiWorldState;
+    dataMode?: DataMode;
   },
 ): DeskChartPack {
-  const { domainId, accent, events, severityHistory, state } = params;
+  const { accent, events, severityHistory, state, dataMode = "live" } = params;
+  void params.domainId;
   switch (profile) {
     case "markets":
       return {
-        primaryTitle: "Synthetic OHLC (demo venue curve)",
-        secondaryTitle: "Notional flow / volume envelope",
-        tertiaryTitle: "Risk-bucket treemap (this domain’s events)",
-        primary: marketsCandles(domainId, accent),
-        secondary: syntheticVolume(domainId),
+        primaryTitle: "Rolling stress (domain severity ring)",
+        secondaryTitle: "Event arrivals by UTC hour",
+        tertiaryTitle: "Severity mix (treemap)",
+        primary: rollingStressLine(severityHistory, accent),
+        secondary: hourOfDayBars(events, accent),
         tertiary: deskTertiaryTreemapSeverity(events, accent),
         notes: [
-          "Candles are RNG-shaped, not tradeable prices — they stress-test chart chrome and axis scaling.",
-          "Pair with the economic matrix for book-level panels when wired to real MDS.",
+          "Finance/economy desks read trend and arrival rhythm from live events — open the economic matrix for cross-book composition.",
+          state
+            ? `Risk index ${state.risk_index.toFixed(2)} · ${state.event_count} events in ring.`
+            : "World-state row not yet populated for this domain.",
         ],
       };
     case "defensive_digital":
       return {
-        primaryTitle: "Kill-chain shaped workload (illustrative)",
-        secondaryTitle: "UTC hour histogram for this domain’s events",
-        tertiaryTitle: "Response chain (Sankey, volume-shaped)",
-        primary: cyberKillChainBar(domainId, accent),
+        primaryTitle: "Escalation funnel (severity thresholds)",
+        secondaryTitle: "UTC hour histogram",
+        tertiaryTitle: "Hour × day-of-week load (heatmap)",
+        primary: deskTertiaryFunnelPipeline(events),
         secondary: hourOfDayBars(events, accent),
-        tertiary: deskTertiarySankeyStages(events, accent),
+        tertiary: deskTertiaryHeatmapWeekHour(events, accent),
         notes: [
-          "Stages map loosely to a SOC triage board; counts are synthetic but ordered like real playbooks.",
+          "Funnel counts are from this domain’s live events — use the cyber matrix graph for cross-domain linkage.",
         ],
       };
     case "life_sciences":
       return {
-        primaryTitle: "Capacity radar (mock axes)",
-        secondaryTitle: "Hour-of-day arrivals (UTC)",
-        tertiaryTitle: "Week × hour arrivals (UTC heatmap)",
-        primary: healthRadar(domainId, accent),
+        primaryTitle: "Week × hour arrivals (UTC heatmap)",
+        secondaryTitle: "Hour-of-day histogram",
+        tertiaryTitle: "Escalation funnel",
+        primary: deskTertiaryHeatmapWeekHour(events, accent),
         secondary: hourOfDayBars(events, accent),
-        tertiary: deskTertiaryHeatmapWeekHour(events, accent),
+        tertiary: deskTertiaryFunnelPipeline(events),
         notes: [
-          "Radar axes are placeholders for hospital / public-health telemetry you would bind to real feeds.",
+          "Temporal heatmaps surface surge windows; bind hospital capacity axes when real HL7 feeds are wired.",
         ],
       };
     case "orbital_regime":
       return {
-        primaryTitle: "Readiness gauge (synthetic)",
-        secondaryTitle: "Altitude vs phase — mock scatter",
-        tertiaryTitle: "Subsystem theme river (synthetic lanes)",
-        primary: spaceGauge(domainId, accent),
-        secondary: spaceScatter(domainId, accent),
-        tertiary: deskTertiaryThemeRiverOrdinal(domainId, events, accent),
+        primaryTitle: "Rolling stress (domain severity ring)",
+        secondaryTitle: "Event arrivals by UTC hour",
+        tertiaryTitle: "UTC dayparts × severity (sunburst)",
+        primary: rollingStressLine(severityHistory, accent),
+        secondary: hourOfDayBars(events, accent),
+        tertiary: deskTertiarySunburstUtc(events, accent),
         notes: [
-          "Use CelesTrak / OpenSky-backed panels in the globe view for real ephemeris and ADS-B.",
+          "Orbital conjunction and tracking layers live on the 3D globe and map — this desk shows event tempo from SpacetimeDB.",
         ],
       };
     case "human_systems":
       return {
-        primaryTitle: "Synthetic stacked cohort bands",
-        secondaryTitle: "Rolling stress (domain severity ring)",
-        tertiaryTitle: "Severity funnel (cohort-style thresholds)",
-        primary: demographicsPyramid(domainId, accent),
-        secondary: rollingStressLine(severityHistory, accent),
+        primaryTitle: "Rolling stress (domain severity ring)",
+        secondaryTitle: "Event arrivals by UTC hour",
+        tertiaryTitle: "Escalation funnel",
+        primary: rollingStressLine(severityHistory, accent),
+        secondary: hourOfDayBars(events, accent),
         tertiary: deskTertiaryFunnelPipeline(events),
         notes: [
-          "Pyramid stacks are illustrative; census-grade visuals would pull structured age-sex tables.",
+          "Demographics desk uses live event tempo until structured census tables are available.",
         ],
       };
     case "geopolitical_layer":
       return {
-        primaryTitle: "Regional tension stack (mock)",
-        secondaryTitle: "Rolling stress (severity ring)",
-        tertiaryTitle: "Parallel coordinates (time · severity · geo)",
-        primary: geopoliticalStack(domainId),
-        secondary: rollingStressLine(severityHistory, accent),
-        tertiary: deskTertiaryParallelSignals(events),
+        primaryTitle: "Rolling stress (severity ring)",
+        secondaryTitle: "Regional stack (geotagged events × severity)",
+        tertiaryTitle: "Event arrivals by UTC hour",
+        primary: rollingStressLine(severityHistory, accent),
+        secondary: geopoliticalRegionBars(events, accent),
+        tertiary: hourOfDayBars(events, accent),
         notes: [
-          "Stacked bars mimic multi-track risk (diplomatic / sanctions / security) in briefing decks.",
+          "Regions are inferred from event coordinates (AMER / EMEA / APAC / MENA / POLAR).",
         ],
       };
     case "geo_operational":
@@ -745,7 +812,7 @@ export function deskChartPack(
           state
             ? `World-state risk index ${state.risk_index.toFixed(2)} vs avg severity ${state.avg_severity.toFixed(2)}.`
             : "World-state row not yet populated for this domain.",
-          "Use the mini map below for geo-dense domains; coordinates are synthetic anchors from the demo seed.",
+          deskGeoNote(dataMode),
         ],
       };
   }

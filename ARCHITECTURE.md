@@ -60,9 +60,10 @@ src/
 
 | Table              | Row cap  | Notes                                  |
 | ------------------ | -------- | -------------------------------------- |
-| `event`            | 50 000   | Immutable observations. `ordinal` is a monotonic u64 sequence number; `domain` is a u8 tag. |
-| `signal`           | 10 000   | Anomaly signals linked to an event id. |
-| `causal_edge`      | 10 000   | Directed influence between two event ids. |
+| `event`            | 800 + 24h | Immutable observations. `ordinal` is a monotonic u64 sequence number; `domain` is a u8 tag. |
+| `ingest_audit`     | 2 000 (private) | Ingest attempt log — not browser-subscribed. |
+| `signal`           | 400 + 24h | Anomaly signals linked to an event id. |
+| `causal_edge`      | 600 + 24h | Directed influence between two event ids. |
 | `world_state`      | unbounded (= domain count) | Per-domain aggregate (count, avg severity, risk). |
 | `domain_insight`   | unbounded | Latest narrative per domain.          |
 | `last_event_in_domain` | unbounded | Scratch table for incremental aggregation. |
@@ -74,10 +75,11 @@ Reducers are the **only** way to change state. Each one is a short,
 deterministic function with an explicit timestamp argument.
 
 - `init()` — seeds `ordinal_counter`. Runs once at first publish.
-- `ingest_event(id, timestamp, domain, severity, location, payload_json, source_label, source_url)`
-  — clamps severity to `[0.0, 1.0]`, appends to `event`, emits a
-  `signal` when severity crosses the anomaly threshold, updates
-  `world_state` incrementally, and prunes rings.
+- `ingest_event(…)` — single-event path (compat / fallback).
+- `ingest_events_batch(events, source_label, source_url)` — preferred
+  feed path: one transaction per poll cycle chunk, one prune pass,
+  domain insights rebuilt once per touched domain. Per-event failures
+  are recorded in `ingest_audit` without aborting the batch.
 - `link_causal_events(source_id, target_id, influence, decay)`
   — de-duplicated edge insert, then prune.
 
@@ -97,27 +99,34 @@ deterministic function with an explicit timestamp argument.
 ```
 src/
 ├── main.rs       ── init tracing, build AppState, start axum + feeds
-├── state.rs      ── AppState { started_at, feed_runtime, stdb }
-├── stdb.rs       ── reqwest client → SpacetimeDB reducer HTTP API
+├── state.rs      ── AppState { started_at, feed_runtime, stdb, metrics }
+├── pipeline.rs   ── validate → batch push → metrics
+├── circuit.rs    ── per-feed circuit breaker
+├── stdb.rs       ── reqwest client → batch + single reducer HTTP API
 ├── simulator.rs  ── deterministic event generator for dev/CI
 ├── health.rs     ── feed + stdb liveness; backoff math
 ├── routes/
-│   ├── mod.rs    ── router: /health, /ready, /status, fallback to web/dist
+│   ├── mod.rs    ── router: /health, /ready, /status, /feeds, fallback to web/dist
 │   └── health.rs ── handlers for the three endpoints
 └── feeds/
     ├── mod.rs      ── REGISTRY, spawn_all, supervisor, deterministic_event_id
     ├── adapter.rs  ── FeedDescriptor + FetchFn
+    ├── http.rs     ── fetch_json, parse_json_value, provider envelope helpers
+    ├── normalize.rs ── ObservationDraft → WorldEvent, canonical payload
+    ├── validate.rs (crate root) ── pre-flight checks before reducer calls
     └── <feed>.rs   ── USGS, Open-Meteo, CoinGecko, NASA EONET,
                        OpenSky, GDELT, World Bank, FRED, EIA
 ```
 
 ### What it does (and doesn't)
 
-- **Does** normalise feed payloads into `WorldEvent`, clamp severity,
-  assign a deterministic u64 id, and call `ingest_event` on the
-  SpacetimeDB module over HTTP.
-- **Does** expose `/health`, `/ready`, `/status` for orchestration and
-  dashboards.
+- **Does** parse provider-specific JSON into [`ObservationDraft`](crates/openatlas-ingest/src/feeds/normalize.rs),
+  build a canonical payload (`schema_version: 1`, `source`, `source_url`,
+  `external_key`, provider fields), validate severity/location/JSON size,
+  assign a deterministic UUID (folded to u64 at the reducer boundary), and
+  call `ingest_event` on the SpacetimeDB module over HTTP.
+- **Does** expose `/health`, `/ready`, `/status`, and `/feeds` (catalog, API
+  keys, test/reconnect) for orchestration and the Settings UI.
 - **Does not** keep any authoritative state. There is no in-memory
   graph, no JSONL log, no broadcast channel. If you need something
   durable, it lives in SpacetimeDB.
@@ -126,9 +135,15 @@ src/
 
 Every feed module exports:
 
-1. `async fn fetch(client: Client) -> anyhow::Result<Vec<WorldEvent>>`.
+1. `async fn fetch(client: Client) -> anyhow::Result<Vec<WorldEvent>>` —
+   typically: HTTP fetch → typed or loose JSON parse → `ObservationDraft` rows
+   → `drafts_to_events` → `filter_valid_events` (in the supervisor).
 2. `pub(super) const DESCRIPTOR: FeedDescriptor` with name, source URL,
    poll cadence, optional `requires_env`, and a `FetchFn`.
+
+Use `feeds::http` for shared envelope parsing (World Bank `[meta, data]`,
+FRED `observations`, EIA `response.data`). Use `feeds::normalize` for
+timestamps, coordinates, severity helpers, and the canonical payload shape.
 
 `feeds::REGISTRY` is a `const` slice. Supervision, backoff, dormancy,
 `/status` seeding, and source-URL lookup all derive from the registry.
@@ -206,21 +221,24 @@ web/
 │   │   ├── colors.ts             DOMAIN_CATALOG (id + accent colour)
 │   │   └── format.ts             shortId, shortTime, computeTrend
 │   └── lib/components/*.svelte   one panel per file
-└── vite.config.ts         dev proxy: /health, /ready, /status only
+└── vite.config.ts         dev proxy: /health, /ready, /status, /feeds
 ```
 
-### Data flow
+### Data flow (live mode)
 
-1. `connectDb()` uses the generated bindings to build a `DbConnection`
-   against `VITE_STDB_URI` / `VITE_STDB_DB`.
-2. On connect, it installs row handlers (`onInsert`, `onUpdate`,
-   `onDelete`) for `event`, `signal`, `causal_edge`, `world_state`,
-   `domain_insight` and subscribes to bounded SQL projections.
-3. Handlers call `apply/remove*` helpers in `state.svelte.ts`, which
-   convert camelCase SDK rows into snake_case UI DTOs and merge them
-   into the reactive `dashboard` store.
-4. Svelte components read from `dashboard` and re-render via runes
-   (`$state`, `$derived`).
+See [`docs/DATA_PLANE.md`](docs/DATA_PLANE.md) for the full tier model.
+
+1. **Ingest only** polls external APIs (infrequent, rate-limited) and calls
+   `ingest_event` over HTTP. It does not serve dashboard rows.
+2. **SpacetimeDB module** computes aggregates, signals, insights, and ring
+   caps on every ingest — that is the heavy work.
+3. `connectDb()` opens a WebSocket to STDB (`VITE_STDB_URI` / `VITE_STDB_DB`).
+4. Subscriptions use full-table `SELECT *` per ring; `sync-dashboard-cache.ts`
+   hydrates once, then row handlers incrementally update the SDK cache.
+5. `state.svelte.ts` projects rows into bounded `dashboard` lists (trim after
+   each batch). Components read `dashboard` only — no provider HTTP in live mode.
+6. Map ADS-B glyphs come from STDB transport events (`stdb-aircraft.ts`), not
+   browser OpenSky polls. NORAD TLEs use bundled static files only.
 
 ### Invariants
 
@@ -230,8 +248,7 @@ web/
   by ordinal / id.
 - Domain IDs are always strings in the UI; the numeric tag never
   leaves `domain.ts`.
-- Reconnect uses exponential backoff with a capped maximum so a flaky
-  stdb instance cannot storm the browser.
+- SpacetimeDB reconnect is **manual** (Settings) — no automatic reconnect loop.
 
 ## `openatlas-core` — wire DTOs
 
@@ -266,13 +283,15 @@ by unit tests; production state lives exclusively in SpacetimeDB.
 - **Web**: `svelte-check` in CI; the design is that visual regressions
   are caught by running the app against the simulator.
 - **E2E smoke** (`./scripts/e2e-qa.sh` or `./dev.sh e2e`): runs
-  `fmt --check`, clippy, tests, `bun run build` in `web/`, `spacetime build`, publishes
-  to the local instance, starts **release** `openatlas-ingest` (if
-  :8080 is free), checks `/health` + `/ready` + static `index.html` from
-  `web/dist/`, and asserts the `event` table count increases while
-  simulators run. Use `./dev.sh e2e:quick` to skip the live stack. Requires
-  **bun**, `spacetime` CLI, and a running SpacetimeDB (e.g. `./dev.sh
-  spacetime:start`).
+  compile gates, publishes the module, starts ingest with
+  `OPENATLAS_INGEST_MODE=sim` (override via `--ingest-mode=`), and checks
+  event growth. `./dev.sh e2e:feeds` (or `--verify-feeds`) waits for each
+  enabled live adapter to report `success_count > 0` on `/status`.
+  `./scripts/e2e-qa.sh --ingest-mode=static` checks the fixture burst path.
+  Optional: `RUN_LIVE_FEED_TEST=1` runs ignored Rust fetch tests against
+  public APIs. Deploy notes: [`docs/DEPLOY.md`](docs/DEPLOY.md). Use
+  `./dev.sh e2e:quick` to skip the live stack. Requires **bun**, `spacetime`
+  CLI, and a running SpacetimeDB (e.g. `./dev.sh spacetime:start`).
 
 ## How to extend
 

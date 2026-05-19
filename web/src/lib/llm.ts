@@ -30,19 +30,54 @@ export interface LlmInsightErrorBody {
  * Request a natural-language analysis grounded in the given snapshot
  * (see `buildLlmSnapshot`). Fails if the bridge or Ollama is down.
  */
+function cudaIncompatibilityHint(message: string): string {
+  const lower = message.toLowerCase();
+  if (
+    !lower.includes("cuda error") &&
+    !lower.includes("architectural feature absent")
+  ) {
+    return "";
+  }
+  return (
+    " Your GPU is incompatible with this Ollama CUDA build (common on GTX 10xx). " +
+    "Stop the running `ollama serve`, then start CPU-only: `./scripts/ollama-serve-cpu.sh` " +
+    "or `CUDA_VISIBLE_DEVICES=\"\" ollama serve`. Restart `./dev.sh llm:start` afterward."
+  );
+}
+
+function llmFailureHint(status: number, message: string): string {
+  const cuda = cudaIncompatibilityHint(message);
+  if (cuda) return cuda;
+  if (status === 404 || status === 502 || status === 503) {
+    return " Start the bridge with ./dev.sh llm:start (or ./dev.sh up). In dev, Vite proxies /api/llm → :3847.";
+  }
+  if (status === 504) {
+    return " The model may still be loading — try again or use a smaller Ollama model.";
+  }
+  return "";
+}
+
 export async function requestLlmInsight(
   snapshot: Record<string, unknown>,
   userPrompt?: string,
 ): Promise<LlmInsightResponse> {
   const url = `${llmBaseUrl()}/v1/insight`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      snapshot,
-      user_prompt: userPrompt?.trim() || undefined,
-    }),
-  });
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        snapshot,
+        user_prompt: userPrompt?.trim() || undefined,
+      }),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `${msg}. Is openatlas-llm-bridge running? Try ./dev.sh llm:start and ensure Vite dev proxies /api/llm.`,
+    );
+  }
   if (!r.ok) {
     let msg = r.statusText;
     try {
@@ -51,19 +86,40 @@ export async function requestLlmInsight(
     } catch {
       /* use status */
     }
-    throw new Error(msg);
+    throw new Error(`${msg}${llmFailureHint(r.status, msg)}`);
   }
   return (await r.json()) as LlmInsightResponse;
 }
 
 /**
- * `GET /v1/ready` on the bridge — Ollama must be up for this to succeed.
+ * `GET /v1/ready` — Ollama HTTP is up (fast; does not run inference).
  */
-export async function checkLlmBridgeReady(): Promise<boolean> {
+export async function checkLlmBridgePing(): Promise<boolean> {
   try {
     const r = await fetch(`${llmBaseUrl()}/v1/ready`, { method: "GET" });
     return r.ok;
   } catch {
     return false;
   }
+}
+
+/**
+ * `GET /v1/capable` — runs a tiny model completion (catches CUDA / load errors).
+ * Used for Hub gating; may take up to ~2 minutes on cold CPU load.
+ */
+export async function checkLlmBridgeCapable(): Promise<boolean> {
+  try {
+    const r = await fetch(`${llmBaseUrl()}/v1/capable`, {
+      method: "GET",
+      signal: AbortSignal.timeout(130_000),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Bridge + Ollama HTTP up (fast; does not run inference). */
+export async function checkLlmBridgeReady(): Promise<boolean> {
+  return checkLlmBridgePing();
 }

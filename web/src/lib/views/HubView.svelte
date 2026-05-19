@@ -11,16 +11,22 @@
 <script lang="ts">
   import { Download, FileText, Sparkles } from "@lucide/svelte";
 
+  import { useNarrativeSubscription } from "../narrative-subscription";
   import { dashboard } from "../state.svelte";
+
+  useNarrativeSubscription();
   import { buildHubTiles, computeThreatIndex } from "../hub";
-  import { buildLlmSnapshot } from "../llm-snapshot";
+  import { buildLlmSnapshot, llmSnapshotCounts } from "../llm-snapshot";
   import { requestLlmInsight } from "../llm";
+  import { readiness, refreshRemoteReadiness } from "../readiness.svelte";
   import { NumericIndexBadge } from "../primitives";
   import { META_ICONS } from "../domain-icons";
   import { domainLabel } from "../colors";
   import { navigate } from "../router.svelte";
 
   import HubTile from "./HubTile.svelte";
+  import HubOverviewCharts from "./HubOverviewCharts.svelte";
+  import DataPipelineBanner from "../components/DataPipelineBanner.svelte";
 
   const tiles = $derived(
     buildHubTiles(
@@ -47,6 +53,48 @@
   let llmModel = $state<string | null>(null);
   let llmUserPrompt = $state("");
 
+  const llmCounts = $derived(
+    llmSnapshotCounts({
+      events: dashboard.events,
+      recentSignals: dashboard.recentSignals,
+      domainState: dashboard.domainState,
+      domainInsights: dashboard.domainInsights,
+      recentCausalEdges: dashboard.recentCausalEdges,
+      eventNarratives: dashboard.eventNarratives,
+      capturedAt: "",
+    }),
+  );
+
+  const llmCanRun = $derived(
+    readiness.llmReady === true &&
+      dashboard.dataMode === "live" &&
+      dashboard.connection === "live" &&
+      llmCounts.events > 0,
+  );
+
+  const llmBlockedReason = $derived.by((): string | null => {
+    if (dashboard.dataMode === "demo") {
+      return "LLM analysis uses live SpacetimeDB telemetry. Exit demo mode in Settings or run ./dev.sh web without ?demo=1.";
+    }
+    if (dashboard.connection !== "live") {
+      return "Connect to SpacetimeDB first (status bar). Run ./dev.sh up then ./dev.sh web.";
+    }
+    if (llmCounts.events === 0) {
+      return "No events in the dashboard buffer yet. Start ingest with ./dev.sh up (hybrid fills all domains).";
+    }
+    if (readiness.llmReady === false) {
+      return "LLM bridge or Ollama is not ready. Run ollama serve, ollama pull llama3.2, then ./dev.sh llm:start.";
+    }
+    if (readiness.llmReady === null) {
+      return "Checking LLM bridge…";
+    }
+    return null;
+  });
+
+  $effect(() => {
+    if (llmOpen) void refreshRemoteReadiness();
+  });
+
   function toggleBriefing(): void {
     briefingOpen = !briefingOpen;
   }
@@ -60,6 +108,10 @@
    * and `ollama serve` (see crate README in `crates/openatlas-llm-bridge`).
    */
   async function runLlmAnalysis(): Promise<void> {
+    if (!llmCanRun) {
+      llmError = llmBlockedReason ?? "Cannot run LLM analysis yet.";
+      return;
+    }
     llmLoading = true;
     llmError = null;
     llmText = null;
@@ -178,6 +230,10 @@
     </div>
   </header>
 
+  <DataPipelineBanner />
+
+  <HubOverviewCharts />
+
   <div class="hub-grid">
     {#each tiles as tile (tile.id)}
       <HubTile {tile} />
@@ -217,11 +273,26 @@
         >
       </div>
       <p class="hub-llm-lead">
-        Sends a bounded snapshot of live telemetry (events, world state,
-        domain insights, signals, causal edges) to the local bridge, which
-        calls your <code>ollama</code> model. Run
-        <code>cargo run -p openatlas-llm-bridge</code> and
-        <code>ollama serve</code> (with e.g. <code>ollama pull llama3.2</code>).
+        Sends a bounded snapshot of live telemetry to the local bridge, which
+        calls your <code>ollama</code> model. With the full stack running,
+        use <code>./dev.sh up</code> then <code>./dev.sh web</code> — ingest and
+        the LLM bridge start automatically when Ollama is available.
+      </p>
+      <p class="hub-llm-stats mono" aria-live="polite">
+        Snapshot source:
+        {llmCounts.events} events · {llmCounts.domains} domains ·
+        {llmCounts.signals} signals · {llmCounts.insights} insights ·
+        {llmCounts.causalEdges} causal edges
+      </p>
+      <p class="hub-llm-ready">
+        Bridge:
+        {#if readiness.llmReady === null}
+          <span class="muted">checking…</span>
+        {:else if readiness.llmReady}
+          <span class="ok">ready</span>
+        {:else}
+          <span class="warn">not ready</span> — see Settings → LLM
+        {/if}
       </p>
       <label class="hub-llm-label" for="llm-prompt"
         >Optional focus (e.g. &ldquo;transport vs energy coupling&rdquo;)</label
@@ -239,12 +310,16 @@
           type="button"
           class="hub-btn is-primary"
           onclick={() => void runLlmAnalysis()}
-          disabled={llmLoading}
+          disabled={llmLoading || !llmCanRun}
+          title={llmBlockedReason ?? "Run cross-domain LLM analysis"}
         >
           <Sparkles size={14} strokeWidth={1.75} />
           <span>{llmLoading ? "Running model…" : "Run analysis"}</span>
         </button>
       </div>
+      {#if llmBlockedReason && !llmLoading && !llmText && !llmError}
+        <p class="hub-llm-blocked" role="status">{llmBlockedReason}</p>
+      {/if}
       {#if llmError}
         <div class="hub-llm-error" role="alert">
           <p class="hub-llm-err-txt">{llmError}</p>
@@ -450,6 +525,37 @@
     background: var(--bg-2);
     padding: 0 4px;
     border-radius: var(--radius-xs);
+  }
+  .hub-llm-stats {
+    margin: 0;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .hub-llm-ready {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .hub-llm-ready .ok {
+    color: var(--status-ok);
+    font-weight: 600;
+  }
+  .hub-llm-ready .warn {
+    color: var(--status-warn);
+    font-weight: 600;
+  }
+  .hub-llm-ready .muted {
+    color: var(--text-3);
+  }
+  .hub-llm-blocked {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius);
+    border: 1px dashed var(--border-2);
+    background: var(--bg-2);
   }
   .hub-llm-label {
     font-size: 11px;

@@ -57,6 +57,8 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 
+import { resolveEchartsTheme } from "./viz/chart-theme";
+
 let registered = false;
 
 function ensureRegistered(): void {
@@ -116,7 +118,9 @@ export function initChart(
   theme?: string | object | null,
 ): echarts.ECharts {
   ensureRegistered();
-  return echarts.init(container, theme ?? "dark", {
+  const resolved =
+    theme === undefined || theme === null ? resolveEchartsTheme() : theme;
+  return echarts.init(container, resolved, {
     renderer: "canvas",
   });
 }

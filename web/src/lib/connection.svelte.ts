@@ -4,9 +4,10 @@
  * This module replaces the earlier `/stream` WebSocket client. Instead
  * of speaking a bespoke JSON envelope from the ingest service, we now
  * connect **directly** to SpacetimeDB using the generated module
- * bindings (`./stdb/`). The SDK maintains a local row cache; we react
- * to `onInsert` / `onUpdate` / `onDelete` events and project the rows
- * into the UI state held in `state.svelte.ts`.
+ * bindings (`./stdb/`). The SDK maintains a local row cache (tier 4 in
+ * `docs/DATA_PLANE.md`); we react to `onInsert` / `onUpdate` / `onDelete`
+ * and project trimmed rows into `state.svelte.ts`. External APIs are never
+ * polled from the browser in live mode.
  *
  * # Responsibilities
  *
@@ -22,9 +23,8 @@
  *
  * # Reconnect strategy
  *
- * The SDK tears down the connection on fatal errors. We retry with the
- * same bounded exponential backoff as the old WebSocket client so the
- * UI still feels responsive after a transient SpacetimeDB restart.
+ * The SDK tears down the connection on fatal errors. Reconnect is manual
+ * (Settings or the status pill) so a bad subscription does not loop.
  */
 
 import { DbConnection, type EventContext } from "./stdb";
@@ -37,10 +37,6 @@ import type {
   WorldStateRow,
 } from "./stdb/types";
 import {
-  MAX_CAUSAL_EDGES,
-  MAX_EVENT_NARRATIVES,
-  MAX_EVENTS,
-  MAX_SIGNALS,
   applyCausalEdge,
   applyDomainInsight,
   applyEvent,
@@ -55,6 +51,15 @@ import {
   setConnection,
   setConnectionLastError,
 } from "./state.svelte";
+import {
+  CORE_SUBSCRIPTION_QUERIES,
+  NARRATIVE_SUBSCRIPTION_QUERIES,
+} from "./stdb-subscriptions";
+import { scheduleDashboardFlush } from "./dashboard-flush";
+import {
+  hydrateDashboardFromConnection,
+  hydrateNarrativesFromConnection,
+} from "./sync-dashboard-cache";
 import { installDemoData } from "./demo-install.svelte";
 import { resolveStdbWebSocketUri } from "./stdb-endpoint";
 import { notifyStdbMessage } from "./notify/notify";
@@ -62,16 +67,10 @@ import { NOTIFY_CODES } from "./notify/notify-codes";
 
 const DEFAULT_MODULE = "openatlas";
 
-const INITIAL_BACKOFF_MS = 500;
-const MAX_BACKOFF_MS = 15_000;
-
-const backoffState = {
-  currentMs: INITIAL_BACKOFF_MS,
-  timer: null as ReturnType<typeof setTimeout> | null,
-};
-
 let activeConnection: DbConnection | null = null;
 let shuttingDown = false;
+let narrativeHandlersInstalled = false;
+let narrativeSubscriptionActive = false;
 
 /**
  * Kick off the initial connection. Idempotent — calling twice is a
@@ -95,11 +94,6 @@ export function reconnectNow(): void {
     installDemoData();
     return;
   }
-  if (backoffState.timer) {
-    clearTimeout(backoffState.timer);
-    backoffState.timer = null;
-  }
-  backoffState.currentMs = INITIAL_BACKOFF_MS;
   if (activeConnection) {
     try {
       activeConnection.disconnect();
@@ -108,6 +102,8 @@ export function reconnectNow(): void {
     }
   }
   activeConnection = null;
+  narrativeHandlersInstalled = false;
+  narrativeSubscriptionActive = false;
   setConnectionLastError(null);
   setConnection("connecting");
   openConnection();
@@ -120,10 +116,8 @@ export function reconnectNow(): void {
  */
 export function disconnectDb(): void {
   shuttingDown = true;
-  if (backoffState.timer) {
-    clearTimeout(backoffState.timer);
-    backoffState.timer = null;
-  }
+  narrativeHandlersInstalled = false;
+  narrativeSubscriptionActive = false;
   if (activeConnection) {
     try {
       activeConnection.disconnect();
@@ -192,32 +186,51 @@ function openConnection(): void {
 }
 
 function onConnected(connection: DbConnection): void {
-  backoffState.currentMs = INITIAL_BACKOFF_MS;
   setConnectionLastError(null);
   setConnection("live");
   installRowHandlers(connection);
   subscribeDashboardQueries(connection);
 }
 
+let rowMutationDepth = 0;
+
+function withRowMutation(fn: () => void): void {
+  rowMutationDepth += 1;
+  try {
+    fn();
+  } finally {
+    rowMutationDepth -= 1;
+    if (rowMutationDepth === 0) {
+      scheduleDashboardFlush();
+    }
+  }
+}
+
 function installRowHandlers(connection: DbConnection): void {
   const db = connection.db;
 
-  db.event.onInsert((_ctx: EventContext, row: Event) => applyEvent(row));
-  db.event.onUpdate((_ctx: EventContext, _old: Event, row: Event) =>
-    applyEvent(row),
+  db.event.onInsert((_ctx: EventContext, row: Event) =>
+    withRowMutation(() => applyEvent(row)),
   );
-  db.event.onDelete((_ctx: EventContext, row: Event) => removeEvent(row.id));
+  db.event.onUpdate((_ctx: EventContext, _old: Event, row: Event) =>
+    withRowMutation(() => applyEvent(row)),
+  );
+  db.event.onDelete((_ctx: EventContext, row: Event) =>
+    withRowMutation(() => removeEvent(row.id)),
+  );
 
-  db.signal.onInsert((_ctx: EventContext, row: Signal) => applySignal(row));
+  db.signal.onInsert((_ctx: EventContext, row: Signal) =>
+    withRowMutation(() => applySignal(row)),
+  );
   db.signal.onDelete((_ctx: EventContext, row: Signal) =>
-    removeSignal(row.id),
+    withRowMutation(() => removeSignal(row.id)),
   );
 
   db.causal_edge.onInsert((_ctx: EventContext, row: CausalEdge) =>
-    applyCausalEdge(row),
+    withRowMutation(() => applyCausalEdge(row)),
   );
   db.causal_edge.onDelete((_ctx: EventContext, row: CausalEdge) =>
-    removeCausalEdge(row.id),
+    withRowMutation(() => removeCausalEdge(row.id)),
   );
 
   db.world_state.onInsert((_ctx: EventContext, row: WorldStateRow) =>
@@ -235,59 +248,95 @@ function installRowHandlers(connection: DbConnection): void {
     (_ctx: EventContext, _old: DomainInsight, row: DomainInsight) =>
       applyDomainInsight(row),
   );
+}
 
+function installNarrativeRowHandlers(connection: DbConnection): void {
+  if (narrativeHandlersInstalled) return;
+  narrativeHandlersInstalled = true;
+  const db = connection.db;
   db.event_narrative.onInsert((_ctx: EventContext, row: EventNarrative) =>
-    applyEventNarrative(row),
+    withRowMutation(() => applyEventNarrative(row)),
   );
   db.event_narrative.onUpdate(
     (_ctx: EventContext, _old: EventNarrative, row: EventNarrative) =>
-      applyEventNarrative(row),
+      withRowMutation(() => applyEventNarrative(row)),
   );
   db.event_narrative.onDelete((_ctx: EventContext, row: EventNarrative) =>
-    removeEventNarrative(row.eventId),
+    withRowMutation(() => removeEventNarrative(row.eventId)),
   );
 }
 
 /**
- * Subscribe to the rows the dashboard needs. We keep the queries
- * narrow to the latest window of each ring so the browser's working
- * set stays modest even when the module's ring holds 50k events.
- *
- * `ORDER BY ... DESC LIMIT N` pushes the trimming to the server so we
- * never ship rows we are going to throw away on arrival.
+ * Subscribe to `event_narrative` only when a view needs headlines/LLM context.
+ * Keeps the default WS payload small (narratives are large text blobs).
+ */
+export function ensureNarrativeSubscription(): void {
+  if (dashboard.dataMode === "demo") return;
+  const connection = activeConnection;
+  if (!connection || narrativeSubscriptionActive) return;
+  narrativeSubscriptionActive = true;
+  installNarrativeRowHandlers(connection);
+  connection
+    .subscriptionBuilder()
+    .onApplied(() => {
+      hydrateNarrativesFromConnection(connection);
+    })
+    .onError((ctx) => {
+      console.warn("event_narrative subscription error", ctx);
+    })
+    .subscribe([...NARRATIVE_SUBSCRIPTION_QUERIES]);
+}
+
+/**
+ * Subscribe to dashboard tables (full `SELECT *` per ring/small table).
+ * Trimming happens in `sync-dashboard-cache.ts` — STDB 2.1 subscription
+ * SQL rejects ORDER BY and LIMIT on some tables (e.g. event_narrative).
  */
 function subscribeDashboardQueries(connection: DbConnection): void {
   connection
     .subscriptionBuilder()
+    .onApplied(() => {
+      hydrateDashboardFromConnection(connection);
+    })
     .onError((ctx) => {
       const err = ctx.event;
-      const msg =
-        err instanceof Error ? err.message : err ? String(err) : "subscription error";
+      const msg = formatSubscriptionError(err);
       console.error("subscription error", ctx);
       setConnectionLastError(msg);
       notifyStdbMessage(
         NOTIFY_CODES.STDB_SUBSCRIPTION,
         "Data subscription failed",
-        "The dashboard could not keep its SpacetimeDB query subscriptions. Live updates may be stale until this is resolved.",
+        "The dashboard could not subscribe to SpacetimeDB tables. Live views stay empty until this is fixed.",
         msg,
-        "Try reconnecting from the status bar, or check that the openatlas module and tables match this client’s subscription SQL.",
+        "Use full SELECT * only (no ORDER BY or LIMIT). See web/src/lib/stdb-subscriptions.ts.",
       );
+      if (activeConnection) {
+        try {
+          activeConnection.disconnect();
+        } catch {
+          /* */
+        }
+        activeConnection = null;
+      }
+      setConnection("offline");
     })
-    .subscribe([
-      `SELECT * FROM event ORDER BY ordinal DESC LIMIT ${MAX_EVENTS}`,
-      `SELECT * FROM signal ORDER BY id DESC LIMIT ${MAX_SIGNALS}`,
-      `SELECT * FROM causal_edge ORDER BY id DESC LIMIT ${MAX_CAUSAL_EDGES}`,
-      "SELECT * FROM world_state",
-      "SELECT * FROM domain_insight",
-      // Narratives are only written for high-severity events (gated
-      // in the module), so the row count is naturally much smaller
-      // than `event`. We still bound by `MAX_EVENT_NARRATIVES` so a
-      // fleet-wide incident cannot flood the client.
-      `SELECT * FROM event_narrative ORDER BY event_id DESC LIMIT ${MAX_EVENT_NARRATIVES}`,
-    ]);
+    .subscribe([...CORE_SUBSCRIPTION_QUERIES]);
+}
+
+function formatSubscriptionError(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const o = err as Record<string, unknown>;
+    if (typeof o.message === "string") return o.message;
+    if (typeof o.error === "string") return o.error;
+  }
+  return err ? String(err) : "subscription error";
 }
 
 function handleLostConnection(): void {
+  narrativeHandlersInstalled = false;
+  narrativeSubscriptionActive = false;
   if (activeConnection) {
     try {
       activeConnection.disconnect();
@@ -297,16 +346,4 @@ function handleLostConnection(): void {
   }
   activeConnection = null;
   setConnection("offline");
-  if (shuttingDown) return;
-  scheduleReconnect();
-}
-
-function scheduleReconnect(): void {
-  if (backoffState.timer) return;
-  const delay = backoffState.currentMs;
-  backoffState.currentMs = Math.min(delay * 2, MAX_BACKOFF_MS);
-  backoffState.timer = setTimeout(() => {
-    backoffState.timer = null;
-    openConnection();
-  }, delay);
 }

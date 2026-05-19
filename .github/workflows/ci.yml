@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --exclude openatlas-ui-wasm
+
+      - name: No secrets in git
+        run: ./scripts/check-no-secrets-in-git.sh
+
+  web:
+    name: Web (check + unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: svelte-check
+        working-directory: web
+        run: bun run check
+
+      - name: Unit tests
+        working-directory: web
+        run: bun test src/lib
+
+      - name: No secrets in git
+        run: ./scripts/check-no-secrets-in-git.sh
+
+  spacetime-module:
+    name: SpacetimeDB module build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SpacetimeDB CLI
+        run: |
+          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build WASM module
+        run: spacetime build --module-path crates/openatlas-stdb-module

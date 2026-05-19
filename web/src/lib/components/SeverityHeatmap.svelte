@@ -2,6 +2,13 @@
   import { onMount } from "svelte";
 
   import { initChart, type ECharts } from "../echarts";
+  import { onThemeChange } from "../theme-events";
+  import {
+    chartGridLine,
+    chartTextMuted,
+    tooltipBase,
+  } from "../viz/chart-theme";
+  import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard } from "../state.svelte";
   import { DOMAIN_CATALOG } from "../colors";
   import type { UiEvent } from "../types";
@@ -95,7 +102,10 @@
   let container: HTMLDivElement | undefined = $state();
   let chart: ECharts | null = null;
 
-  const grid = $derived(buildGrid(dashboard.events));
+  const grid = $derived.by(() => {
+    void dashboardData.revision;
+    return buildGrid(dashboard.events);
+  });
 
   onMount(() => {
     if (!container) return;
@@ -103,10 +113,8 @@
     chart.setOption({
       backgroundColor: "transparent",
       tooltip: {
+        ...tooltipBase,
         position: "top",
-        backgroundColor: "#101013",
-        borderColor: "rgba(255,255,255,0.1)",
-        textStyle: { color: "#f4f4f5" },
         formatter: (p: { value: [number, number, number]; data: [number, number, number] }) => {
           const [col, row, sev] = p.value;
           const cols = (chart?.getOption() as { xAxis?: { data: string[] }[] })
@@ -128,10 +136,10 @@
         type: "category",
         data: [] as string[],
         splitArea: { show: false },
-        axisLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+        axisLine: { lineStyle: { color: chartGridLine() } },
         axisTick: { show: false },
         axisLabel: {
-          color: "#71717a",
+          color: chartTextMuted(),
           fontSize: 10,
           interval: 2,
         },
@@ -140,10 +148,10 @@
         type: "category",
         data: [] as string[],
         splitArea: { show: false },
-        axisLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+        axisLine: { lineStyle: { color: chartGridLine() } },
         axisTick: { show: false },
         axisLabel: {
-          color: "#a1a1aa",
+          color: chartTextMuted(),
           fontSize: 11,
         },
       },
@@ -155,7 +163,7 @@
         left: "center",
         bottom: 4,
         text: ["high", "low"],
-        textStyle: { color: "#71717a", fontSize: 10 },
+        textStyle: { color: chartTextMuted(), fontSize: 10 },
         inRange: {
           color: [
             "rgba(34, 211, 238, 0.04)",
@@ -181,7 +189,22 @@
 
     const resize = () => chart?.resize();
     window.addEventListener("resize", resize);
+    const offTheme = onThemeChange(() => {
+      chart?.setOption({
+        tooltip: { ...tooltipBase, position: "top" },
+        xAxis: {
+          axisLine: { lineStyle: { color: chartGridLine() } },
+          axisLabel: { color: chartTextMuted(), fontSize: 10, interval: 2 },
+        },
+        yAxis: {
+          axisLine: { lineStyle: { color: chartGridLine() } },
+          axisLabel: { color: chartTextMuted(), fontSize: 11 },
+        },
+        visualMap: { textStyle: { color: chartTextMuted(), fontSize: 10 } },
+      });
+    });
     return () => {
+      offTheme();
       window.removeEventListener("resize", resize);
       chart?.dispose();
       chart = null;

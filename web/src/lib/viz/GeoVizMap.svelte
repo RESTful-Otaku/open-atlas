@@ -8,7 +8,9 @@
   import { onMount, tick } from "svelte";
   import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
 
-  import { CARTO_DARK_MATTER_GL, applyMapPresentation } from "../map/map-presentation";
+  import { applyMapPresentation } from "../map/map-presentation";
+  import { mapThemeFor } from "../theme-map";
+  import { onThemeChange, readThemeFromDocument } from "../theme-events";
   import { demoFreightRoutes, demoLeoOrbitLine, demoPointFeatures } from "./showcase-datasets";
 
   type Mode = "heat" | "points" | "both";
@@ -123,7 +125,7 @@
     } catch {
       /* */
     }
-    applyMapPresentation(m, { projection: "globe" });
+    applyMapPresentation(m, { projection: "globe" }, readThemeFromDocument());
     m.setMaxPitch(85);
     loaded = true;
   }
@@ -140,10 +142,24 @@
     let m: MapLibreMap | null = null;
     let ro: ResizeObserver | null = null;
     let cancelled = false;
+    let setupGen = 0;
+
+    const teardownMap = (): void => {
+      setupGen += 1;
+      ro?.disconnect();
+      ro = null;
+      m?.remove();
+      m = null;
+      map = null;
+      loaded = false;
+    };
 
     const run = async (): Promise<void> => {
+      const theme = readThemeFromDocument();
+      const basemap = mapThemeFor(theme).basemapGlStyle;
+      const gen = ++setupGen;
       await tick();
-      if (cancelled) return;
+      if (cancelled || gen !== setupGen) return;
       if (!root) {
         await new Promise<void>((r) => {
           requestAnimationFrame(() => {
@@ -151,11 +167,11 @@
           });
         });
       }
-      if (cancelled || !root) return;
+      if (cancelled || gen !== setupGen || !root) return;
 
       m = new maplibregl.Map({
         container: root,
-        style: CARTO_DARK_MATTER_GL,
+        style: basemap,
         center: [20, 24],
         zoom: 1.3,
         minZoom: 0.4,
@@ -193,13 +209,16 @@
     };
 
     void run();
+    const offTheme = onThemeChange(() => {
+      if (cancelled) return;
+      teardownMap();
+      void run();
+    });
 
     return () => {
       cancelled = true;
-      ro?.disconnect();
-      m?.remove();
-      map = null;
-      loaded = false;
+      offTheme();
+      teardownMap();
     };
   });
 
@@ -214,7 +233,7 @@
   <header class="geo-head">
     <div>
       <h3 class="geo-title">2D / globe · overlays</h3>
-      <p class="geo-sub">Dark vector basemap, heat + points + routes + a synthetic LEO track (demo data).</p>
+      <p class="geo-sub">Theme-aware basemap, heat + points + routes + a synthetic LEO track (demo data).</p>
     </div>
     <div class="geo-bar">
       <div class="seg" role="group" aria-label="Event overlay">
@@ -297,8 +316,12 @@
     background: var(--overlay);
   }
   .seg button.is-on {
-    color: #0b0b0f;
+    color: var(--text-1);
     background: linear-gradient(135deg, var(--accent) 0%, var(--accent-violet) 100%);
+    box-shadow: inset 0 0 0 1px var(--border-2);
+  }
+  :global(html[data-theme="light"]) .seg button.is-on {
+    color: #f8fafc;
   }
   .map-shell {
     position: relative;
@@ -311,7 +334,7 @@
     border-radius: var(--radius);
     overflow: hidden;
     border: 1px solid var(--border-1);
-    background: #0a1524;
+    background: var(--map-canvas-bg);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-2) 50%, transparent);
   }
   @media (max-width: 640px) {
@@ -323,13 +346,5 @@
     position: absolute;
     inset: 0;
     z-index: 0;
-  }
-  :global(.maplibregl-ctrl-group) {
-    background: var(--bg-2) !important;
-    border: 1px solid var(--border-1) !important;
-  }
-  :global(.maplibregl-ctrl-attrib) {
-    background: rgba(9, 9, 11, 0.55) !important;
-    color: var(--text-3) !important;
   }
 </style>

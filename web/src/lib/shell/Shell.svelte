@@ -23,6 +23,7 @@
     enableDemoModeAndReload,
     exitDemoModeAndReload,
   } from "../demo-mode";
+  import { refreshFeedLive } from "../feed-live.svelte";
   import { refreshRemoteReadiness } from "../readiness.svelte";
 
   let { class: className = "" }: { class?: string } = $props();
@@ -37,15 +38,45 @@
       }
     };
     window.addEventListener("keydown", onKey);
-    void refreshRemoteReadiness();
-    const readinessPoll = window.setInterval(
-      () => void refreshRemoteReadiness(),
-      60_000,
-    );
+
+    let readinessPoll: ReturnType<typeof setInterval> | undefined;
+    let feedPoll: ReturnType<typeof setInterval> | undefined;
+
+    const startBackgroundPolls = (): void => {
+      if (readinessPoll !== undefined) return;
+      void refreshRemoteReadiness();
+      void refreshFeedLive();
+      readinessPoll = window.setInterval(
+        () => void refreshRemoteReadiness(),
+        60_000,
+      );
+      feedPoll = window.setInterval(() => void refreshFeedLive(), 60_000);
+    };
+
+    const stopBackgroundPolls = (): void => {
+      if (readinessPoll !== undefined) {
+        clearInterval(readinessPoll);
+        readinessPoll = undefined;
+      }
+      if (feedPoll !== undefined) {
+        clearInterval(feedPoll);
+        feedPoll = undefined;
+      }
+    };
+
+    const onVisibility = (): void => {
+      if (document.hidden) stopBackgroundPolls();
+      else startBackgroundPolls();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    if (!document.hidden) startBackgroundPolls();
+
     return () => {
       disposer();
       window.removeEventListener("keydown", onKey);
-      clearInterval(readinessPoll);
+      document.removeEventListener("visibilitychange", onVisibility);
+      stopBackgroundPolls();
     };
   });
 

@@ -18,6 +18,11 @@
   import DomainChartsBlock from "./domain/DomainChartsBlock.svelte";
   import DomainEventMap from "./domain/DomainEventMap.svelte";
   import DomainHeroVisual from "./domain/DomainHeroVisual.svelte";
+  import {
+    geoMapAsideCopy,
+    geoMapCaption,
+    geoMapTitle,
+  } from "../data-source-copy";
 
   const domainId = $derived(
     router.match.path
@@ -195,15 +200,15 @@
         events={domainEventsAll}
         severityHistory={severityHistory}
         state={state}
+        dataMode={dashboard.dataMode}
       />
     </section>
 
-    <div class="domain-cols">
-      <section
-        class="domain-panel domain-narr"
-        aria-labelledby="domain-narr-h"
-      >
-        <h2 id="domain-narr-h" class="domain-h2">Insight &amp; live state</h2>
+    <section
+      class="domain-panel domain-narr"
+      aria-labelledby="domain-narr-h"
+    >
+      <h2 id="domain-narr-h" class="domain-h2">Insight &amp; live state</h2>
         {#if insight}
           <p class="meta">
             {insight.trend} — anomalies
@@ -248,30 +253,7 @@
             </div>
           </div>
         {/if}
-      </section>
-
-      <section
-        class="domain-panel domain-sev"
-        aria-labelledby="domain-sev-h"
-      >
-        <h2 id="domain-sev-h" class="domain-h2">Severity history</h2>
-        <p class="meta">
-          Recent bucketed severities (newest on the right). Spikes mean this
-          domain is heating up even if the headline count is flat.
-        </p>
-        <div class="spark" role="img" aria-label="Severity history bars">
-          {#each severityHistory as v, i (i)}
-            <div
-              class="spark-bar"
-              style:--h={10 + (Number(v) || 0) * 4}%
-              style:--a={0.2 + (Number(v) || 0) * 0.1}
-            ></div>
-          {:else}
-            <p class="muted">No history window yet for this domain.</p>
-          {/each}
-        </div>
-      </section>
-    </div>
+    </section>
 
     {#if showGeoMap}
       <div class="domain-map-row">
@@ -279,15 +261,17 @@
           <DomainEventMap
             events={domainEventsAll}
             accent={catalog.color}
-            title="Geographic scatter (synthetic anchors)"
+            title={geoMapTitle(dashboard.dataMode)}
+            caption={geoMapCaption(
+              dashboard.dataMode,
+              domainEventsAll.filter((e) => e.location).length,
+            )}
           />
         </div>
         <aside class="domain-panel domain-map-aside" aria-label="Geo context">
           <h3 class="aside-h">How to read this strip</h3>
           <p class="aside-p">
-            Dots are event anchors from the demo seed — density follows domain
-            packs (ports, grids, trenches). The main 2D map uses the same
-            filter for full MapLibre context.
+            {geoMapAsideCopy(dashboard.dataMode)}
           </p>
           <p class="aside-p muted">
             {domainEventsAll.filter((e) => e.location).length} /
@@ -295,18 +279,6 @@
           </p>
         </aside>
       </div>
-    {:else if deskProfile === "markets"}
-      <aside class="domain-panel domain-tape" aria-label="Synthetic market tape">
-        <h3 class="aside-h">Notional tape (demo)</h3>
-        <p class="tape-line mono">
-          {catalog.label} · bid/ask spread widened on synthetic benchmark · vol
-          surface steepening · credit basis +4bps vs OIS mock
-        </p>
-        <p class="tape-line mono">
-          Flow skew: passive lift on defensive names · program bid behind ·
-          gamma flip zone marked at prior session high (exercise only)
-        </p>
-      </aside>
     {/if}
 
     <div class="domain-cols">
@@ -613,8 +585,7 @@
   .domain-map-panel {
     padding: var(--space-3);
   }
-  .domain-map-aside,
-  .domain-tape {
+  .domain-map-aside {
     padding: var(--space-4);
   }
   .aside-h {
@@ -629,15 +600,9 @@
     line-height: 1.45;
     color: var(--text-2);
   }
-  .tape-line {
-    margin: 0 0 0.35rem 0;
-    font-size: 0.72rem;
-    line-height: 1.4;
-    color: var(--text-2);
-  }
   .domain-cols {
     display: grid;
-    grid-template-columns: 1.2fr 0.8fr;
+    grid-template-columns: 1fr 1fr;
     gap: var(--space-4);
   }
   @media (max-width: 960px) {
@@ -709,26 +674,6 @@
       var(--sev-high) 45%,
       var(--border-1)
     );
-  }
-  .spark {
-    display: flex;
-    align-items: flex-end;
-    gap: 3px;
-    min-height: 4.5rem;
-    margin-top: var(--space-2);
-  }
-  .spark-bar {
-    flex: 1;
-    min-width: 4px;
-    max-width: 16px;
-    height: var(--h, 20%);
-    border-radius: 2px 2px 0 0;
-    background: color-mix(
-      in srgb,
-      var(--domain-accent, var(--accent)) 60%,
-      var(--bg-0)
-    );
-    opacity: var(--a, 0.7);
   }
   .mono {
     font-family: var(--font-mono);

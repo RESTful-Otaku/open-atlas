@@ -110,6 +110,7 @@ async fn main() -> anyhow::Result<()> {
     let app = axum::Router::new()
         .route("/health", get(health))
         .route("/v1/ready", get(ready))
+        .route("/v1/capable", get(capable))
         .route(
             "/v1/insight",
             axum::routing::post(insight).layer(RequestBodyLimitLayer::new(MAX_BODY)),
@@ -145,6 +146,30 @@ async fn ready(State(s): State<Arc<AppState>>) -> impl IntoResponse {
             }),
         )
             .into_response(),
+    }
+}
+
+/// Verifies the configured model can complete a tiny chat (catches CUDA / load failures).
+async fn capable(State(s): State<Arc<AppState>>) -> impl IntoResponse {
+    match ollama::chat_completion(
+        &s.http,
+        &s.ollama_base,
+        &s.model,
+        "Reply briefly.",
+        "Say exactly: OK",
+        s.timeout_secs.min(120),
+    )
+    .await
+    {
+        Ok(_) => (StatusCode::OK, "model inference ok").into_response(),
+        Err(e) => {
+            let msg = e.to_string();
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: msg }),
+            )
+                .into_response()
+        }
     }
 }
 

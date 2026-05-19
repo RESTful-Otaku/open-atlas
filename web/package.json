@@ -9,7 +9,7 @@
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun test src/lib/viz"
+    "test": "bun test src/lib"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.2",

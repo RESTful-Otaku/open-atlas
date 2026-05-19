@@ -46,15 +46,33 @@ use narrative::{build_narrative, NarrativeContext, NARRATIVE_SEVERITY_THRESHOLD}
 /// `SIGNAL_RING_SIZE` rows are preserved; older rows are pruned at ingest
 /// time. This is a hard upper bound — regardless of feed volume the table
 /// never grows past this.
-const SIGNAL_RING_SIZE: u64 = 10_000;
+/// Aligned with dashboard subscription caps + headroom (~2× client `MAX_SIGNALS`).
+const SIGNAL_RING_SIZE: u64 = 400;
 
-/// Maximum number of causal edges retained. Same rationale as signals.
-const CAUSAL_EDGE_RING_SIZE: u64 = 10_000;
+/// Aligned with dashboard subscription caps + headroom.
+const CAUSAL_EDGE_RING_SIZE: u64 = 600;
 
-/// Maximum number of events retained. At 3–10 events/sec from live feeds
-/// this is roughly a day of history; tuned up later is fine, but never
-/// unbounded.
-const EVENT_RING_SIZE: u64 = 50_000;
+/// Aligned with dashboard subscription caps + headroom (~2× client `MAX_EVENTS`).
+const EVENT_RING_SIZE: u64 = 800;
+
+/// Rolling window for canonical events (and linked narratives). Older rows
+/// are removed on each ingest so the store stays bounded and auditable.
+const EVENT_RETENTION_HOURS: u64 = 24;
+
+const EVENT_RETENTION_MICROS: i64 = (EVENT_RETENTION_HOURS as i64) * 3600 * 1_000_000;
+
+/// Maximum events per `ingest_events_batch` reducer call (transaction size bound).
+const MAX_INGEST_BATCH_SIZE: usize = 128;
+
+/// Append-only ingest audit ring (operator / HTTP only — table is private).
+const INGEST_AUDIT_RING_SIZE: u64 = 2_000;
+
+/// `ingest_audit.outcome` — accepted new row.
+const AUDIT_ACCEPTED: u8 = 0;
+/// `ingest_audit.outcome` — idempotent duplicate id.
+const AUDIT_DUPLICATE: u8 = 1;
+/// `ingest_audit.outcome` — validation or business-rule rejection.
+const AUDIT_REJECTED: u8 = 2;
 
 /// Severity threshold that raises an anomaly signal. Matches the default
 /// in `openatlas-core::inference::ThresholdInferenceEngine` so the two
@@ -84,6 +102,18 @@ pub struct Location {
     pub lat: f64,
     pub lon: f64,
     pub region_tags: Vec<String>,
+}
+
+/// Wire shape for batched ingest (`ingest_events_batch`). One row per event;
+/// `source_label` / `source_url` are shared across the batch (one feed cycle).
+#[derive(SpacetimeType, Clone, Debug)]
+pub struct IngestEventArgs {
+    pub id: u64,
+    pub timestamp: Timestamp,
+    pub domain: u8,
+    pub severity_score: f64,
+    pub location: Option<Location>,
+    pub payload_json: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +237,21 @@ pub struct OrdinalCounter {
     pub value: u64,
 }
 
+/// Append-only log of ingest attempts (accepted / duplicate / rejected).
+/// Private — keeps browser subscriptions lean; operators use `/status` + SQL.
+#[spacetimedb::table(name = "ingest_audit", accessor = ingest_audit)]
+pub struct IngestAudit {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub event_id: u64,
+    pub outcome: u8,
+    pub source_label: String,
+    pub recorded_at: Timestamp,
+    /// Empty on success; rejection reason otherwise.
+    pub detail: String,
+}
+
 // ---------------------------------------------------------------------------
 // Reducers
 // ---------------------------------------------------------------------------
@@ -237,108 +282,83 @@ pub fn ingest_event(
     source_label: String,
     source_url: String,
 ) -> Result<(), String> {
-    if !severity_score.is_finite() || !(0.0..=1.0).contains(&severity_score) {
-        return Err(format!("invalid severity: {severity_score}"));
-    }
-    // Must match `openatlas_core::Domain::ALL.len() - 1`. The upper bound
-    // is inclusive because tags are 0-indexed positional ids assigned in
-    // `openatlas-ingest/src/stdb.rs::domain_to_u8`.
-    if domain > 12 {
-        return Err(format!("unknown domain tag: {domain}"));
-    }
-    if ctx.db.event().id().find(id).is_some() {
-        return Err(format!("duplicate event id: {id}"));
-    }
-
-    let ordinal = next_ordinal(ctx);
-    let previous = ctx
-        .db
-        .last_event_in_domain()
-        .domain()
-        .find(domain)
-        .map(|row| (row.event_id, row.ordinal));
-
-    ctx.db.event().insert(Event {
+    let input = IngestEventArgs {
         id,
         timestamp,
         domain,
         severity_score,
-        location: location.clone(),
-        payload_json: payload_json.clone(),
-        ordinal,
-    });
+        location,
+        payload_json,
+    };
+    match try_ingest_one(ctx, &input, &source_label, &source_url, false)? {
+        IngestOneOutcome::Accepted => {
+            prune_rings(ctx);
+            Ok(())
+        }
+        IngestOneOutcome::Duplicate => Err(format!("duplicate event id: {id}")),
+    }
+}
 
-    upsert_world_state(ctx, domain, severity_score, timestamp);
-
-    if severity_score >= ANOMALY_THRESHOLD {
-        ctx.db.signal().insert(Signal {
-            id: 0,
-            event_id: id,
-            domain,
-            score: severity_score,
-            reason: "threshold_based_anomaly".to_owned(),
-            created_at: timestamp,
-        });
+/// Batch ingest for one feed cycle — one transaction, one prune pass, domain
+/// insights rebuilt once per touched domain. Per-event failures are recorded
+/// in [`IngestAudit`] without aborting the whole batch (at-least-once edge).
+#[reducer]
+pub fn ingest_events_batch(
+    ctx: &ReducerContext,
+    events: Vec<IngestEventArgs>,
+    source_label: String,
+    source_url: String,
+) -> Result<(), String> {
+    if events.len() > MAX_INGEST_BATCH_SIZE {
+        return Err(format!(
+            "batch size {} exceeds max {}",
+            events.len(),
+            MAX_INGEST_BATCH_SIZE
+        ));
     }
 
-    if let Some((source_event_id, _prev_ordinal)) = previous {
-        if source_event_id != id {
-            let snapshot = ctx.db.world_state().domain().find(domain);
-            let risk_index = snapshot.as_ref().map(|s| s.risk_index).unwrap_or(0.0);
-            let influence_score = ((severity_score + risk_index) / 2.0).clamp(0.0, 1.0);
-            let decay_rate = (0.05 + (1.0 - influence_score) * 0.2).clamp(0.01, 0.95);
-            ctx.db.causal_edge().insert(CausalEdge {
-                id: 0,
-                source_event_id,
-                target_event_id: id,
-                influence_score,
-                decay_rate,
-                created_at: timestamp,
-            });
+    let mut touched_domains: Vec<u8> = Vec::new();
+    for input in &events {
+        match try_ingest_one(ctx, input, &source_label, &source_url, true) {
+            Ok(IngestOneOutcome::Accepted) => {
+                if !touched_domains.contains(&input.domain) {
+                    touched_domains.push(input.domain);
+                }
+                record_ingest_audit(
+                    ctx,
+                    input.id,
+                    AUDIT_ACCEPTED,
+                    &source_label,
+                    input.timestamp,
+                    "",
+                );
+            }
+            Ok(IngestOneOutcome::Duplicate) => {
+                record_ingest_audit(
+                    ctx,
+                    input.id,
+                    AUDIT_DUPLICATE,
+                    &source_label,
+                    input.timestamp,
+                    "duplicate event id",
+                );
+            }
+            Err(reason) => {
+                record_ingest_audit(
+                    ctx,
+                    input.id,
+                    AUDIT_REJECTED,
+                    &source_label,
+                    input.timestamp,
+                    &reason,
+                );
+            }
         }
     }
 
-    // Update/insert the last-event-in-domain bookkeeping row.
-    if ctx
-        .db
-        .last_event_in_domain()
-        .domain()
-        .find(domain)
-        .is_some()
-    {
-        ctx.db
-            .last_event_in_domain()
-            .domain()
-            .update(LastEventInDomain {
-                domain,
-                event_id: id,
-                ordinal,
-            });
-    } else {
-        ctx.db.last_event_in_domain().insert(LastEventInDomain {
-            domain,
-            event_id: id,
-            ordinal,
-        });
-    }
-
-    rebuild_domain_insight(ctx, domain, source_label.clone(), source_url, timestamp);
-
-    // Narratives are best-effort and gated on severity so the
-    // narrative table stays proportional to incident density, not feed
-    // volume. All narrative inputs flow through the reducer so replay
-    // reproduces identical rows.
-    if severity_score >= NARRATIVE_SEVERITY_THRESHOLD {
-        write_event_narrative(
-            ctx,
-            id,
-            ordinal,
-            domain,
-            severity_score,
-            location.as_ref(),
-            &source_label,
-            timestamp,
-        );
+    let insight_ts = ctx.timestamp;
+    for domain in touched_domains {
+        rebuild_domain_insight(ctx, domain, source_label.clone(), source_url.clone(), insight_ts);
     }
 
     prune_rings(ctx);
@@ -425,6 +445,174 @@ pub fn link_causal_events(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+enum IngestOneOutcome {
+    Accepted,
+    Duplicate,
+}
+
+/// Core ingest logic shared by single- and batch-reducers.
+fn try_ingest_one(
+    ctx: &ReducerContext,
+    input: &IngestEventArgs,
+    source_label: &str,
+    source_url: &str,
+    defer_domain_insight: bool,
+) -> Result<IngestOneOutcome, String> {
+    validate_ingest_input(input)?;
+
+    if ctx.db.event().id().find(input.id).is_some() {
+        return Ok(IngestOneOutcome::Duplicate);
+    }
+
+    let id = input.id;
+    let timestamp = input.timestamp;
+    let domain = input.domain;
+    let severity_score = input.severity_score;
+    let location = input.location.clone();
+    let payload_json = input.payload_json.clone();
+
+    let ordinal = next_ordinal(ctx);
+    let previous = ctx
+        .db
+        .last_event_in_domain()
+        .domain()
+        .find(domain)
+        .map(|row| (row.event_id, row.ordinal));
+
+    ctx.db.event().insert(Event {
+        id,
+        timestamp,
+        domain,
+        severity_score,
+        location: location.clone(),
+        payload_json: payload_json.clone(),
+        ordinal,
+    });
+
+    upsert_world_state(ctx, domain, severity_score, timestamp);
+
+    if severity_score >= ANOMALY_THRESHOLD {
+        ctx.db.signal().insert(Signal {
+            id: 0,
+            event_id: id,
+            domain,
+            score: severity_score,
+            reason: "threshold_based_anomaly".to_owned(),
+            created_at: timestamp,
+        });
+    }
+
+    if let Some((source_event_id, _prev_ordinal)) = previous {
+        if source_event_id != id {
+            let snapshot = ctx.db.world_state().domain().find(domain);
+            let risk_index = snapshot.as_ref().map(|s| s.risk_index).unwrap_or(0.0);
+            let influence_score = ((severity_score + risk_index) / 2.0).clamp(0.0, 1.0);
+            let decay_rate = (0.05 + (1.0 - influence_score) * 0.2).clamp(0.01, 0.95);
+            ctx.db.causal_edge().insert(CausalEdge {
+                id: 0,
+                source_event_id,
+                target_event_id: id,
+                influence_score,
+                decay_rate,
+                created_at: timestamp,
+            });
+        }
+    }
+
+    if ctx
+        .db
+        .last_event_in_domain()
+        .domain()
+        .find(domain)
+        .is_some()
+    {
+        ctx.db
+            .last_event_in_domain()
+            .domain()
+            .update(LastEventInDomain {
+                domain,
+                event_id: id,
+                ordinal,
+            });
+    } else {
+        ctx.db.last_event_in_domain().insert(LastEventInDomain {
+            domain,
+            event_id: id,
+            ordinal,
+        });
+    }
+
+    if !defer_domain_insight {
+        rebuild_domain_insight(
+            ctx,
+            domain,
+            source_label.to_owned(),
+            source_url.to_owned(),
+            timestamp,
+        );
+    }
+
+    if severity_score >= NARRATIVE_SEVERITY_THRESHOLD {
+        write_event_narrative(
+            ctx,
+            id,
+            ordinal,
+            domain,
+            severity_score,
+            location.as_ref(),
+            source_label,
+            timestamp,
+        );
+    }
+
+    Ok(IngestOneOutcome::Accepted)
+}
+
+fn validate_ingest_input(input: &IngestEventArgs) -> Result<(), String> {
+    if !input.severity_score.is_finite() || !(0.0..=1.0).contains(&input.severity_score) {
+        return Err(format!("invalid severity: {}", input.severity_score));
+    }
+    if input.domain > 12 {
+        return Err(format!("unknown domain tag: {}", input.domain));
+    }
+    if let Some(ref loc) = input.location {
+        if !loc.lat.is_finite() || !loc.lon.is_finite() {
+            return Err("location coordinates must be finite".to_owned());
+        }
+        if !(-90.0..=90.0).contains(&loc.lat) || !(-180.0..=180.0).contains(&loc.lon) {
+            return Err(format!(
+                "location out of range: lat={}, lon={}",
+                loc.lat, loc.lon
+            ));
+        }
+    }
+    if input.payload_json.len() > 8_192 {
+        return Err(format!(
+            "payload_json too large: {} bytes (max 8192)",
+            input.payload_json.len()
+        ));
+    }
+    Ok(())
+}
+
+fn record_ingest_audit(
+    ctx: &ReducerContext,
+    event_id: u64,
+    outcome: u8,
+    source_label: &str,
+    recorded_at: Timestamp,
+    detail: &str,
+) {
+    ctx.db.ingest_audit().insert(IngestAudit {
+        id: 0,
+        event_id,
+        outcome,
+        source_label: source_label.to_owned(),
+        recorded_at,
+        detail: detail.to_owned(),
+    });
+}
 
 /// Atomically bump the global ordinal counter and return the new value.
 /// All ordinal assignments flow through this function so ordering is
@@ -552,9 +740,33 @@ fn prune_rings(ctx: &ReducerContext) {
     prune_events(ctx);
     prune_signals(ctx);
     prune_causal_edges(ctx);
+    prune_ingest_audit(ctx);
 }
 
 fn prune_events(ctx: &ReducerContext) {
+    prune_events_older_than_retention(ctx);
+    prune_events_over_ring_size(ctx);
+}
+
+/// Drop events (and narratives) older than [`EVENT_RETENTION_HOURS`].
+fn prune_events_older_than_retention(ctx: &ReducerContext) {
+    let cutoff = ctx
+        .timestamp
+        .to_micros_since_unix_epoch()
+        .saturating_sub(EVENT_RETENTION_MICROS);
+    let stale: Vec<u64> = ctx
+        .db
+        .event()
+        .iter()
+        .filter(|e| e.timestamp.to_micros_since_unix_epoch() < cutoff)
+        .map(|e| e.id)
+        .collect();
+    for id in stale {
+        delete_event_row(ctx, id);
+    }
+}
+
+fn prune_events_over_ring_size(ctx: &ReducerContext) {
     let total = ctx.db.event().count();
     if total <= EVENT_RING_SIZE {
         return;
@@ -563,17 +775,19 @@ fn prune_events(ctx: &ReducerContext) {
     let mut rows: Vec<Event> = ctx.db.event().iter().collect();
     rows.sort_by_key(|e| e.ordinal);
     for row in rows.into_iter().take(excess as usize) {
-        // Narratives are keyed by event id, so clear the matching row
-        // first — otherwise `event_narrative` would keep orphan rows
-        // alive past their parent event.
-        if ctx.db.event_narrative().event_id().find(row.id).is_some() {
-            ctx.db.event_narrative().event_id().delete(row.id);
-        }
-        ctx.db.event().id().delete(row.id);
+        delete_event_row(ctx, row.id);
     }
 }
 
+fn delete_event_row(ctx: &ReducerContext, id: u64) {
+    if ctx.db.event_narrative().event_id().find(id).is_some() {
+        ctx.db.event_narrative().event_id().delete(id);
+    }
+    ctx.db.event().id().delete(id);
+}
+
 fn prune_signals(ctx: &ReducerContext) {
+    prune_signals_older_than_retention(ctx);
     let total = ctx.db.signal().count();
     if total <= SIGNAL_RING_SIZE {
         return;
@@ -586,7 +800,25 @@ fn prune_signals(ctx: &ReducerContext) {
     }
 }
 
+fn prune_signals_older_than_retention(ctx: &ReducerContext) {
+    let cutoff = ctx
+        .timestamp
+        .to_micros_since_unix_epoch()
+        .saturating_sub(EVENT_RETENTION_MICROS);
+    let stale: Vec<u64> = ctx
+        .db
+        .signal()
+        .iter()
+        .filter(|s| s.created_at.to_micros_since_unix_epoch() < cutoff)
+        .map(|s| s.id)
+        .collect();
+    for id in stale {
+        ctx.db.signal().id().delete(id);
+    }
+}
+
 fn prune_causal_edges(ctx: &ReducerContext) {
+    prune_causal_edges_older_than_retention(ctx);
     let total = ctx.db.causal_edge().count();
     if total <= CAUSAL_EDGE_RING_SIZE {
         return;
@@ -596,5 +828,35 @@ fn prune_causal_edges(ctx: &ReducerContext) {
     rows.sort_by_key(|e| e.id);
     for row in rows.into_iter().take(excess as usize) {
         ctx.db.causal_edge().id().delete(row.id);
+    }
+}
+
+fn prune_causal_edges_older_than_retention(ctx: &ReducerContext) {
+    let cutoff = ctx
+        .timestamp
+        .to_micros_since_unix_epoch()
+        .saturating_sub(EVENT_RETENTION_MICROS);
+    let stale: Vec<u64> = ctx
+        .db
+        .causal_edge()
+        .iter()
+        .filter(|e| e.created_at.to_micros_since_unix_epoch() < cutoff)
+        .map(|e| e.id)
+        .collect();
+    for id in stale {
+        ctx.db.causal_edge().id().delete(id);
+    }
+}
+
+fn prune_ingest_audit(ctx: &ReducerContext) {
+    let total = ctx.db.ingest_audit().count();
+    if total <= INGEST_AUDIT_RING_SIZE {
+        return;
+    }
+    let excess = total - INGEST_AUDIT_RING_SIZE;
+    let mut rows: Vec<IngestAudit> = ctx.db.ingest_audit().iter().collect();
+    rows.sort_by_key(|r| r.id);
+    for row in rows.into_iter().take(excess as usize) {
+        ctx.db.ingest_audit().id().delete(row.id);
     }
 }

@@ -4,12 +4,16 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use openatlas_core::{Domain, Location, WorldEvent};
+use openatlas_core::Domain;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::{adapter::FeedDescriptor, deterministic_event_id};
+use super::{
+    adapter::FeedDescriptor,
+    http::fetch_json,
+    normalize::{drafts_to_events, location_from_coords, ObservationDraft},
+};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(180);
 const SOURCE_URL: &str = "https://eonet.gsfc.nasa.gov/";
@@ -65,76 +69,69 @@ struct Source {
     url: String,
 }
 
-async fn fetch(client: Client) -> anyhow::Result<Vec<WorldEvent>> {
-    let payload = client
-        .get(format!(
-            "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit={MAX_EVENTS}"
-        ))
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<Response>()
-        .await?;
+async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>> {
+    let url = format!(
+        "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit={MAX_EVENTS}"
+    );
+    let payload: Response = fetch_json(&client, "nasa-eonet", &url).await?;
 
-    let mut events = Vec::new();
-    for eonet_event in payload.events.into_iter().take(MAX_EVENTS) {
-        let Some(latest) = eonet_event.geometry.last() else {
-            continue;
-        };
-        // Only accept point geometries; polygons/tracks are left for a future
-        // feature that supports footprint rendering.
-        if latest.kind != "Point" {
-            continue;
-        }
-        let Some((lon, lat)) = extract_point(&latest.coordinates) else {
-            continue;
-        };
-        let Ok(timestamp) = DateTime::parse_from_rfc3339(&latest.date) else {
-            continue;
-        };
-        let timestamp = timestamp.with_timezone(&Utc);
+    let drafts = payload
+        .events
+        .into_iter()
+        .take(MAX_EVENTS)
+        .filter_map(parse_eonet_event);
+    Ok(drafts_to_events("nasa-eonet", SOURCE_URL, drafts))
+}
 
-        let category_id = eonet_event
-            .categories
-            .first()
-            .map(|cat| cat.id.as_str())
-            .unwrap_or("unknown");
-        let category_title = eonet_event
-            .categories
-            .first()
-            .map(|cat| cat.title.clone())
-            .unwrap_or_else(|| "Unknown".to_owned());
-        let domain = category_domain(category_id);
-        let severity_score = severity(category_id, latest.magnitude_value);
-
-        events.push(WorldEvent {
-            id: deterministic_event_id("nasa-eonet", &eonet_event.id),
-            timestamp,
-            domain,
-            location: Some(Location {
-                lat,
-                lon,
-                region_tags: vec!["nasa-eonet".to_owned(), category_id.to_owned()],
-            }),
-            severity_score,
-            payload: json!({
-                "source": "nasa-eonet",
-                "source_url": SOURCE_URL,
-                "title": eonet_event.title,
-                "category_id": category_id,
-                "category": category_title,
-                "magnitude_value": latest.magnitude_value,
-                "magnitude_unit": latest.magnitude_unit,
-                "external_id": eonet_event.id,
-                "upstream_sources": eonet_event
-                    .sources
-                    .iter()
-                    .map(|s| json!({"id": s.id, "url": s.url}))
-                    .collect::<Vec<_>>()
-            }),
-        });
+fn parse_eonet_event(eonet_event: EonetEvent) -> Option<ObservationDraft> {
+    let latest = eonet_event.geometry.last()?;
+    if latest.kind != "Point" {
+        return None;
     }
-    Ok(events)
+    let (lon, lat) = extract_point(&latest.coordinates)?;
+    let timestamp = DateTime::parse_from_rfc3339(&latest.date)
+        .ok()?
+        .with_timezone(&Utc);
+
+    let category_id = eonet_event
+        .categories
+        .first()
+        .map(|cat| cat.id.as_str())
+        .unwrap_or("unknown");
+    let category_title = eonet_event
+        .categories
+        .first()
+        .map(|cat| cat.title.clone())
+        .unwrap_or_else(|| "Unknown".to_owned());
+    let domain = category_domain(category_id);
+    let severity_score = severity(category_id, latest.magnitude_value);
+
+    let location = location_from_coords(
+        lat,
+        lon,
+        vec!["nasa-eonet".to_owned(), category_id.to_owned()],
+    )
+    .ok()?;
+
+    let upstream_sources: Value = eonet_event
+        .sources
+        .iter()
+        .map(|s| json!({"id": s.id, "url": s.url}))
+        .collect::<Vec<_>>()
+        .into();
+
+    Some(
+        ObservationDraft::new(eonet_event.id.clone(), timestamp, domain, severity_score)
+            .with_location(location)
+            .ok()?
+            .field("title", eonet_event.title)
+            .field("category_id", category_id)
+            .field("category", category_title)
+            .field("magnitude_value", latest.magnitude_value)
+            .field("magnitude_unit", latest.magnitude_unit.clone())
+            .field("external_id", eonet_event.id)
+            .field("upstream_sources", upstream_sources),
+    )
 }
 
 fn extract_point(value: &Value) -> Option<(f64, f64)> {
@@ -157,8 +154,6 @@ fn category_domain(category_id: &str) -> Domain {
 
 fn severity(category_id: &str, magnitude: Option<f64>) -> f64 {
     if let Some(magnitude) = magnitude {
-        // EONET magnitude scales are capped well under 10; normalise but
-        // clamp defensively against exotic units.
         return (magnitude / 10.0).clamp(0.0, 1.0);
     }
     match category_id {

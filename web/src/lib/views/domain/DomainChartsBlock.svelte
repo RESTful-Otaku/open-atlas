@@ -2,6 +2,7 @@
   import EChartsPanel from "../../viz/EChartsPanel.svelte";
   import type { DeskProfile } from "./domain-desk-types";
   import { deskChartPack } from "./domain-desk-charts";
+  import type { DataMode } from "../../data-source-copy";
   import type { UiEvent, UiWorldState } from "../../types";
 
   interface Props {
@@ -11,6 +12,7 @@
     events: readonly UiEvent[];
     severityHistory: readonly number[];
     state?: UiWorldState;
+    dataMode?: DataMode;
   }
   const {
     profile,
@@ -19,6 +21,7 @@
     events,
     severityHistory,
     state,
+    dataMode = "live",
   }: Props = $props();
 
   const pack = $derived(
@@ -28,6 +31,7 @@
       events,
       severityHistory,
       state,
+      dataMode,
     }),
   );
 </script>
