@@ -105,6 +105,18 @@ Do **not** set `VITE_DEMO_DATA=1` in production builds.
 RUN_LIVE_FEED_TEST=1 ./scripts/e2e-qa.sh   # also runs ignored Rust fetch tests
 ```
 
+### Post-deploy checklist (staging / production)
+
+After publishing the module, copying `web-dist/`, and restarting ingest:
+
+1. **HTTP smoke** — `INGEST_BASE=https://your-host ./scripts/post-deploy-smoke.sh`
+2. **Optional STDB ping** — add `--stdb` when `OPENATLAS_STDB_URI` points at the deployed database
+3. **WebSocket path** — open the app **without** `?demo=1`; Ops strip should show **Live** when connected
+4. **Full runtime** (local or SSH on host) — `./scripts/verify-runtime.sh` or `./scripts/prove-live-stack.sh`
+5. **Prometheus** — scrape `GET /metrics` on ingest (counters from `IngestMetrics`)
+
+CI: set repository variable `STAGING_INGEST_URL` to enable the optional `post-deploy-smoke` job in [`deploy-staging.yml`](../.github/workflows/deploy-staging.yml).
+
 Or from the repo root:
 
 ```bash

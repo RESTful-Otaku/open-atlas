@@ -15,6 +15,7 @@
   import Anomalies from "../components/Anomalies.svelte";
   import SeverityHeatmap from "../components/SeverityHeatmap.svelte";
   import CausalGraph from "../components/CausalGraph.svelte";
+  import LegacyVizStrip from "../components/LegacyVizStrip.svelte";
   import MountWhenVisible from "../components/MountWhenVisible.svelte";
   import LayoutEditBar from "../layout/LayoutEditBar.svelte";
   import { loadPanelLayout, savePanelLayout, clearPanelLayout } from "../layout/panel-layout-persist";
@@ -30,6 +31,7 @@
   const DEFAULT_ORDER: readonly string[] = [
     "kpi",
     "map",
+    "viz-strip",
     "domain-cards",
     "insights",
     "heatmap",
@@ -41,6 +43,7 @@
   const DEFAULT_SPANS: Readonly<Record<string, number>> = {
     kpi: 12,
     map: 12,
+    "viz-strip": 12,
     "domain-cards": 8,
     insights: 4,
     heatmap: 6,
@@ -223,6 +226,10 @@
         {:else if id === "map"}
           <MountWhenVisible minHeight="420px">
             <WorldMap embedded={true} panelSpan={12} />
+          </MountWhenVisible>
+        {:else if id === "viz-strip"}
+          <MountWhenVisible minHeight="280px">
+            <LegacyVizStrip />
           </MountWhenVisible>
         {:else if id === "domain-cards"}
           <MountWhenVisible minHeight="200px">

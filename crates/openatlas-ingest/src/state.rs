@@ -5,7 +5,7 @@
 //! per-feed health for `/status`. Everything domain-related lives in the
 //! SpacetimeDB module.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, net::SocketAddr, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
@@ -20,6 +20,8 @@ type FeedRuntimeMap = std::collections::HashMap<String, FeedHealth>;
 /// HTTP handler. Cheap to clone (all fields are `Arc` or `Copy`).
 #[derive(Clone)]
 pub struct AppState {
+    /// HTTP listen address (drives admin auth policy for mutating routes).
+    pub bind_addr: SocketAddr,
     pub started_at: DateTime<Utc>,
     pub feed_runtime: Arc<RwLock<FeedRuntimeMap>>,
     /// Feed supervisor tasks already spawned (avoids duplicate workers).

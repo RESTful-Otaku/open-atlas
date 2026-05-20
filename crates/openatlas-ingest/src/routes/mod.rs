@@ -5,12 +5,14 @@
 //!
 //! * `/health` — unauthenticated liveness (process alive).
 //! * `/ready`  — readiness (can reach SpacetimeDB).
+//! * `/metrics` — Prometheus text (`IngestMetrics` counters).
 //! * `/status` — per-feed health + stdb connection info.
 //! * `/feeds` — feed catalog, API key config (`PUT`), test/reconnect.
 //!
-//! **Security:** no authentication on these routes — bind to localhost in
-//! production or place behind a trusted reverse proxy. `PUT /feeds` only
-//! accepts known feed API key env names.
+//! **Security:** default bind is loopback (`127.0.0.1:8080`). Mutating
+//! `/feeds` routes require `OPENATLAS_API_KEY` + `x-openatlas-key` when the
+//! bind is non-loopback or when the env key is set. `PUT /feeds` only
+//! accepts known feed API key env names (`FRED_API_KEY`, `EIA_API_KEY`).
 //! * fallback  — serves `web/dist/` if a bundle is present, so a bare
 //!   `cargo run` can still boot a dashboard.
 //!
@@ -30,6 +32,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
+        .route("/metrics", get(health::metrics))
         .route("/status", get(health::service_status))
         .route("/feeds", get(feeds::list_feeds).put(feeds::update_secrets))
         .route(

@@ -239,5 +239,12 @@ else
   echo "(skip) set RUN_LIVE_FEED_TEST=1 to run cargo test registry_feeds_fetch -- --ignored"
 fi
 
+section "Post-deploy smoke (ingest HTTP)"
+if [[ "$STARTED_INGEST" -eq 1 ]] || curl -sf "${INGEST_URL}/health" >/dev/null 2>&1; then
+  ./scripts/post-deploy-smoke.sh || die "post-deploy-smoke failed"
+else
+  echo "(skip) ingest not reachable — start stack or run ./scripts/post-deploy-smoke.sh after deploy"
+fi
+
 echo ""
 echo "e2e-qa: PASS (ingest_mode=${INGEST_MODE}). UI: ./dev.sh web with stack running."

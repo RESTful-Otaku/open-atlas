@@ -7,7 +7,7 @@ import type { EChartsOption } from "echarts";
 import type { DeskProfile } from "./domain-desk-types";
 import type { DataMode } from "../../data-source-copy";
 import { deskGeoNote } from "../../data-source-copy";
-import type { UiEvent, UiWorldState } from "../../types";
+import type { UiCausalEdge, UiEvent, UiWorldState } from "../../types";
 import {
   chartGridLine,
   chartItemBorder,
@@ -797,13 +797,886 @@ export function deskTertiaryParallelSignals(events: readonly UiEvent[]): ECharts
   };
 }
 
+function sevBand(score: number): "low" | "med" | "hi" {
+  if (score < 0.34) return "low";
+  if (score < 0.67) return "med";
+  return "hi";
+}
+
+/** Stacked bars: UTC hour × severity band (live buffer). */
+export function domainStackedHourSeverity(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const low = new Array(24).fill(0);
+  const med = new Array(24).fill(0);
+  const hi = new Array(24).fill(0);
+  for (const e of events) {
+    const t = Date.parse(e.timestamp);
+    if (!Number.isFinite(t)) continue;
+    const h = new Date(t).getUTCHours();
+    const b = sevBand(e.severity_score);
+    if (b === "low") low[h] += 1;
+    else if (b === "med") med[h] += 1;
+    else hi[h] += 1;
+  }
+  const labels = Array.from({ length: 24 }, (_, h) => `${h}h`);
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "axis" },
+    legend: { textStyle: { color: chartTextMuted() }, top: 0 },
+    grid: { left: 40, right: 8, top: 28, bottom: 36 },
+    xAxis: {
+      type: "category",
+      data: labels,
+      axisLabel: { color: chartTextMuted(), fontSize: 8, rotate: 45 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
+    },
+    yAxis: {
+      type: "value",
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
+    },
+    series: [
+      {
+        name: "Low",
+        type: "bar",
+        stack: "h",
+        data: low,
+        itemStyle: { color: `${accent}44` },
+      },
+      {
+        name: "Med",
+        type: "bar",
+        stack: "h",
+        data: med,
+        itemStyle: { color: `${accent}aa` },
+      },
+      {
+        name: "High",
+        type: "bar",
+        stack: "h",
+        data: hi,
+        itemStyle: { color: accent },
+      },
+    ],
+  };
+}
+
+/** Donut: share by feed `feedSource` or severity quartile. */
+export function domainDonutFeedOrSeverity(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const byFeed = new Map<string, number>();
+  for (const e of events) {
+    const k = e.feedSource?.trim() || "Unknown source";
+    byFeed.set(k, (byFeed.get(k) ?? 0) + 1);
+  }
+  let data = [...byFeed.entries()].map(([name, value], i) => ({
+    name: name.length > 24 ? `${name.slice(0, 22)}…` : name,
+    value,
+    itemStyle: {
+      color: [accent, "#94a3b8", "#64748b", "#22d3ee", "#a78bfa"][i % 5],
+    },
+  }));
+  if (data.length === 0) {
+    data = [
+      { name: "Low", value: 1, itemStyle: { color: `${accent}55` } },
+      { name: "Med", value: 1, itemStyle: { color: `${accent}aa` } },
+      { name: "High", value: 1, itemStyle: { color: accent } },
+    ];
+  }
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "item" },
+    series: [
+      {
+        type: "pie",
+        radius: ["42%", "72%"],
+        avoidLabelOverlap: true,
+        label: { color: chartTextMuted(), fontSize: 9 },
+        data,
+      },
+    ],
+  };
+}
+
+/** Histogram: severity density in the buffer (10 bins). */
+export function domainHistogramSeverity(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const bins = new Array(10).fill(0);
+  for (const e of events) {
+    const slot = Math.min(9, Math.floor(e.severity_score * 10));
+    bins[slot] += 1;
+  }
+  const labels = bins.map((_, i) => `${(i / 10).toFixed(1)}–${((i + 1) / 10).toFixed(1)}`);
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "axis" },
+    grid: { left: 40, right: 8, top: 22, bottom: 40 },
+    xAxis: {
+      type: "category",
+      data: labels,
+      axisLabel: { color: chartTextMuted(), fontSize: 8, rotate: 35 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
+    },
+    yAxis: {
+      type: "value",
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
+    },
+    series: [
+      {
+        type: "bar",
+        data: bins,
+        barCategoryGap: 0,
+        itemStyle: { color: accent },
+      },
+    ],
+  };
+}
+
+/** Sparkline from event severities when domain ring history is empty. */
+export function eventSeveritySparkline(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const sorted = [...events].sort(
+    (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp),
+  );
+  const pts = sorted.slice(-40).map((e) => e.severity_score);
+  if (pts.length === 0) {
+    return rollingStressLine([0.15, 0.12, 0.18, 0.11], accent);
+  }
+  return rollingStressLine(pts, accent);
+}
+
+/** Scatter + ripples on lon/lat; requires locations in buffer. */
+export function domainScatterEffectGeo(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const geo = events.filter((e) => e.location !== null);
+  const scatterData = geo.map((e) => [
+    e.location!.lon,
+    e.location!.lat,
+    Math.round(e.severity_score * 100),
+  ]);
+  const top = [...geo]
+    .sort((a, b) => b.severity_score - a.severity_score)
+    .slice(0, 4);
+  const fxData = top.map((e) => [
+    e.location!.lon,
+    e.location!.lat,
+    Math.round(e.severity_score * 100),
+  ]);
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "item" },
+    xAxis: {
+      type: "value",
+      name: "Lon",
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+    },
+    yAxis: {
+      type: "value",
+      name: "Lat",
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+    },
+    series: [
+      {
+        type: "scatter",
+        symbolSize: (val: unknown) => {
+          const d = val as number[];
+          return 6 + (d[2] ?? 0) / 25;
+        },
+        itemStyle: { color: `${accent}99` },
+        data: scatterData.length > 0 ? scatterData : [[0, 0, 0]],
+      },
+      {
+        type: "effectScatter",
+        rippleEffect: { brushType: "stroke", scale: 2.5 },
+        symbolSize: (val: unknown) => {
+          const d = val as number[];
+          return 12 + (d[2] ?? 0) / 20;
+        },
+        itemStyle: { color: accent },
+        data: fxData.length > 0 ? fxData : [],
+      },
+    ],
+  };
+}
+
+/** Force layout graph: events as nodes, causal edges as links (buffer). */
+export function domainForceGraphFromCausal(
+  events: readonly UiEvent[],
+  edges: readonly UiCausalEdge[],
+  accent: string,
+): EChartsOption {
+  const slice = events.slice(0, 48);
+  if (slice.length === 0) {
+    return {
+      backgroundColor: "transparent",
+      title: {
+        text: "No events in buffer — graph needs domain events",
+        left: "center",
+        top: "middle",
+        textStyle: { color: chartTextMuted(), fontSize: 11 },
+      },
+      series: [],
+    };
+  }
+  const idSet = new Set(slice.map((e) => e.id));
+  const nodes = slice.map((e) => ({
+    id: e.id,
+    name: `#${e.ordinal}`,
+    symbolSize: 8 + e.severity_score * 22,
+    category: 0,
+  }));
+  const links = edges
+    .filter(
+      (ed) =>
+        idSet.has(ed.source_event_id) && idSet.has(ed.target_event_id),
+    )
+    .slice(0, 64)
+    .map((ed) => ({
+      source: ed.source_event_id,
+      target: ed.target_event_id,
+      lineStyle: {
+        width: 1 + ed.influence_score * 3,
+        opacity: 0.45 + ed.influence_score * 0.35,
+      },
+    }));
+  return {
+    backgroundColor: "transparent",
+    tooltip: {},
+    series: [
+      {
+        type: "graph",
+        layout: "force",
+        roam: true,
+        draggable: true,
+        categories: [{ name: "event" }],
+        label: { show: nodes.length < 28, fontSize: 8, color: chartTextMuted() },
+        force: {
+          repulsion: nodes.length > 20 ? 120 : 80,
+          edgeLength: [60, 140],
+        },
+        lineStyle: { color: "rgba(148,163,184,0.55)" },
+        emphasis: { focus: "adjacency" },
+        data: nodes,
+        links,
+        itemStyle: { color: accent },
+      },
+    ],
+  };
+}
+
+/** Nightingale rose: severity band mix. */
+export function domainNightingaleRose(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  let low = 0;
+  let med = 0;
+  let hi = 0;
+  for (const e of events) {
+    const b = sevBand(e.severity_score);
+    if (b === "low") low += 1;
+    else if (b === "med") med += 1;
+    else hi += 1;
+  }
+  const palette = [`${accent}66`, `${accent}bb`, accent];
+  const data = [
+    { name: "Low", value: Math.max(low, 1), itemStyle: { color: palette[0] } },
+    { name: "Med", value: Math.max(med, 1), itemStyle: { color: palette[1] } },
+    { name: "High", value: Math.max(hi, 1), itemStyle: { color: palette[2] } },
+  ];
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "item" },
+    series: [
+      {
+        type: "pie",
+        radius: [16, 96],
+        roseType: "area",
+        label: { color: chartTextMuted(), fontSize: 9 },
+        data,
+      },
+    ],
+  };
+}
+
+/** Tree: severity hierarchy weighted by counts (live buffer). */
+export function domainTreeSeverity(events: readonly UiEvent[], accent: string): EChartsOption {
+  let low = 0;
+  let med = 0;
+  let hi = 0;
+  for (const e of events) {
+    const b = sevBand(e.severity_score);
+    if (b === "low") low += 1;
+    else if (b === "med") med += 1;
+    else hi += 1;
+  }
+  const root = {
+    name: "Infrastructure signals",
+    itemStyle: { color: accent },
+    children: [
+      { name: "Elevated", value: Math.max(hi, 1), itemStyle: { color: accent } },
+      {
+        name: "Watch",
+        value: Math.max(med, 1),
+        children: [{ name: "Med", value: Math.max(med, 1) }],
+      },
+      { name: "Nominal", value: Math.max(low, 1), itemStyle: { color: `${accent}66` } },
+    ],
+  };
+  return {
+    backgroundColor: "transparent",
+    textStyle: { color: chartTextMuted() },
+    series: [
+      {
+        type: "tree",
+        data: [root],
+        top: 12,
+        bottom: 12,
+        left: 12,
+        right: 12,
+        symbol: "circle",
+        symbolSize: 7,
+        orient: "TB",
+        expandAndCollapse: true,
+        label: { fontSize: 10, color: chartTextMain() },
+        lineStyle: { color: "rgba(148,163,184,0.45)" },
+      },
+    ],
+  };
+}
+
+/** Radar with axes scaled from live buffer size / severity (not purely synthetic). */
+export function healthRadarFromEvents(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const n = events.length;
+  const avgSev = n
+    ? events.reduce((a, e) => a + e.severity_score, 0) / n
+    : 0;
+  const hi = events.filter((e) => e.severity_score >= 0.67).length;
+  const med = events.filter(
+    (e) => e.severity_score >= 0.34 && e.severity_score < 0.67,
+  ).length;
+  const withLoc = events.filter((e) => e.location !== null).length;
+  const axes = [
+    "Volume",
+    "Avg sev.×100",
+    "High sev. ct.",
+    "Med sev. ct.",
+    "Geo tags",
+  ];
+  const vals = [
+    Math.min(100, n * 3),
+    Math.min(100, avgSev * 100),
+    Math.min(100, hi * 8),
+    Math.min(100, med * 5),
+    Math.min(100, withLoc * 4),
+  ];
+  return {
+    backgroundColor: "transparent",
+    tooltip: {},
+    radar: {
+      indicator: axes.map((name) => ({ name, max: 100 })),
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      splitArea: { show: false },
+      axisLine: { lineStyle: { color: chartGridLine() } },
+      axisName: { color: chartTextMuted(), fontSize: 10 },
+    },
+    series: [
+      {
+        type: "radar",
+        data: [
+          {
+            value: vals,
+            name: "Buffer posture",
+            areaStyle: { opacity: 0.14 },
+            lineStyle: { color: accent },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** Gauge: world-state risk index (×100). */
+export function domainGaugeRiskIndex(
+  state: UiWorldState | undefined,
+  accent: string,
+): EChartsOption {
+  const hasSignal = state && state.event_count > 0;
+  const v = hasSignal ? Math.round(Math.min(100, state!.risk_index * 100)) : 4;
+  return {
+    backgroundColor: "transparent",
+    textStyle: { color: chartTextMuted() },
+    series: [
+      {
+        type: "gauge",
+        min: 0,
+        max: 100,
+        splitNumber: 10,
+        axisLine: {
+          lineStyle: {
+            width: 12,
+            color: [
+              [0.35, `${accent}55`],
+              [0.7, `${accent}aa`],
+              [1, accent],
+            ],
+          },
+        },
+        pointer: { itemStyle: { color: chartTextMain() } },
+        detail: { fontSize: 12, color: chartTextMain() },
+        data: [{ value: v, name: hasSignal ? "Risk ×100" : "Idle" }],
+      },
+    ],
+  };
+}
+
+/** Boxplot: severity spread in buffer (five-number summary). */
+export function domainSeverityBoxplot(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const s = events.map((e) => e.severity_score).sort((a, b) => a - b);
+  let box: number[];
+  if (s.length === 0) {
+    box = [0, 0.2, 0.4, 0.6, 0.8];
+  } else if (s.length === 1) {
+    const x = s[0]!;
+    box = [x, x, x, x, x];
+  } else {
+    const q = (p: number) =>
+      s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))]!;
+    box = [s[0]!, q(0.25), q(0.5), q(0.75), s[s.length - 1]!];
+  }
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "item" },
+    grid: { left: 48, right: 12, top: 28, bottom: 36 },
+    xAxis: {
+      type: "category",
+      data: ["Buffer"],
+      axisLabel: { color: chartTextMuted() },
+      axisLine: { lineStyle: { color: chartGridLine() } },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      max: 1,
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 10 },
+    },
+    series: [
+      {
+        type: "boxplot",
+        data: [box],
+        itemStyle: { color: `${accent}77`, borderColor: accent },
+      },
+    ],
+  };
+}
+
+/** Pictorial bars: UTC hour arrivals as repeating symbols. */
+export function domainPictorialHourArrivals(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const data = hourBuckets(events);
+  const max = Math.max(1, ...data);
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "axis" },
+    grid: { left: 38, right: 8, top: 22, bottom: 36 },
+    xAxis: {
+      type: "category",
+      data: data.map((_, h) => `${h}h`),
+      axisLabel: { color: chartTextMuted(), fontSize: 8, rotate: 45 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
+    },
+    yAxis: {
+      type: "value",
+      max: max + 1,
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+    },
+    series: [
+      {
+        type: "pictorialBar",
+        symbol: "roundRect",
+        symbolRepeat: true,
+        symbolSize: [10, 5],
+        symbolMargin: "10%",
+        data,
+        itemStyle: { color: accent },
+      },
+    ],
+  };
+}
+
+/** Scatter: arrival ordinal vs severity (buffer tail). */
+export function domainScatterOrdinalSeverity(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const pts = events.slice(-80).map((e) => [e.ordinal % 500, e.severity_score]);
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "item" },
+    grid: { left: 44, right: 12, top: 24, bottom: 32 },
+    xAxis: {
+      type: "value",
+      name: "Ordinal (mod)",
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      max: 1,
+      name: "Severity",
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+    },
+    series: [
+      {
+        type: "scatter",
+        symbolSize: 7,
+        itemStyle: { color: `${accent}cc` },
+        data: pts.length > 0 ? pts : [[0, 0.35]],
+      },
+    ],
+  };
+}
+
+/** Polyline path (lines series): running mean severity along buffer timeline. */
+export function domainLinesCumulativePath(
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  const sorted = [...events].sort(
+    (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp),
+  );
+  const slice = sorted.slice(-36);
+  let cum = 0;
+  const coords: [number, number][] = [];
+  slice.forEach((e, i) => {
+    cum += e.severity_score;
+    coords.push([i, cum / (i + 1)]);
+  });
+  if (coords.length === 0) {
+    coords.push([0, 0.4], [1, 0.45], [2, 0.42]);
+  }
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "item" },
+    grid: { left: 44, right: 12, top: 24, bottom: 28 },
+    xAxis: {
+      type: "value",
+      min: 0,
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      max: 1,
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+    },
+    series: [
+      {
+        type: "lines",
+        coordinateSystem: "cartesian2d",
+        polyline: true,
+        lineStyle: { color: accent, width: 2, opacity: 0.9 },
+        data: [{ coords }],
+      },
+    ],
+  };
+}
+
+export type DomainPrimaryTag =
+  | "stacked_hour"
+  | "donut"
+  | "histogram"
+  | "stress_line"
+  | "parallel"
+  | "radar_live"
+  | "scatter_fx"
+  | "candle"
+  | "region_stack"
+  | "graph"
+  | "sunburst"
+  | "rose"
+  | "tree"
+  | "heatmap_primary";
+
+/** One tile in the domain desk chart grid (may be any registered ECharts series). */
+export interface DeskChartPanel {
+  readonly title: string;
+  readonly option: EChartsOption;
+}
+
+interface DeskPackParams {
+  domainId: string;
+  accent: string;
+  events: readonly UiEvent[];
+  severityHistory: readonly number[];
+  causalEdges: readonly UiCausalEdge[];
+  state?: UiWorldState;
+  dataMode?: DataMode;
+}
+
+export function buildDomainPrimary(
+  domainId: string,
+  p: DeskPackParams,
+): { title: string; option: EChartsOption; tag: DomainPrimaryTag } {
+  const { accent, events, severityHistory, causalEdges } = p;
+  switch (domainId) {
+    case "energy":
+      return {
+        title: "Stacked load · UTC hour × severity band (buffer)",
+        option: domainStackedHourSeverity(events, accent),
+        tag: "stacked_hour",
+      };
+    case "finance":
+      return {
+        title: "Source mix · donut (feed labels when present)",
+        option: domainDonutFeedOrSeverity(events, accent),
+        tag: "donut",
+      };
+    case "climate":
+      return {
+        title: "Severity histogram · buffer",
+        option: domainHistogramSeverity(events, accent),
+        tag: "histogram",
+      };
+    case "seismic":
+      return {
+        title: "Ring stress · line + area (domain history)",
+        option:
+          severityHistory.length > 0
+            ? rollingStressLine(severityHistory, accent)
+            : eventSeveritySparkline(events, accent),
+        tag: "stress_line",
+      };
+    case "transport":
+      return {
+        title: "Parallel coordinates · time, severity, geo (buffer)",
+        option: deskTertiaryParallelSignals(events),
+        tag: "parallel",
+      };
+    case "health":
+      return {
+        title: "Capacity / load radar · from buffer stats",
+        option: healthRadarFromEvents(events, accent),
+        tag: "radar_live",
+      };
+    case "geospatial":
+      return {
+        title: "Scatter + effect · lon/lat (buffer)",
+        option: domainScatterEffectGeo(events, accent),
+        tag: "scatter_fx",
+      };
+    case "economy":
+      return {
+        title: "Macro-style OHLC · synthetic tape (finance desk)",
+        option: financeTradingChart("economy", accent),
+        tag: "candle",
+      };
+    case "geopolitics":
+      return {
+        title: "Regional stack · geotagged severity bands",
+        option: geopoliticalRegionBars(events, accent),
+        tag: "region_stack",
+      };
+    case "cyber":
+      return {
+        title: "Force graph · causal edges in buffer",
+        option: domainForceGraphFromCausal(events, causalEdges, accent),
+        tag: "graph",
+      };
+    case "space":
+      return {
+        title: "UTC dayparts × severity · sunburst",
+        option: deskTertiarySunburstUtc(events, accent),
+        tag: "sunburst",
+      };
+    case "demographics":
+      return {
+        title: "Severity mix · Nightingale rose",
+        option: domainNightingaleRose(events, accent),
+        tag: "rose",
+      };
+    case "infrastructure":
+      return {
+        title: "Severity tree · hierarchical mix",
+        option: domainTreeSeverity(events, accent),
+        tag: "tree",
+      };
+    default:
+      return {
+        title: "Week × hour activity · buffer",
+        option: deskTertiaryHeatmapWeekHour(events, accent),
+        tag: "heatmap_primary",
+      };
+  }
+}
+
+function rollOrSpark(
+  severityHistory: readonly number[],
+  events: readonly UiEvent[],
+  accent: string,
+): EChartsOption {
+  return severityHistory.length > 0
+    ? rollingStressLine(severityHistory, accent)
+    : eventSeveritySparkline(events, accent);
+}
+
+/**
+ * Four additional panels per domain (primary + these = five tiles).
+ * Each domain uses a distinct mix of ECharts series so the catalog rotates through
+ * bar/line/pie variants, gauge, map-like heatmaps, graph/sankey/funnel/treemap,
+ * boxplot, pictorialBar, themeRiver, scatter/lines, etc.
+ */
+function buildAdditionalPanels(
+  domainId: string,
+  p: DeskPackParams,
+): DeskChartPanel[] {
+  const { accent, events, severityHistory } = p;
+  const heat = () => deskTertiaryHeatmapWeekHour(events, accent);
+  const hour = () => hourOfDayBars(events, accent);
+  const sankey = () => deskTertiarySankeyStages(events, accent);
+  const roll = () => rollOrSpark(severityHistory, events, accent);
+  const gauge = () => domainGaugeRiskIndex(p.state, accent);
+  const funnel = () => deskTertiaryFunnelPipeline(events);
+  const treemap = () => deskTertiaryTreemapSeverity(events, accent);
+
+  switch (domainId) {
+    case "energy":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "Ops flow (sankey · counts)", option: sankey() },
+        { title: "Risk gauge · world state", option: gauge() },
+      ];
+    case "finance":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Arrivals · UTC hour", option: hour() },
+        { title: "Escalation funnel · severity", option: funnel() },
+        { title: "Severity treemap", option: treemap() },
+      ];
+    case "climate":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "Hour arrivals · pictorial strip", option: domainPictorialHourArrivals(events, accent) },
+        {
+          title: "Ordinal lanes · theme river",
+          option: deskTertiaryThemeRiverOrdinal(domainId, events, accent),
+        },
+      ];
+    case "seismic":
+      return [
+        { title: "Arrivals · UTC hour", option: hour() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "Severity boxplot · buffer", option: domainSeverityBoxplot(events, accent) },
+        { title: "Ops flow (sankey · counts)", option: sankey() },
+      ];
+    case "transport":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Arrivals · UTC hour", option: hour() },
+        { title: "Escalation funnel · severity", option: funnel() },
+        { title: "Ordinal vs severity · scatter", option: domainScatterOrdinalSeverity(events, accent) },
+      ];
+    case "health":
+      return [
+        { title: "UTC hour arrivals", option: hour() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "Severity treemap", option: treemap() },
+        { title: "Parallel signals · buffer", option: deskTertiaryParallelSignals(events) },
+      ];
+    case "geospatial":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "UTC dayparts · sunburst", option: deskTertiarySunburstUtc(events, accent) },
+        { title: "Ops flow (sankey · counts)", option: sankey() },
+      ];
+    case "economy":
+      return [
+        { title: "Ring risk trajectory", option: roll() },
+        { title: "Arrivals · UTC hour", option: hour() },
+        {
+          title: "Ordinal lanes · theme river",
+          option: deskTertiaryThemeRiverOrdinal(domainId, events, accent),
+        },
+        { title: "Risk gauge · world state", option: gauge() },
+      ];
+    case "geopolitics":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Week × hour pressure", option: heat() },
+        { title: "Escalation funnel · severity", option: funnel() },
+        { title: "Running mean path · lines", option: domainLinesCumulativePath(events, accent) },
+      ];
+    case "cyber":
+      return [
+        { title: "UTC hour arrivals", option: hour() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "Severity boxplot · buffer", option: domainSeverityBoxplot(events, accent) },
+        { title: "Escalation funnel · severity", option: funnel() },
+      ];
+    case "space":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Arrivals · UTC hour", option: hour() },
+        { title: "Risk gauge · world state", option: gauge() },
+        { title: "Hour arrivals · pictorial strip", option: domainPictorialHourArrivals(events, accent) },
+      ];
+    case "demographics":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "Severity treemap", option: treemap() },
+        { title: "Escalation funnel · severity", option: funnel() },
+      ];
+    case "infrastructure":
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "Severity treemap", option: treemap() },
+        { title: "Ops flow (sankey · counts)", option: sankey() },
+      ];
+    default:
+      return [
+        { title: "Ring stress trajectory", option: roll() },
+        { title: "Week × hour (UTC)", option: heat() },
+        { title: "Ops flow (sankey · counts)", option: sankey() },
+        { title: "Risk gauge · world state", option: gauge() },
+      ];
+  }
+}
+
 export interface DeskChartPack {
-  readonly primaryTitle: string;
-  readonly secondaryTitle?: string;
-  readonly tertiaryTitle?: string;
-  readonly primary: EChartsOption;
-  readonly secondary?: EChartsOption;
-  readonly tertiary?: EChartsOption;
+  /** Primary chart first, then four additional panels with distinct series kinds. */
+  readonly panels: readonly DeskChartPanel[];
   readonly notes: readonly string[];
 }
 
@@ -814,107 +1687,63 @@ export function deskChartPack(
     accent: string;
     events: readonly UiEvent[];
     severityHistory: readonly number[];
+    causalEdges?: readonly UiCausalEdge[];
     state?: UiWorldState;
     dataMode?: DataMode;
   },
 ): DeskChartPack {
-  const { domainId, accent, events, severityHistory, state, dataMode = "live" } = params;
-  switch (profile) {
-    case "markets":
-      return {
-        primaryTitle:
-          domainId === "economy"
-            ? "Macro index · intraday (synthetic)"
-            : "OHLC · session (synthetic tape)",
-        secondaryTitle: "Domain risk stress (live ring)",
-        tertiaryTitle: "Arrivals by UTC hour",
-        primary: financeTradingChart(domainId, accent),
-        secondary: rollingStressLine(severityHistory, accent),
-        tertiary: hourOfDayBars(events, accent),
-        notes: [
-          domainId === "economy"
-            ? "Economy desk: macro-style index and stress from live world-state — wire sovereign/bond feeds for production."
-            : "Finance desk: candlestick + volume layout as used on trading terminals; live event tempo in supporting panels.",
-          state
-            ? `Risk index ${state.risk_index.toFixed(2)} · ${state.event_count} events in ring.`
-            : "World-state row not yet populated for this domain.",
-        ],
-      };
-    case "defensive_digital":
-      return {
-        primaryTitle: "Kill-chain stage histogram",
-        secondaryTitle: "Hour × day-of-week SOC heatmap",
-        tertiaryTitle: "Escalation funnel (severity)",
-        primary: cyberKillChainBar(domainId, accent),
-        secondary: deskTertiaryHeatmapWeekHour(events, accent),
-        tertiary: deskTertiaryFunnelPipeline(events),
-        notes: [
-          "SOC-style views: MITRE-aligned stage counts (synthetic) plus live event tempo from SpacetimeDB.",
-        ],
-      };
-    case "life_sciences":
-      return {
-        primaryTitle: "Capacity radar (synthetic wards)",
-        secondaryTitle: "Week × hour surge heatmap",
-        tertiaryTitle: "Escalation funnel",
-        primary: healthRadar(domainId, accent),
-        secondary: deskTertiaryHeatmapWeekHour(events, accent),
-        tertiary: deskTertiaryFunnelPipeline(events),
-        notes: [
-          "Hospital operations: radar for surge axes; heatmap shows when live events cluster in UTC.",
-        ],
-      };
-    case "orbital_regime":
-      return {
-        primaryTitle: "Conjunction readiness gauge",
-        secondaryTitle: "Altitude vs orbit phase (scatter)",
-        tertiaryTitle: "UTC dayparts × severity",
-        primary: spaceGauge(domainId, accent),
-        secondary: spaceScatter(domainId, accent),
-        tertiary: deskTertiarySunburstUtc(events, accent),
-        notes: [
-          "Mission control: conjunction gauge and orbit scatter are synthetic; conjunction tracks live on the globe.",
-        ],
-      };
-    case "human_systems":
-      return {
-        primaryTitle: "Population pyramid (synthetic cohorts)",
-        secondaryTitle: "Event arrivals by UTC hour",
-        tertiaryTitle: "Severity mix (treemap)",
-        primary: demographicsPyramid(domainId, accent),
-        secondary: hourOfDayBars(events, accent),
-        tertiary: deskTertiaryTreemapSeverity(events, accent),
-        notes: [
-          "Demographics desk: pyramid until census tables are wired; hour/treemap reflect live event stream.",
-        ],
-      };
-    case "geopolitical_layer":
-      return {
-        primaryTitle: "Regional severity stack (geotagged)",
-        secondaryTitle: "Rolling stress (severity ring)",
-        tertiaryTitle: "Sankey · response stages",
-        primary: geopoliticalRegionBars(events, accent),
-        secondary: rollingStressLine(severityHistory, accent),
-        tertiary: deskTertiarySankeyStages(events, accent),
-        notes: [
-          "Regions inferred from coordinates (AMER / EMEA / APAC / MENA / POLAR).",
-        ],
-      };
-    case "geo_operational":
-    default:
-      return {
-        primaryTitle: "NOC · week × hour load (UTC)",
-        secondaryTitle: "Rolling severity stress (ring)",
-        tertiaryTitle: "Ops flow (sankey)",
-        primary: deskTertiaryHeatmapWeekHour(events, accent),
-        secondary: rollingStressLine(severityHistory, accent),
-        tertiary: deskTertiarySankeyStages(events, accent),
-        notes: [
-          state
-            ? `World-state risk index ${state.risk_index.toFixed(2)} vs avg severity ${state.avg_severity.toFixed(2)}.`
-            : "World-state row not yet populated for this domain.",
-          deskGeoNote(dataMode),
-        ],
-      };
+  const {
+    domainId,
+    accent,
+    events,
+    severityHistory,
+    causalEdges = [],
+    state,
+    dataMode = "live",
+  } = params;
+
+  const packParams: DeskPackParams = {
+    domainId,
+    accent,
+    events,
+    severityHistory,
+    causalEdges,
+    state,
+    dataMode,
+  };
+
+  const primary = buildDomainPrimary(domainId, packParams);
+  const additional = buildAdditionalPanels(domainId, packParams);
+
+  const domainNote = `Five analytic panels per desk — distinct ECharts series; ${domainId} primary is ${primary.tag.replace(/_/g, " ")}. Desk profile: ${profile}.`;
+
+  const geoNotes: string[] = [];
+  if (
+    ["energy", "climate", "seismic", "transport", "geospatial", "infrastructure"].includes(
+      domainId,
+    )
+  ) {
+    geoNotes.push(deskGeoNote(dataMode));
   }
+  if (profile === "orbital_regime") {
+    geoNotes.push(
+      "Orbital panels: sunburst is live UTC bucketed; pair with globe for conjunction tracks.",
+    );
+  }
+  if (profile === "defensive_digital" && domainId === "cyber") {
+    geoNotes.push(
+      "Force graph uses causal edges whose endpoints appear in the current event buffer.",
+    );
+  }
+
+  return {
+    panels: [{ title: primary.title, option: primary.option }, ...additional],
+    notes: [
+      domainNote,
+      state
+        ? `World-state: risk ${state.risk_index.toFixed(2)} · ${state.event_count} events · avg severity ${state.avg_severity.toFixed(2)}.`
+        : "World-state row not yet populated for this domain.",
+      ...geoNotes,
+    ],
+  };
 }

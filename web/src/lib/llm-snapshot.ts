@@ -28,6 +28,16 @@ export interface LlmSnapshotInput {
   readonly eventNarratives?: Readonly<Record<string, UiEventNarrative>>;
   /** When the UI captured this view (ISO), for operator context only. */
   readonly capturedAt: string;
+  /** When set, events/signals/edges are scoped to this domain id. */
+  readonly scopeDomain?: string;
+}
+
+export interface LlmDeskChartStats {
+  readonly event_count: number;
+  readonly geolocated_count: number;
+  readonly peak_hour_utc: number | null;
+  readonly causal_inbound: number;
+  readonly causal_outbound: number;
 }
 
 /**
@@ -55,12 +65,72 @@ export function llmSnapshotCounts(input: LlmSnapshotInput): {
   };
 }
 
+/** Chart/desk stats for domain-scoped LLM prompts. */
+export function buildDeskChartStats(
+  domainId: string,
+  events: readonly UiEvent[],
+  edges: readonly UiCausalEdge[],
+): LlmDeskChartStats {
+  const scoped = events.filter((e) => e.domain === domainId);
+  const ids = new Set(scoped.map((e) => e.id));
+  const hours = new Array(24).fill(0) as number[];
+  for (const e of scoped) {
+    const t = Date.parse(e.timestamp);
+    if (!Number.isFinite(t)) continue;
+    hours[new Date(t).getUTCHours()] += 1;
+  }
+  let peakHour: number | null = null;
+  let peak = 0;
+  for (let h = 0; h < 24; h++) {
+    if (hours[h]! > peak) {
+      peak = hours[h]!;
+      peakHour = h;
+    }
+  }
+  let inbound = 0;
+  let outbound = 0;
+  for (const e of edges) {
+    const inDom = ids.has(e.target_event_id);
+    const outDom = ids.has(e.source_event_id);
+    if (inDom && !outDom) inbound += 1;
+    if (outDom && !inDom) outbound += 1;
+    if (inDom && outDom) {
+      inbound += 1;
+      outbound += 1;
+    }
+  }
+  return {
+    event_count: scoped.length,
+    geolocated_count: scoped.filter((e) => e.location !== null).length,
+    peak_hour_utc: peak > 0 ? peakHour : null,
+    causal_inbound: inbound,
+    causal_outbound: outbound,
+  };
+}
+
 export function buildLlmSnapshot(input: LlmSnapshotInput): Record<string, unknown> {
-  const events = [...input.events]
+  const scope = input.scopeDomain;
+  const allEvents = scope
+    ? input.events.filter((e) => e.domain === scope)
+    : input.events;
+  const allSignals = scope
+    ? input.recentSignals.filter((s) => s.domain === scope)
+    : input.recentSignals;
+  const eventIds = new Set(allEvents.map((e) => e.id));
+  const allEdges = scope
+    ? input.recentCausalEdges.filter(
+        (e) =>
+          eventIds.has(e.source_event_id) || eventIds.has(e.target_event_id),
+      )
+    : input.recentCausalEdges;
+
+  const events = [...allEvents]
     .sort((a, b) => b.ordinal - a.ordinal)
     .slice(0, LLM_MAX_EVENTS);
-  const signals = input.recentSignals.slice(0, LLM_MAX_SIGNALS);
-  const edges = input.recentCausalEdges
+  const signals = [...allSignals]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, LLM_MAX_SIGNALS);
+  const edges = allEdges
     .slice(0, LLM_MAX_CAUSAL)
     .map((e) => ({
       id: e.id,
@@ -68,13 +138,23 @@ export function buildLlmSnapshot(input: LlmSnapshotInput): Record<string, unknow
       target_event_id: e.target_event_id,
       influence_score: e.influence_score,
     }));
-  const world = Object.values(input.domainState).map((r) => ({
+  const worldRows = scope
+    ? input.domainState[scope]
+      ? [input.domainState[scope]!]
+      : []
+    : Object.values(input.domainState);
+  const world = worldRows.map((r) => ({
     domain: r.domain,
     event_count: r.event_count,
     avg_severity: r.avg_severity,
     risk_index: r.risk_index,
   }));
-  const insights = Object.values(input.domainInsights).map((d) => ({
+  const insightRows = scope
+    ? input.domainInsights[scope]
+      ? [input.domainInsights[scope]!]
+      : []
+    : Object.values(input.domainInsights);
+  const insights = insightRows.map((d) => ({
     domain: d.domain,
     trend: d.trend,
     anomaly_count_recent: d.anomaly_count_recent,
@@ -99,9 +179,16 @@ export function buildLlmSnapshot(input: LlmSnapshotInput): Record<string, unknow
       }
     }
   }
+  const desk_stats =
+    scope !== undefined
+      ? buildDeskChartStats(scope, input.events, input.recentCausalEdges)
+      : undefined;
+
   return {
     schema: "openatlas.llm_snapshot/v1",
     captured_at: input.capturedAt,
+    scope_domain: scope ?? null,
+    desk_chart_stats: desk_stats ?? null,
     world_state: world,
     domain_insights: insights,
     recent_events: events.map((e) => ({

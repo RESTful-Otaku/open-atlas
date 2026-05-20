@@ -25,6 +25,12 @@ describe("solar-geometry", () => {
     expect(Math.abs(a[1]! - b[1]!)).toBeLessThan(0.15);
   });
 
+  it("subsolarPoint lon moves with UTC hour (scrub drives terminator)", () => {
+    const noon = subsolarPoint(new Date("2026-06-21T12:00:00Z"));
+    const midnight = subsolarPoint(new Date("2026-06-21T00:00:00Z"));
+    expect(Math.abs(noon.lon - midnight.lon)).toBeGreaterThan(90);
+  });
+
   it("buildSunPointFeature is at requested subsolar", () => {
     const f = buildSunPointFeature({ lat: 5, lon: -120 });
     const c = f.geometry.coordinates;

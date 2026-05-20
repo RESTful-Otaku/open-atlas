@@ -1,9 +1,19 @@
 <script lang="ts">
-  import EChartsPanel from "../viz/EChartsPanel.svelte";
-  import { memoHubHeatmap, memoHubRiskBars } from "../chart-cache";
+  import FullscreenChartShell from "../viz/FullscreenChartShell.svelte";
+  import {
+    memoHubHeatmap,
+    memoHubRiskBars,
+    memoHubShare,
+    memoHubTimeline,
+  } from "../chart-cache";
   import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard } from "../state.svelte";
-  import { hubActivityHeatmap, hubDomainRiskBars } from "./hub-charts";
+  import {
+    hubActivityHeatmap,
+    hubDomainRiskBars,
+    hubEventSharePie,
+    hubUtcHourIngestLine,
+  } from "./hub-charts";
 
   const riskOption = $derived.by(() => {
     void dashboardData.domainsRevision;
@@ -17,6 +27,18 @@
       hubActivityHeatmap(dashboard.events),
     );
   });
+  const shareOption = $derived.by(() => {
+    void dashboardData.revision;
+    return memoHubShare(dashboard.events, () =>
+      hubEventSharePie(dashboard.events),
+    );
+  });
+  const lineOption = $derived.by(() => {
+    void dashboardData.revision;
+    return memoHubTimeline(dashboard.events, () =>
+      hubUtcHourIngestLine(dashboard.events),
+    );
+  });
   const hasEvents = $derived.by(() => {
     void dashboardData.revision;
     return dashboard.events.length > 0;
@@ -24,37 +46,80 @@
 </script>
 
 <section class="hub-overview" aria-label="Cross-domain overview charts">
-  <article class="hub-chart-card">
-    <h2 class="hub-chart-h">Risk by domain</h2>
-    <p class="hub-chart-meta">
-      Live risk index from world-state — highest pressure at the top. Click a tile
-      below for the domain desk.
-    </p>
-    <EChartsPanel option={riskOption} class="hub-echart" />
-  </article>
-  <article class="hub-chart-card">
-    <h2 class="hub-chart-h">Activity by domain × hour (UTC)</h2>
-    <p class="hub-chart-meta">
-      {#if hasEvents}
-        Event counts in the current dashboard buffer — darker cells mean more arrivals
-        in that hour.
-      {:else}
-        Waiting for events — start ingest with <code>./dev.sh up</code>.
-      {/if}
-    </p>
-    <EChartsPanel option={heatOption} class="hub-echart hub-echart-wide" />
-  </article>
+  <div class="hub-grid-top">
+    <article class="hub-chart-card">
+      <h2 class="hub-chart-h">Risk by domain</h2>
+      <p class="hub-chart-meta">
+        Live risk index from world-state — highest pressure at the top. Click a tile
+        below for the domain desk.
+      </p>
+      <FullscreenChartShell
+        title="Risk by domain"
+        option={riskOption}
+        embedClass="hub-echart"
+      />
+    </article>
+    <article class="hub-chart-card">
+      <h2 class="hub-chart-h">Activity by domain × hour (UTC)</h2>
+      <p class="hub-chart-meta">
+        {#if hasEvents}
+          Event counts in the current dashboard buffer — darker cells mean more arrivals
+          in that hour.
+        {:else}
+          Waiting for events — start ingest with <code>./dev.sh up</code>.
+        {/if}
+      </p>
+      <FullscreenChartShell
+        title="Activity by domain × hour (UTC)"
+        option={heatOption}
+        embedClass="hub-echart hub-echart-tall"
+      />
+    </article>
+  </div>
+  <div class="hub-grid-bottom">
+    <article class="hub-chart-card">
+      <h2 class="hub-chart-h">Event mix (buffer)</h2>
+      <p class="hub-chart-meta">
+        Share of events per domain in the live ring — complements risk bars above.
+      </p>
+      <FullscreenChartShell
+        title="Event mix (buffer)"
+        option={shareOption}
+        embedClass="hub-echart hub-echart-pie"
+      />
+    </article>
+    <article class="hub-chart-card">
+      <h2 class="hub-chart-h">Ingest tempo by UTC hour</h2>
+      <p class="hub-chart-meta">
+        Events bucketed into the hour of their timestamp (current buffer only).
+      </p>
+      <FullscreenChartShell
+        title="Ingest tempo by UTC hour"
+        option={lineOption}
+        embedClass="hub-echart"
+      />
+    </article>
+  </div>
 </section>
 
 <style>
   .hub-overview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    min-width: 0;
+  }
+  .hub-grid-top,
+  .hub-grid-bottom {
     display: grid;
     grid-template-columns: minmax(14rem, 1fr) minmax(18rem, 1.4fr);
     gap: var(--space-3);
-    margin-bottom: var(--space-3);
+    min-width: 0;
   }
   @media (max-width: 960px) {
-    .hub-overview {
+    .hub-grid-top,
+    .hub-grid-bottom {
       grid-template-columns: 1fr;
     }
   }
@@ -84,8 +149,12 @@
     --echarts-min-height: 220px;
     --echarts-height: 240px;
   }
-  :global(.hub-echart-wide) {
+  :global(.hub-echart-tall) {
     --echarts-min-height: 260px;
     --echarts-height: 280px;
+  }
+  :global(.hub-echart-pie) {
+    --echarts-min-height: 240px;
+    --echarts-height: 260px;
   }
 </style>

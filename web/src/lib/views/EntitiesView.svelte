@@ -9,6 +9,7 @@
   import { dashboard, setSelectedDomain } from "../state.svelte";
   import { navigate } from "../router.svelte";
   import type { UiEvent } from "../types";
+  import CompactNumber from "../components/CompactNumber.svelte";
   import ConnectionPill from "../components/ConnectionPill.svelte";
   import DataPipelineBanner from "../components/DataPipelineBanner.svelte";
 
@@ -105,11 +106,13 @@
     </div>
     <p class="entities-sub">
       Live <code>event</code> rows from your SpacetimeDB module (same feed as
-      the globe and matrices). {dashboard.events.length} in ring buffer;
+      the globe and matrices). <CompactNumber value={dashboard.events.length} /> in
+      ring buffer;
       {#if filteredCount > ENTITY_DISPLAY_CAP}
-        showing first {ENTITY_DISPLAY_CAP} of {filteredCount} matches
+        showing first <CompactNumber value={ENTITY_DISPLAY_CAP} /> of
+        <CompactNumber value={filteredCount} /> matches
       {:else}
-        showing {filteredCount} after filters
+        showing <CompactNumber value={filteredCount} /> after filters
       {/if}.
     </p>
     <div class="entities-toolbar">

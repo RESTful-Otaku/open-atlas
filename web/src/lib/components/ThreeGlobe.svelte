@@ -1,10 +1,11 @@
 <!--
-  3D Earth: Three.js + globe.gl — photoreal day/night, orbit/flight/ship paths,
-  zoom-aware layers, causal arcs above the surface.
+  3D Earth: globe.gl — CARTO-aligned “instrument” look by default,
+  CARTO monochrome tiles; optional solar shell (shade + city lights) or NASA photoreal.
 -->
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import type { GlobeInstance } from "globe.gl";
+  import type { Group, Material } from "three";
 
   import { cartoRasterTileUrl, mapThemeFor } from "../theme-map";
   import { onThemeChange, readThemeFromDocument } from "../theme-events";
@@ -18,12 +19,25 @@
   import { dashboard } from "../state.svelte";
   import { buildDemoWeatherPathsForGlobe, type GlobePathDatum } from "../map/map-weather-globe";
   import {
-    GLOBE_STARS_BACKGROUND,
+    createStylizedCloudLayer,
+    disposeStylizedCloudLayer,
+    minimalGlobeBackdropDataUrl,
+  } from "../map/globe-stylized-visuals";
+  import {
     loadDayNightGlobeMaterial,
     updateDayNightGlobeRotation,
     updateDayNightSun,
     type DayNightGlobeMaterial,
   } from "../map/globe-day-night";
+  import {
+    applyMonochromeSolarTheme,
+    createMonochromeSolarShell,
+    disposeMonochromeSolarShell,
+    loadMonochromeSolarOverlay,
+    updateMonochromeSolarRotation,
+    updateMonochromeSolarSun,
+    type MonochromeSolarOverlay,
+  } from "../map/globe-solar-overlay";
   import {
     heatmapBandwidthForZoom,
     scaledArcStroke,
@@ -44,6 +58,19 @@
     type GlobeEventPoint,
     type GlobeHeatmapDatum,
   } from "../map/three-globe-data";
+  import {
+    climateWeatherPoints,
+    eventsForMapDisplay,
+  } from "../map/map-sim-time";
+  import {
+    buildTemperatureHeatmap,
+    tempHeatColor,
+  } from "../map/globe-weather-layers";
+  import {
+    adminLabel,
+    loadAdminBoundaries,
+    type AdminFeature,
+  } from "../map/globe-admin-boundaries";
 
   type Mode = "heat" | "points" | "both";
 
@@ -55,7 +82,7 @@
     showSubsun: boolean;
     showMoon: boolean;
     showCausal: boolean;
-    /** Photoreal day/night shader with city lights (disables raster tiles). */
+    /** NASA day/night textures (replaces CARTO tiles). */
     showPhotorealEarth?: boolean;
     /** Orbit rings, flight trails, shipping lanes. */
     showTrackingPaths?: boolean;
@@ -64,21 +91,24 @@
     publicTracking: GlobeEventPoint[];
     trackingPathRows?: readonly import("../tracking/public-tracking").PublicTrackRow[];
     showWeatherOverlays?: boolean;
+    /** Terminator shade + city lights over CARTO tiles (off when photoreal is on). */
+    showSolarShading?: boolean;
     onMapPointScreen?: (d: MapPointScreen | null) => void;
   }
   let {
-    mode = "both",
-    showTerminator = true,
-    showSubsun = true,
-    showMoon = true,
-    showCausal = true,
-    showPhotorealEarth = true,
-    showTrackingPaths = true,
+    mode = "points",
+    showSolarShading = true,
+    showTerminator = false,
+    showSubsun = false,
+    showMoon = false,
+    showCausal = false,
+    showPhotorealEarth = false,
+    showTrackingPaths = false,
     mapDomainSet,
     simUtcMs,
     publicTracking = [],
     trackingPathRows = [],
-    showWeatherOverlays = true,
+    showWeatherOverlays = false,
     onMapPointScreen = undefined,
   }: Props = $props();
 
@@ -89,10 +119,53 @@
   let globeReady = $state(false);
   let themeId = $state<ThemeId>(readThemeFromDocument());
   let dayNightMaterial: DayNightGlobeMaterial | null = $state(null);
+  let solarOverlay: MonochromeSolarOverlay | null = $state(null);
+  /** Default globe.gl material — restored when leaving photoreal shader. */
+  let cartoGlobeMaterial: Material | null = null;
+  let solarShellRoot: Group | null = null;
+  let lastSolarShellSig = "";
+  /** Latest scrub instant — read from the render loop so solar uniforms never miss a frame. */
+  let solarSimUtcMs = 0;
   let cameraAltitude = $state(2.28);
-  let photorealActive = $state(false);
   let lastLayerFingerprint = "";
   let offVisibility: (() => void) | undefined;
+  /** Stylized cloud shell — rotates slowly when weather overlays are on. */
+  let cloudStylizedRoot: Group | null = null;
+  let lastCloudSyncSig = "";
+  let weatherSpinFlag = $state(true);
+  let adminFeatures = $state<AdminFeature[]>([]);
+  let hoverAdmin: AdminFeature | null = $state(null);
+
+  $effect(() => {
+    weatherSpinFlag = showWeatherOverlays;
+  });
+
+  function syncStylizedCloudLayer(g: GlobeInstance): void {
+    const sig = `${themeId}:${showWeatherOverlays}`;
+    if (sig === lastCloudSyncSig) return;
+
+    lastCloudSyncSig = sig;
+
+    if (cloudStylizedRoot) {
+      try {
+        g.scene().remove(cloudStylizedRoot);
+      } catch {
+        /* */
+      }
+      disposeStylizedCloudLayer(cloudStylizedRoot);
+      cloudStylizedRoot = null;
+    }
+
+    if (!showWeatherOverlays) return;
+
+    try {
+      const { group } = createStylizedCloudLayer(g.getGlobeRadius(), themeId);
+      cloudStylizedRoot = group;
+      g.scene().add(group);
+    } catch {
+      /* */
+    }
+  }
 
   function applyCartoTheme(g: GlobeInstance, theme: ThemeId): void {
     const spec = mapThemeFor(theme);
@@ -102,38 +175,157 @@
       )
       .backgroundColor(spec.globeBackground)
       .atmosphereColor(spec.globeAtmosphereColor)
-      .atmosphereAltitude(0.16);
+      .atmosphereAltitude(spec.globeAtmosphereAltitude);
+  }
+
+  function removeSolarShell(g: GlobeInstance): void {
+    if (!solarShellRoot) return;
+    try {
+      g.scene().remove(solarShellRoot);
+    } catch {
+      /* */
+    }
+    disposeMonochromeSolarShell(solarShellRoot);
+    solarShellRoot = null;
+    lastSolarShellSig = "";
+  }
+
+  function usePhotorealShader(): boolean {
+    return Boolean(showPhotorealEarth && dayNightMaterial);
+  }
+
+  function wantMonochromeSolarShell(): boolean {
+    return Boolean(showSolarShading && !showPhotorealEarth && solarOverlay);
+  }
+
+  function syncMonochromeSolarShell(g: GlobeInstance): void {
+    const want = wantMonochromeSolarShell();
+    const sig = `${themeId}:${want}`;
+    if (sig !== lastSolarShellSig || (want && !solarShellRoot)) {
+      lastSolarShellSig = sig;
+      removeSolarShell(g);
+      if (want && solarOverlay) {
+        try {
+          const { group } = createMonochromeSolarShell(
+            g.getGlobeRadius(),
+            solarOverlay,
+            themeId,
+          );
+          solarShellRoot = group;
+          g.scene().add(group);
+        } catch {
+          /* */
+        }
+      }
+    }
+    if (want && solarOverlay && solarShellRoot) {
+      applyMonochromeSolarTheme(solarOverlay, themeId);
+      refreshMonochromeSolarUniforms(g);
+    }
+  }
+
+  function refreshMonochromeSolarUniforms(g: GlobeInstance): void {
+    if (!solarOverlay) return;
+    updateMonochromeSolarSun(solarOverlay, solarSimUtcMs);
+    const pov = g.pointOfView();
+    updateMonochromeSolarRotation(solarOverlay, pov.lng ?? 0, pov.lat ?? 0);
   }
 
   function applyPhotorealGlobe(g: GlobeInstance): void {
     if (!dayNightMaterial) return;
-    photorealActive = true;
+    removeSolarShell(g);
+    const spec = mapThemeFor(themeId);
     g.showGlobe(true)
       .globeTileEngineMaxLevel(0)
       .globeMaterial(dayNightMaterial)
-      .backgroundImageUrl(GLOBE_STARS_BACKGROUND)
-      .atmosphereColor("rgba(120, 180, 255, 0.42)")
-      .atmosphereAltitude(0.2);
-    updateDayNightSun(dayNightMaterial, simUtcMs);
+      .backgroundImageUrl(minimalGlobeBackdropDataUrl(themeId))
+      .backgroundColor(spec.globeBackground)
+      .atmosphereColor(spec.globeAtmosphereColor)
+      .atmosphereAltitude(Math.min(0.2, spec.globeAtmosphereAltitude * 1.55));
+    updateDayNightSun(dayNightMaterial, solarSimUtcMs);
     const pov = g.pointOfView();
     updateDayNightGlobeRotation(dayNightMaterial, pov.lng ?? 0, pov.lat ?? 0);
   }
 
-  function applyGlobeTheme(g: GlobeInstance, theme: ThemeId): void {
-    if (showPhotorealEarth && dayNightMaterial) {
-      applyPhotorealGlobe(g);
-      return;
-    }
-    photorealActive = false;
+  function applyCartoGlobe(g: GlobeInstance, theme: ThemeId): void {
     applyCartoTheme(g, theme);
-    g.backgroundImageUrl(null);
+    g.showGlobe(true)
+      .globeTileEngineMaxLevel(6)
+      .backgroundImageUrl(null);
+    if (cartoGlobeMaterial) {
+      g.globeMaterial(cartoGlobeMaterial);
+    }
+    syncMonochromeSolarShell(g);
+  }
+
+  function syncSolarUniforms(g: GlobeInstance): void {
+    const pov = g.pointOfView();
+    const lng = pov.lng ?? 0;
+    const lat = pov.lat ?? 0;
+    if (usePhotorealShader() && dayNightMaterial) {
+      updateDayNightSun(dayNightMaterial, solarSimUtcMs);
+      updateDayNightGlobeRotation(dayNightMaterial, lng, lat);
+    } else if (wantMonochromeSolarShell() && solarOverlay) {
+      refreshMonochromeSolarUniforms(g);
+    }
+  }
+
+  /** Terminator path + subsun/moon markers — immediate on solar scrub (not debounced). */
+  function updateGlobeSolarDecor(g: GlobeInstance): void {
+    syncSolarUniforms(g);
+    const z = zoomScaleFromAltitude(cameraAltitude);
+    const pathRows: GlobePathDatum[] = [];
+    if (showTerminator) {
+      const termCoords = buildTerminatorPath(simUtcMs);
+      if (termCoords.length > 2) {
+        pathRows.push({
+          path: termCoords,
+          color: mapThemeFor(themeId).terminatorStroke,
+          stroke: 0.45 * Math.sqrt(z),
+          dashLength: 1,
+          dashGap: 0,
+        });
+      }
+    }
+    if (showWeatherOverlays) {
+      pathRows.push(...buildDemoWeatherPathsForGlobe());
+    }
+    if (showTrackingPaths) {
+      pathRows.push(
+        ...buildAllTrackingPaths(new Date(simUtcMs), trackingPathRows),
+      );
+    }
+    g.pathsData(pathRows)
+      .pathPoints((d) => (d as GlobePathDatum).path)
+      .pathPointLat((p) => (p as [number, number, number])[0])
+      .pathPointLng((p) => (p as [number, number, number])[1])
+      .pathPointAlt((p) => (p as [number, number, number])[2] ?? 0.0025)
+      .pathColor((d: object) => (d as GlobePathDatum).color)
+      .pathStroke((d: object) => (d as GlobePathDatum).stroke * Math.sqrt(z))
+      .pathDashLength((d) => (d as GlobePathDatum).dashLength ?? 1)
+      .pathDashGap((d) => (d as GlobePathDatum).dashGap ?? 0)
+      .pathDashInitialGap(0);
+
+    if (showSubsun || showMoon) {
+      scheduleUpdateLayers();
+    }
+  }
+
+  function applyGlobeTheme(g: GlobeInstance, theme: ThemeId): void {
+    if (usePhotorealShader()) {
+      applyPhotorealGlobe(g);
+    } else {
+      applyCartoGlobe(g, theme);
+    }
+    syncStylizedCloudLayer(g);
   }
 
   function updateLayers(): void {
     const g = globe;
     if (!g || document.hidden) return;
 
-    const geo = getGeoEventIndex(dashboard.events);
+    const windowed = eventsForMapDisplay(dashboard.events, simUtcMs);
+    const geoIdx = getGeoEventIndex(windowed);
     const fp = globeLayerFingerprint({
       revision: dashboardData.revision,
       simUtcMs,
@@ -146,23 +338,19 @@
       showWeather: showWeatherOverlays,
       showTrackingPaths,
       trackingCount: publicTracking.length,
-      geoCount: geo.geoEvents.length,
+      geoCount: geoIdx.geoEvents.length,
       causalCount: dashboard.recentCausalEdges.length,
     });
     if (fp === lastLayerFingerprint) {
-      if (photorealActive && dayNightMaterial) {
-        updateDayNightSun(dayNightMaterial, simUtcMs);
-      }
+      syncSolarUniforms(g);
       return;
     }
     lastLayerFingerprint = fp;
 
-    if (photorealActive && dayNightMaterial) {
-      updateDayNightSun(dayNightMaterial, simUtcMs);
-    }
+    syncSolarUniforms(g);
 
     const z = zoomScaleFromAltitude(cameraAltitude);
-    const events = geo.geoEvents;
+    const events = geoIdx.geoEvents;
     const wantPointsMode = mode === "points" || mode === "both";
     const wantHeat = mode === "heat" || mode === "both";
 
@@ -179,21 +367,30 @@
     }
     const tr = publicTracking.length ? publicTracking : [];
     const arcs = buildGlobeArcs(
-      geo.events,
+      geoIdx.events,
       dashboard.recentCausalEdges,
       mapDomainSet,
     );
 
-    const heatData = wantHeat ? buildPerDomainHeatmaps(geo, mapDomainSet) : [];
+    const heatData = wantHeat ? buildPerDomainHeatmaps(geoIdx, mapDomainSet) : [];
+    if (showWeatherOverlays) {
+      const tempHm = buildTemperatureHeatmap(
+        climateWeatherPoints(windowed, simUtcMs),
+      );
+      if (tempHm) heatData.push(tempHm);
+    }
     g.heatmapsData(heatData)
       .heatmapPoints((d) => (d as GlobeHeatmapDatum).points)
       .heatmapPointLat((p) => (p as [number, number, number])[0])
       .heatmapPointLng((p) => (p as [number, number, number])[1])
       .heatmapPointWeight((p) => (p as [number, number, number])[2] ?? 1)
-      .heatmapColorFn(
-        (d: object) => (t: number) =>
-          heatColorForDomain((d as GlobeHeatmapDatum).color, t),
-      )
+      .heatmapColorFn((d: object) => {
+        const row = d as GlobeHeatmapDatum;
+        return (t: number) =>
+          row.domain === "climate-temp"
+            ? tempHeatColor(t)
+            : heatColorForDomain(row.color, t);
+      })
       .heatmapBandwidth(heatmapBandwidthForZoom(cameraAltitude))
       .heatmapColorSaturation(2.1)
       .heatmapBaseAltitude(0.0048 * Math.min(1.4, z))
@@ -226,7 +423,7 @@
           [((a as GlobeArc).color), (a as GlobeArc).color] as [string, string],
       )
       .arcStroke((a: object) =>
-        scaledArcStroke((a as GlobeArc).w * 0.5, cameraAltitude),
+        scaledArcStroke((a as GlobeArc).w * 0.95, cameraAltitude),
       )
       .arcAltitude((a: object) => (a as GlobeArc).altitude)
       .arcAltitudeAutoScale(0)
@@ -264,6 +461,26 @@
       .pathDashLength((d) => (d as GlobePathDatum).dashLength ?? 1)
       .pathDashGap((d) => (d as GlobePathDatum).dashGap ?? 0)
       .pathDashInitialGap(0);
+
+    syncStylizedCloudLayer(g);
+
+    const hover = hoverAdmin;
+    g.polygonsData(adminFeatures)
+      .polygonCapColor((feat: object) =>
+        feat === hover
+          ? "rgba(56, 189, 248, 0.38)"
+          : "rgba(148, 163, 184, 0.05)",
+      )
+      .polygonSideColor(() => "rgba(0,0,0,0)")
+      .polygonStrokeColor((feat: object) =>
+        feat === hover
+          ? "rgba(56, 189, 248, 0.9)"
+          : "rgba(148, 163, 184, 0.28)",
+      )
+      .polygonAltitude(0.0018)
+      .polygonLabel((feat: object) =>
+        adminLabel((feat as AdminFeature).properties),
+      );
   }
 
   function onCameraChange(g: GlobeInstance): void {
@@ -271,13 +488,7 @@
     if (Number.isFinite(pov.altitude)) {
       cameraAltitude = pov.altitude;
     }
-    if (photorealActive && dayNightMaterial) {
-      updateDayNightGlobeRotation(
-        dayNightMaterial,
-        pov.lng ?? 0,
-        pov.lat ?? 0,
-      );
-    }
+    syncSolarUniforms(g);
     if (onMapPointScreen && lastHover) {
       const al = lastHover.altitude ?? 0.006;
       const xy = g.getScreenCoords(lastHover.lat, lastHover.lng, al);
@@ -305,6 +516,9 @@
       try {
         if (showPhotorealEarth) {
           dayNightMaterial = await loadDayNightGlobeMaterial();
+        }
+        if (showSolarShading && !showPhotorealEarth) {
+          solarOverlay = await loadMonochromeSolarOverlay();
         }
 
         const { default: GConstructor } = await import("globe.gl");
@@ -335,12 +549,9 @@
           });
         };
 
+        cartoGlobeMaterial = g.globeMaterial() as Material;
         applyGlobeTheme(g, themeId);
-        g.showGlobe(true)
-          .globeTileEngineMaxLevel(showPhotorealEarth ? 0 : 6)
-          .showAtmosphere(true)
-          .atmosphereAltitude(showPhotorealEarth ? 0.2 : 0.16)
-          .enablePointerInteraction(true);
+        g.showGlobe(true).showAtmosphere(true).enablePointerInteraction(true);
 
         g.pointOfView({ lat: 12, lng: -25, altitude: 2.28 }, 0);
         cameraAltitude = 2.28;
@@ -382,6 +593,10 @@
             navigate(`/events/${encodeURIComponent(p.id)}`);
           }
         });
+        g.onPolygonHover((feat: object | null) => {
+          hoverAdmin = feat ? (feat as AdminFeature) : null;
+        });
+
         g.onPointHover((pt: object | null) => {
           if (!onMapPointScreen) return;
           if (!pt) {
@@ -412,6 +627,10 @@
         const scene = g.scene();
         const camera = g.camera();
         const renderFrame = (): void => {
+          if (cloudStylizedRoot && weatherSpinFlag) {
+            cloudStylizedRoot.rotation.y += 0.000095;
+          }
+          syncSolarUniforms(g);
           ctrls.update();
           renderer.render(scene, camera);
         };
@@ -441,6 +660,12 @@
         }
 
         updateLayers();
+
+        void loadAdminBoundaries().then((fc) => {
+          if (cancelled) return;
+          adminFeatures = fc.features as AdminFeature[];
+          scheduleUpdateLayers();
+        });
 
         const gAny = g as unknown as { onGlobeReady?: (cb: () => void) => GlobeInstance };
         if (typeof gAny.onGlobeReady === "function") {
@@ -484,6 +709,17 @@
       ro = null;
       if (globe) {
         try {
+          if (cloudStylizedRoot) {
+            try {
+              globe.scene().remove(cloudStylizedRoot);
+            } catch {
+              /* */
+            }
+            disposeStylizedCloudLayer(cloudStylizedRoot);
+            cloudStylizedRoot = null;
+          }
+          removeSolarShell(globe);
+          lastCloudSyncSig = "";
           const renderer = globe.renderer();
           renderer.setAnimationLoop(null);
           globe._destructor();
@@ -495,7 +731,8 @@
       }
       releaseWebGlCanvases(root);
       dayNightMaterial = null;
-      photorealActive = false;
+      solarOverlay = null;
+      cartoGlobeMaterial = null;
     };
   });
 
@@ -512,14 +749,82 @@
   /** Coalesce burst STDB updates; camera moves no longer rebuild all layers. */
   const scheduleUpdateLayersThrottled = debounce(scheduleUpdateLayers, 500);
 
+  /** Admin hover only restyles polygons — avoid debounced full layer rebuild. */
   $effect(() => {
+    const g = globe;
+    if (!g || adminFeatures.length === 0) return;
+    const hover = hoverAdmin;
+    g.polygonsData(adminFeatures)
+      .polygonCapColor((feat: object) =>
+        feat === hover
+          ? "rgba(56, 189, 248, 0.38)"
+          : "rgba(148, 163, 184, 0.05)",
+      )
+      .polygonStrokeColor((feat: object) =>
+        feat === hover
+          ? "rgba(56, 189, 248, 0.9)"
+          : "rgba(148, 163, 184, 0.28)",
+      );
+  });
+
+  $effect(() => {
+    const g = globe;
+    if (!g) return;
     void showPhotorealEarth;
+    void showSolarShading;
     void dayNightMaterial;
-    if (globe) applyGlobeTheme(globe, themeId);
+    void solarOverlay;
+    void (async () => {
+      if (showPhotorealEarth && !dayNightMaterial) {
+        dayNightMaterial = await loadDayNightGlobeMaterial();
+      }
+      if (showSolarShading && !showPhotorealEarth && !solarOverlay) {
+        solarOverlay = await loadMonochromeSolarOverlay();
+      }
+      if (globe) applyGlobeTheme(globe, themeId);
+    })();
+  });
+
+  $effect.pre(() => {
+    solarSimUtcMs = simUtcMs;
+  });
+
+  /** Scrub instant — drives solar uniforms (not debounced, not fingerprint-gated). */
+  $effect(() => {
+    const g = globe;
+    if (!g || document.hidden) return;
+    syncMonochromeSolarShell(g);
+    syncSolarUniforms(g);
+  });
+
+  /** Terminator / tracking paths on the solar scrubber (immediate, not debounced). */
+  $effect(() => {
+    const g = globe;
+    if (!g || document.hidden) return;
+    void solarSimUtcMs;
+    void showTerminator;
+    void showSubsun;
+    void showMoon;
+    void showWeatherOverlays;
+    void showTrackingPaths;
+    void trackingPathRows;
+    void themeId;
+    updateGlobeSolarDecor(g);
+  });
+
+  /** Overlay toggles and mode — immediate layer refresh (not debounced). */
+  $effect(() => {
+    const g = globe;
+    if (!g || document.hidden) return;
+    void showCausal;
+    void mode;
+    void mapDomainSet;
+    scheduleUpdateLayers();
   });
 
   $effect(() => {
     void dashboardData.revision;
+    void simUtcMs;
     void mapDomainSet;
     void showTerminator;
     void showSubsun;
@@ -531,7 +836,9 @@
     void publicTracking;
     void trackingPathRows;
     void showWeatherOverlays;
+    void showSolarShading;
     void dayNightMaterial;
+    void solarOverlay;
     if (!globe || document.hidden) return;
     scheduleUpdateLayersThrottled();
     return () => {
@@ -580,6 +887,8 @@
     min-height: 200px;
     border-radius: inherit;
     overflow: hidden;
+    /* Match 2D map canvas fill — no photo skybox visible outside WebGL. */
+    background: var(--map-canvas-bg, var(--bg-0));
   }
   .oa-three-globe {
     position: absolute;

@@ -56,6 +56,33 @@ API/UI (`••••` + last 4 characters).
 
 Override secrets file path: `OPENATLAS_FEED_SECRETS=/path/to/file.json`
 
+## Ingest HTTP (admin API)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OPENATLAS_BIND` | `127.0.0.1:8080` | Listen address for `/health`, `/status`, `/feeds`, static `web/dist` fallback |
+| `OPENATLAS_API_KEY` | unset | Shared secret for mutating routes (`PUT /feeds`, `PUT /feeds/poll-intervals`) |
+
+**Auth policy (fail-closed):**
+
+- **Loopback bind** + no API key → local dev may call `PUT /feeds*` without a header.
+- **API key set** → all mutating `/feeds` routes require header `x-openatlas-key` (even on loopback).
+- **Non-loopback bind** (e.g. `0.0.0.0:8080`) → `OPENATLAS_API_KEY` **must** be set; requests without a valid header receive `401` / `403`.
+
+Read-only routes (`GET /health`, `/ready`, `/status`, `GET /feeds`, `GET /metrics`) stay unauthenticated; place ingest behind a reverse proxy for production.
+
+### Browser operations console (Settings)
+
+**Settings → Operations console** polls ingest while the panel is expanded:
+
+| Endpoint | Use |
+|----------|-----|
+| `GET /status` | Ingest mode, STDB reachability, per-feed health |
+| `GET /feeds` | Feed catalog, poll cadence, circuit state |
+| `GET /metrics` | Prometheus text counters (`openatlas_ingest_*`) |
+
+In Vite **dev** and **`vite preview`**, `/status`, `/feeds`, `/ready`, `/health`, and `/metrics` proxy to `127.0.0.1:8080` (`web/vite.config.ts`, override with `VITE_INGEST_PROXY_TARGET`). If `GET /metrics` returns 404, rebuild/restart ingest (`cargo build -p openatlas-ingest`); the Metrics tab still fills from `/status` `ingest_metrics` until then. SpacetimeDB connection events are mirrored into the live log from `connection.svelte.ts`.
+
 ## Production
 
 - Use your platform’s secret store (Kubernetes secrets, Vault, etc.) and map to
@@ -78,6 +105,44 @@ Live feeds are throttled in `openatlas-ingest` so upstream providers are not ham
 | HTTP 429 handling | Longer retry backoff; error surfaced in feed health |
 
 Details: [docs/RATE_LIMITS.md](./RATE_LIMITS.md).
+
+## LLM bridge (Ollama)
+
+Optional narrative analysis for Hub, domain desks, and matrix panels. **Not**
+part of SpacetimeDB reducers — deterministic module narratives remain the source
+of truth for event detail.
+
+### Stack
+
+| Step | Command / service |
+|------|-------------------|
+| 1 | `ollama serve` (or `./dev.sh ollama:cpu` on incompatible GPUs) |
+| 2 | `ollama pull llama3.2` (recommended; `qwen2.5:7b` / `mistral:7b` also work) |
+| 3 | `./dev.sh llm:start` — runs `openatlas-llm-bridge` on `127.0.0.1:3847` |
+| 4 | `./dev.sh up` or `bun run dev` — Vite proxies `/api/llm` → bridge |
+
+Set `OPENATLAS_START_LLM=1` in `.env` to auto-start the bridge with `./dev.sh up`.
+
+### Environment
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OPENATLAS_LLM_LISTEN` | `127.0.0.1:3847` | Bridge HTTP bind |
+| `OPENATLAS_OLLAMA_BASE` | `http://127.0.0.1:11434` | Ollama API |
+| `OPENATLAS_OLLAMA_MODEL` | `llama3.2` | Model name (`ollama pull` first) |
+| `OPENATLAS_OLLAMA_TIMEOUT_SECS` | `120` | Upstream chat timeout |
+| `OPENATLAS_OLLAMA_NUM_GPU` | unset | Pass `0` to request CPU layers (restart Ollama for GTX 10xx CUDA errors) |
+| `VITE_LLM_BASE` | unset (`/api/llm` in dev) | Production build: public bridge URL |
+| `VITE_LLM_INSIGHT_TIMEOUT_MS` | `120000` | Browser abort for `POST /v1/insight` |
+
+Production: reverse-proxy `/api/llm` to the bridge or set `VITE_LLM_BASE` at
+`web` build time. See [DEPLOY.md](./DEPLOY.md).
+
+### Verify
+
+1. **Settings → Test LLM pipeline** — ping + one inference (uses `/v1/capable`).
+2. **Hub → Generate Daily Briefing** — structured telemetry JSON; template fallback if LLM fails.
+3. **Domain desk → AI analysis → Regenerate insight** — domain-scoped snapshot.
 
 ## CI guard
 

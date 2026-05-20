@@ -1232,8 +1232,12 @@ dependencies = [
 name = "openatlas-stdb-module"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "openatlas-core",
+ "serde",
  "serde_json",
  "spacetimedb",
+ "uuid",
 ]
 
 [[package]]

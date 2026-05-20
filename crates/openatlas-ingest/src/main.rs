@@ -1,12 +1,12 @@
 //! OpenAtlas ingest service binary.
 
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Context;
 use chrono::Utc;
 use openatlas_ingest::logging;
 use openatlas_ingest::{
-    feed_config, feeds,
+    auth, feed_config, feeds,
     fixtures::push_static_fixtures,
     health::initialize_feed_runtime,
     ingest_mode::{ingest_mode, IngestMode},
@@ -20,8 +20,6 @@ use openatlas_ingest::{
 };
 use tokio::sync::RwLock;
 use tracing::{info, warn};
-
-const BIND_ADDR: &str = "0.0.0.0:8080";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -58,9 +56,12 @@ async fn main() -> anyhow::Result<()> {
     let rate_limiter = Arc::new(rate_limit::FeedRateLimiter::new());
     rate_limit::install(rate_limiter.clone());
 
+    let bind_addr = auth::resolve_bind_addr().context("invalid OPENATLAS_BIND")?;
+
     let feed_runtime = Arc::new(RwLock::new(HashMap::new()));
     let spawned_feeds = Arc::new(RwLock::new(std::collections::HashSet::new()));
     let state = AppState {
+        bind_addr,
         started_at: Utc::now(),
         feed_runtime,
         spawned_feeds,
@@ -80,10 +81,13 @@ async fn main() -> anyhow::Result<()> {
     feeds::spawn_all(state.clone()).await;
 
     let app = router(state);
-    let addr: SocketAddr = BIND_ADDR.parse().context("invalid bind address")?;
-    info!("openatlas-ingest listening on {}", addr);
+    info!(
+        listen = %bind_addr,
+        admin_auth = auth::mutations_require_auth(&bind_addr),
+        "openatlas-ingest listening"
+    );
 
-    let listener = tokio::net::TcpListener::bind(addr)
+    let listener = tokio::net::TcpListener::bind(bind_addr)
         .await
         .context("bind failed")?;
     axum::serve(listener, app).await.context("server failed")

@@ -52,14 +52,22 @@ charting on at most ~500 events.
 | `ingest_audit` | Private table (not synced to browser) |
 | Default WS subscription | Core tables only (no `event_narrative`) |
 | Narratives | Lazy subscribe when Hub / event detail / map mounts |
-| `dashboard.events` | **400** after trim (top by ordinal on hydrate) |
+| `dashboard.events` | **24h UTC retention** + count cap **800** (`MAX_EVENTS`), hard ceiling **2000** (`MAX_EVENTS_HARD_CEILING`) |
 | Event `payload_json` | Compact keys, **8 KiB** max |
+
+## Browser subscription vs UI trim
+
+SpacetimeDB subscriptions use full-table `SELECT *` on ring tables (see `stdb-subscriptions.ts`). The module retains up to **~800** `event` rows (plus 24h retention pruning), so the TypeScript SDK syncs that full ring on connect and on each prune — not the smaller UI projection.
+
+The browser then trims again in `sync-dashboard-cache.ts` via **`trimEventsByRetention`** (`event-retention-trim.ts`): keep events with `timestamp >= now − 24h`, newest ordinal first, capped at **`MAX_EVENTS = 800`** with a **`MAX_EVENTS_HARD_CEILING = 2000`** safety bound. Signals and causal edges use count caps aligned to STDB rings (**400** / **600**). Memory and bandwidth on first connect still scale with the **server ring (~800)** until `event_recent` (below) ships.
+
+**Planned mitigation (P0, not yet implemented):** add a browser-facing `event_recent` table (or capped view when STDB supports it) with N≈300 rows, subscribed instead of full `event`. Until then, treat R1 in [PRODUCT_ROADMAP.md](./PRODUCT_ROADMAP.md) as an accepted connect-cost tradeoff. Track implementation in [roadmap/PHASE_A_TRUST.md](./roadmap/PHASE_A_TRUST.md).
 
 ## Operator actions
 
 - **Poll interval** — Settings → Feeds; persisted in `.dev/feed-poll.json` (`PUT /feeds/poll-intervals`). Options: 30s, 1m, 5m, 30m, 1h, 4h (provider minimums enforced).
 - **Live feed status** — Shell **Feeds** pill + Settings table refresh every ~8–10s (`GET /feeds`): last poll, next poll, accepted/duplicate counts.
-- **Reconnect (STDB)** — Settings; manual only (no auto-reconnect loop).
+- **Reconnect (STDB)** — Settings pill + Ops strip; exponential auto-reconnect (max 8 attempts, 2s base) when the socket drops; manual **Reconnect** resets backoff.
 - **Test / Reconnect feed** — hits upstream once; 30s cooldown per feed. Failed cycles wait the configured interval only (no exponential retry storm).
 - **Scrubbing / time slider** — reads cached `dashboard` + TLE propagation only.
 

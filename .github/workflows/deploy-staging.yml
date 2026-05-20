@@ -106,10 +106,30 @@ jobs:
           echo "  rsync/scp web-dist/ to staging CDN"
           echo "  systemctl restart openatlas-ingest on staging host"
           echo "  Feed keys: injected via environment secrets (never logged)"
+          echo "  Post-deploy: INGEST_BASE=https://staging-host ./scripts/post-deploy-smoke.sh --stdb"
+
+  # Optional smoke after your host deploy — enable when STAGING_INGEST_URL is set.
+  post-deploy-smoke:
+    name: Post-deploy smoke (optional)
+    needs: build-artifacts
+    if: needs.build-artifacts.result == 'success' && vars.STAGING_INGEST_URL != ''
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: HTTP smoke (ingest + optional STDB ping)
+        env:
+          INGEST_BASE: ${{ vars.STAGING_INGEST_URL }}
+          OPENATLAS_STDB_URI: ${{ vars.STAGING_STDB_URI }}
+        run: |
+          chmod +x ./scripts/post-deploy-smoke.sh
+          ARGS=()
+          [[ -n "${OPENATLAS_STDB_URI:-}" ]] && ARGS+=(--stdb)
+          ./scripts/post-deploy-smoke.sh "${ARGS[@]}"
 
   staging-gate:
     name: Staging gate
-    needs: [detect-changes, build-artifacts]
+    needs: [detect-changes, build-artifacts, post-deploy-smoke]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
@@ -119,4 +139,8 @@ jobs:
             exit 0
           fi
           [[ "${{ needs.build-artifacts.result }}" == "success" ]] || exit 1
+          if [[ "${{ needs.post-deploy-smoke.result }}" == "failure" ]]; then
+            echo "Staging gate: post-deploy smoke failed"
+            exit 1
+          fi
           echo "Staging gate passed"

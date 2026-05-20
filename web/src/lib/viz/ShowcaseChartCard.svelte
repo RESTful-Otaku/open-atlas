@@ -1,5 +1,5 @@
 <script lang="ts">
-  import EChartsPanel from "./EChartsPanel.svelte";
+  import FullscreenChartShell from "./FullscreenChartShell.svelte";
   import type { ShowcaseEntry } from "./showcase-options";
 
   const { entry }: { entry: ShowcaseEntry } = $props();
@@ -13,7 +13,7 @@
     <code class="viz-card-id">{entry.id}</code>
   </header>
   <div class="viz-card-chart">
-    <EChartsPanel {option} class="viz-chart" />
+    <FullscreenChartShell title={entry.title} option={option} embedClass="viz-chart" />
   </div>
 </article>
 

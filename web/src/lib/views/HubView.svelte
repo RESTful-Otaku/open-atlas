@@ -12,6 +12,7 @@
   useNarrativeSubscription();
   import { buildHubTiles, computeThreatIndex } from "../hub";
   import { llmSnapshotCounts } from "../llm-snapshot";
+  import { buildDeterministicBriefing } from "../briefing-fallback";
   import {
     DAILY_BRIEFING_PROMPT,
     llmBlockedReason,
@@ -26,6 +27,7 @@
   import { domainLabel } from "../colors";
   import { navigate } from "../router.svelte";
 
+  import CompactNumber from "../components/CompactNumber.svelte";
   import HubTile from "./HubTile.svelte";
   import HubOverviewCharts from "./HubOverviewCharts.svelte";
   import DataPipelineBanner from "../components/DataPipelineBanner.svelte";
@@ -53,6 +55,7 @@
   let briefingLlmText = $state<string | null>(null);
   let briefingModel = $state<string | null>(null);
   let briefingUserFocus = $state("");
+  let briefingUsedFallback = $state(false);
 
   const llmCtx = $derived({
     dataMode: dashboard.dataMode,
@@ -76,11 +79,20 @@
   const briefingSource = $derived(
     briefingLoading
       ? "Generating with Ollama…"
-      : briefingLlmText
+      : briefingLlmText && !briefingUsedFallback
         ? `Ollama${briefingModel ? ` (${briefingModel})` : ""}`
-        : briefingError
-          ? "LLM unavailable"
-          : "Not generated yet",
+        : briefingUsedFallback
+          ? "Template (LLM unavailable)"
+          : briefingError
+            ? "LLM unavailable"
+            : "Not generated yet",
+  );
+
+  const briefingDisplay = $derived(
+    briefingLlmText ??
+      (briefingUsedFallback
+        ? buildDeterministicBriefing(llmCtx.snapshot)
+        : null),
   );
 
   $effect(() => {
@@ -97,16 +109,19 @@
     if (!force && briefingLlmText && !briefingError) return;
     briefingError = null;
     briefingLoading = true;
+    briefingUsedFallback = false;
 
     try {
-      await ensureLlmReady(true);
+      await refreshRemoteReadiness();
+      await ensureLlmReady(false);
 
       if (!llmCanRun(llmCtx, readiness.llmReady)) {
-        briefingLlmText = null;
+        briefingUsedFallback = true;
+        briefingLlmText = buildDeterministicBriefing(llmCtx.snapshot);
         briefingModel = null;
         briefingError =
           llmBlockedReason(llmCtx, readiness.llmReady) ??
-          "LLM is not ready (bridge, Ollama, or dashboard data).";
+          "LLM is not ready — showing template briefing.";
         return;
       }
 
@@ -118,10 +133,13 @@
       briefingLlmText = r.text.trim();
       briefingModel = r.model;
       if (!briefingLlmText) {
-        briefingError = "Ollama returned an empty response — try Regenerate.";
+        briefingUsedFallback = true;
+        briefingLlmText = buildDeterministicBriefing(llmCtx.snapshot);
+        briefingError = "Ollama returned an empty response — showing template briefing.";
       }
     } catch (e) {
-      briefingLlmText = null;
+      briefingUsedFallback = true;
+      briefingLlmText = buildDeterministicBriefing(llmCtx.snapshot);
       briefingModel = null;
       briefingError = e instanceof Error ? e.message : String(e);
     } finally {
@@ -131,7 +149,7 @@
 
   function downloadBriefing(): void {
     const body =
-      briefingLlmText?.trim() ??
+      briefingDisplay?.trim() ??
       briefingError ??
       "No briefing generated yet.";
     const blob = new Blob([body], { type: "text/markdown" });
@@ -199,7 +217,7 @@
         <div>
           <h2>Daily Briefing</h2>
           <p class="hub-briefing-meta">
-            {briefingSource} · {llmCounts.events} events · {llmCounts.domains}
+            {briefingSource} · <CompactNumber value={llmCounts.events} /> events · {llmCounts.domains}
             domains · {llmCounts.insights} insights
           </p>
         </div>
@@ -250,15 +268,17 @@
         <p class="hub-briefing-wait">
           Calling Ollama via the LLM bridge… This can take 30–90 seconds on CPU.
         </p>
-      {:else if briefingLlmText}
-        <BriefingMarkdown source={briefingLlmText} />
+      {:else if briefingDisplay}
+        <BriefingMarkdown source={briefingDisplay} />
       {:else if !briefingError}
         <p class="hub-briefing-wait">Click Regenerate to run the briefing with Ollama.</p>
       {/if}
       <footer class="hub-briefing-foot">
-        {#if briefingLlmText}
+        {#if briefingDisplay && !briefingUsedFallback}
           Generated from live telemetry via Ollama. Regenerate after ingest
           updates the dashboard.
+        {:else if briefingUsedFallback}
+          Template briefing from live telemetry. Fix LLM in Settings, then Regenerate.
         {:else}
           Requires Live SpacetimeDB data, <code>ollama serve</code>, and
           <code>./dev.sh llm:start</code> (or full stack Run).

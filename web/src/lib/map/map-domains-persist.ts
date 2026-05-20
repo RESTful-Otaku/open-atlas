@@ -10,11 +10,12 @@ export function allDomainIds(): readonly string[] {
   return ALL_IDS;
 }
 
+/** First visit: no domain layers until the user opts in. */
 export function defaultMapDomainSet(): Set<string> {
-  return new Set(ALL_IDS);
+  return new Set();
 }
 
-/** Restore last session selection, or all domains if missing/invalid. */
+/** Restore last session selection, or none if missing/invalid. */
 export function loadMapDomainSet(): Set<string> {
   if (typeof sessionStorage === "undefined") {
     return defaultMapDomainSet();
@@ -28,7 +29,7 @@ export function loadMapDomainSet(): Set<string> {
     for (const x of arr) {
       if (typeof x === "string" && VALID.has(x)) out.add(x);
     }
-    return out.size > 0 ? out : defaultMapDomainSet();
+    return out;
   } catch {
     return defaultMapDomainSet();
   }

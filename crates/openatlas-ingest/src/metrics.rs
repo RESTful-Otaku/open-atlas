@@ -83,3 +83,66 @@ pub struct IngestMetricsSnapshot {
     pub batch_calls: u64,
     pub batch_fallback_calls: u64,
 }
+
+impl IngestMetricsSnapshot {
+    /// Prometheus exposition format (text/plain 0.0.4).
+    pub fn to_prometheus_text(&self) -> String {
+        let mut out = String::new();
+        append_counter(
+            &mut out,
+            "openatlas_ingest_events_fetched_total",
+            self.events_fetched,
+        );
+        append_counter(
+            &mut out,
+            "openatlas_ingest_events_accepted_total",
+            self.events_accepted,
+        );
+        append_counter(
+            &mut out,
+            "openatlas_ingest_events_duplicate_total",
+            self.events_duplicate,
+        );
+        append_counter(
+            &mut out,
+            "openatlas_ingest_events_rejected_total",
+            self.events_rejected,
+        );
+        append_counter(
+            &mut out,
+            "openatlas_ingest_events_transport_error_total",
+            self.events_transport_error,
+        );
+        append_counter(
+            &mut out,
+            "openatlas_ingest_batch_calls_total",
+            self.batch_calls,
+        );
+        append_counter(
+            &mut out,
+            "openatlas_ingest_batch_fallback_calls_total",
+            self.batch_fallback_calls,
+        );
+        out
+    }
+}
+
+fn append_counter(out: &mut String, name: &str, value: u64) {
+    use std::fmt::Write;
+    let _ = writeln!(out, "# TYPE {name} counter");
+    let _ = writeln!(out, "{name} {value}");
+}
+
+#[cfg(test)]
+mod prometheus_tests {
+    use super::*;
+
+    #[test]
+    fn prometheus_text_includes_all_series() {
+        let snap = IngestMetrics::default().snapshot();
+        let text = snap.to_prometheus_text();
+        assert!(text.contains("openatlas_ingest_events_fetched_total"));
+        assert!(text.contains("openatlas_ingest_batch_fallback_calls_total"));
+        assert!(text.contains("# TYPE openatlas_ingest_events_accepted_total counter"));
+    }
+}

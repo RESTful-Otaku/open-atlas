@@ -745,7 +745,11 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
   }
 }
 
-/** Per-matrix chart kinds so each board reads distinctly while staying data-bound. */
+/**
+ * Per-matrix chart kinds — every {@link MatrixChartKind} appears at least
+ * once across the eight command boards so operators can tour the full
+ * ECharts surface (sunburst → effectScatter) from live telemetry.
+ */
 export const MATRIX_TAB_CHARTS: Readonly<
   Record<
     string,
@@ -759,36 +763,36 @@ export const MATRIX_TAB_CHARTS: Readonly<
   },
   economic: {
     overview: "treemap_domain_volume",
-    telemetry: "heatmap_hour_domain",
-    incidents: "funnel_severity_pipeline",
+    telemetry: "themeRiver_recent",
+    incidents: "sankey_domain_band",
   },
   health: {
-    overview: "sunburst_domain_severity",
-    telemetry: "heatmap_hour_domain",
-    incidents: "funnel_severity_pipeline",
+    overview: "radar_domain_load",
+    telemetry: "lines2d_corridor",
+    incidents: "boxplot_severity_per_domain",
   },
   transport: {
-    overview: "sunburst_domain_severity",
-    telemetry: "heatmap_hour_domain",
+    overview: "parallel_event_vectors",
+    telemetry: "line_count_timeline",
     incidents: "scatter_time_severity",
   },
   cyber: {
-    overview: "funnel_severity_pipeline",
+    overview: "gauge_scope_risk",
     telemetry: "heatmap_hour_domain",
     incidents: "graph_domain_star",
   },
   resource: {
-    overview: "bar_domain_counts",
-    telemetry: "line_count_timeline",
+    overview: "pictorial_hour_strip",
+    telemetry: "bar_domain_counts",
     incidents: "rose_domain_share",
   },
   demographics: {
     overview: "pie_domain_share",
-    telemetry: "heatmap_hour_domain",
-    incidents: "bar_domain_counts",
+    telemetry: "tree_domain_hierarchy",
+    incidents: "funnel_severity_pipeline",
   },
   compute: {
-    overview: "bar_domain_counts",
+    overview: "sunburst_domain_severity",
     telemetry: "line_count_timeline",
     incidents: "effectScatter_flashpoints",
   },

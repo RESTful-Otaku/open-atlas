@@ -3,6 +3,7 @@
   navigates to the domain's Matrix page (routes register in M4/M5).
 -->
 <script lang="ts">
+  import CompactNumber from "../components/CompactNumber.svelte";
   import { matrixIdForDomain, type HubTile } from "../hub";
   import { domainIcon } from "../domain-icons";
   import { SeverityChip, bucketSeverity } from "../primitives";
@@ -41,7 +42,14 @@
 
   <div class="hub-tile-body">
     <div class="hub-tile-title">{tile.title}</div>
-    <div class="hub-tile-headline mono">{tile.headline}</div>
+    <div class="hub-tile-headline mono">
+      {#if tile.headlineCount != null}
+        <CompactNumber value={tile.headlineCount} />
+        {tile.headlineUnit}
+      {:else}
+        {tile.headlineUnit}
+      {/if}
+    </div>
     <div class="hub-tile-sub">{tile.subMetric}</div>
   </div>
 </button>

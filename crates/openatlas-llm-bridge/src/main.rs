@@ -58,8 +58,8 @@ struct Args {
     /// Model name as known to Ollama (after `ollama pull`).
     #[arg(long, default_value = "llama3.2", env = "OPENATLAS_OLLAMA_MODEL")]
     ollama_model: String,
-    /// Upstream request timeout in seconds.
-    #[arg(long, default_value = "300", env = "OPENATLAS_OLLAMA_TIMEOUT_SECS")]
+    /// Upstream request timeout in seconds (raise for slow CPU models).
+    #[arg(long, default_value = "120", env = "OPENATLAS_OLLAMA_TIMEOUT_SECS")]
     ollama_timeout_secs: u64,
 }
 
@@ -241,4 +241,16 @@ fn truncate_chars(s: &str, max: usize) -> String {
         return s.to_string();
     }
     s.chars().take(max).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_chars;
+
+    #[test]
+    fn truncate_chars_limits_by_char_count() {
+        let s = "a".repeat(10);
+        assert_eq!(truncate_chars(&s, 5).len(), 5);
+        assert_eq!(truncate_chars(&s, 20), s);
+    }
 }

@@ -1,16 +1,22 @@
 <!--
   Rich contextual preview for a map point: metrics, domain spark, narrative,
-  signals, causal. Fades in/out; pointer-events none so the map keeps hover.
+  signals, causal. Pointer-events enabled so the card stays open for clicks.
 -->
 <script lang="ts">
   import { fade } from "svelte/transition";
+  import { Pin, PinOff, X } from "@lucide/svelte";
 
   import { domainLabel, domainColor } from "../colors";
   import { resolveEventNarrative } from "../event-narrative-fallback";
   import { dashboard } from "../state.svelte";
   import { navigate } from "../router.svelte";
-  import { clampCardPosition, signalsForEvent, countCausalForEvent } from "../map/event-map-hover";
+  import { clampCardPosition, signalsForEvent } from "../map/event-map-hover";
+  import {
+    causalNeighborsForEvent,
+    eventDetailPath,
+  } from "../map/causal-neighbors";
   import type { UiEvent } from "../types";
+  import CompactNumber from "./CompactNumber.svelte";
 
   interface Props {
     /** Active event under the cursor; `null` hides. */
@@ -20,8 +26,34 @@
     y: number;
     /** Map area element (`position: relative`); used for layout bounds. */
     container: HTMLElement | null;
+    /** True while the pointer is over the card (keeps it open after leaving the point). */
+    onCardPointerChange?: (inside: boolean) => void;
+    /** Pinned inspector — card stays open for clicks and keyboard focus. */
+    pinned?: boolean;
+    /** Fixed dock position (used when pinned). */
+    docked?: boolean;
+    onPinChange?: (pinned: boolean) => void;
+    onDismiss?: () => void;
   }
-  let { event, x, y, container }: Props = $props();
+  let {
+    event,
+    x,
+    y,
+    container,
+    onCardPointerChange,
+    pinned = false,
+    docked = false,
+    onPinChange,
+    onDismiss,
+  }: Props = $props();
+
+  function onCardKeydown(e: KeyboardEvent): void {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      if (pinned) onPinChange?.(false);
+      onDismiss?.();
+    }
+  }
 
   const narrative = $derived(
     resolveEventNarrative(
@@ -35,8 +67,8 @@
   );
   const causal = $derived(
     event
-      ? countCausalForEvent(event.id, dashboard.recentCausalEdges)
-      : { incoming: 0, outgoing: 0 },
+      ? causalNeighborsForEvent(event.id, dashboard.recentCausalEdges, 4)
+      : null,
   );
   const world = $derived(
     event ? (dashboard.domainState[event.domain] ?? null) : null,
@@ -50,7 +82,7 @@
     event ? (dashboard.domainInsights[event.domain] ?? null) : null,
   );
   const pos = $derived.by(() => {
-    if (!event || !container) {
+    if (!event || !container || docked) {
       return { left: 0, top: 0 };
     }
     return clampCardPosition(
@@ -79,12 +111,19 @@
 </script>
 
 {#if event}
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
   <div
     class="emhc-wrap"
-    style:left="{pos.left}px"
-    style:top="{pos.top}px"
-    role="status"
+    class:emhc-wrap-docked={docked}
+    style:left={docked ? undefined : `${pos.left}px`}
+    style:top={docked ? undefined : `${pos.top}px`}
+    role={pinned ? "dialog" : "status"}
+    aria-label={pinned ? `Inspector: ${domainLabel(event.domain)} event` : undefined}
+    tabindex={pinned ? -1 : undefined}
     transition:fade={{ duration: 140 }}
+    onmouseenter={() => onCardPointerChange?.(true)}
+    onmouseleave={() => onCardPointerChange?.(false)}
+    onkeydown={onCardKeydown}
   >
     <div class="emhc" style="--emhc-accent: {domainColor(event.domain)}">
       <header class="emhc-head">
@@ -96,6 +135,36 @@
         <span class="emhc-sev" title="Severity score 0–1"
           >{(event.severity_score ?? 0).toFixed(2)}</span
         >
+        <div class="emhc-head-actions">
+          <button
+            type="button"
+            class="emhc-icon-btn"
+            title={pinned ? "Unpin inspector (Esc)" : "Pin inspector to map"}
+            aria-pressed={pinned}
+            onclick={() => onPinChange?.(!pinned)}
+          >
+            {#if pinned}
+              <PinOff size={14} strokeWidth={2} aria-hidden="true" />
+            {:else}
+              <Pin size={14} strokeWidth={2} aria-hidden="true" />
+            {/if}
+            <span class="emhc-icon-lbl">{pinned ? "Unpin" : "Pin"}</span>
+          </button>
+          {#if pinned}
+            <button
+              type="button"
+              class="emhc-icon-btn"
+              title="Close inspector (Esc)"
+              aria-label="Close inspector"
+              onclick={() => {
+                onPinChange?.(false);
+                onDismiss?.();
+              }}
+            >
+              <X size={14} strokeWidth={2} aria-hidden="true" />
+            </button>
+          {/if}
+        </div>
       </header>
       <p class="emhc-time mono">{event.timestamp?.replace("T", " ").slice(0, 19)} UTC</p>
 
@@ -183,14 +252,37 @@
             {:else}—{/if}
           </dd>
         </div>
-        <div>
-          <dt>Causal</dt>
-          <dd class="mono">in {causal.incoming} · out {causal.outgoing}</dd>
-        </div>
+        {#if causal && (causal.counts.incoming > 0 || causal.counts.outgoing > 0)}
+          <div class="emhc-causal-block">
+            <dt>Causal</dt>
+            <dd class="mono emhc-causal-counts">
+              in {causal.counts.incoming} · out {causal.counts.outgoing}
+            </dd>
+            <ul class="emhc-causal-links">
+              {#each [...causal.incoming, ...causal.outgoing] as link (`${link.direction}-${link.eventId}`)}
+                <li>
+                  <button
+                    type="button"
+                    class="emhc-causal-btn"
+                    title={link.direction === "incoming" ? "Upstream cause" : "Downstream effect"}
+                    onclick={() => navigate(eventDetailPath(link.eventId))}
+                  >
+                    {link.direction === "incoming" ? "←" : "→"} #{link.eventId}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {:else}
+          <div>
+            <dt>Causal</dt>
+            <dd class="mono">—</dd>
+          </div>
+        {/if}
         {#if world}
           <div>
             <dt>Domain events</dt>
-            <dd class="mono">{world.event_count}</dd>
+            <dd class="mono"><CompactNumber value={world.event_count} /></dd>
           </div>
         {/if}
       </dl>
@@ -212,8 +304,47 @@
   .emhc-wrap {
     position: absolute;
     z-index: 6;
-    pointer-events: none;
+    pointer-events: auto;
     width: min(300px, calc(100% - 12px));
+  }
+  .emhc-wrap-docked {
+    left: 12px;
+    bottom: 12px;
+    top: auto;
+    max-height: min(70%, 420px);
+    overflow: auto;
+  }
+  .emhc-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .emhc-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-1);
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-size: 9px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .emhc-icon-btn:hover {
+    color: var(--text-0);
+    background: var(--bg-3);
+  }
+  .emhc-icon-btn[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--emhc-accent) 55%, var(--border-2));
+    color: var(--text-0);
+    background: color-mix(in srgb, var(--emhc-accent) 12%, var(--bg-2));
+  }
+  .emhc-icon-lbl {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
   .emhc {
     border-radius: var(--radius);
@@ -345,6 +476,33 @@
     margin: 0;
     color: var(--text-1);
   }
+  .emhc-causal-block {
+    grid-column: 1 / -1;
+  }
+  .emhc-causal-counts {
+    margin-bottom: 4px;
+  }
+  .emhc-causal-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .emhc-causal-btn {
+    border: 0;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: var(--bg-2);
+    color: var(--emhc-accent, var(--accent));
+    font-family: var(--font-mono);
+    font-size: 9px;
+    cursor: pointer;
+  }
+  .emhc-causal-btn:hover {
+    background: var(--bg-3);
+  }
   .emhc-id {
     margin: 0;
     font-size: 9px;
@@ -357,7 +515,6 @@
     border-top: 1px solid var(--border-1);
   }
   .emhc-open {
-    pointer-events: auto;
     display: block;
     width: 100%;
     padding: 6px 8px;

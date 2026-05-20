@@ -15,4 +15,17 @@ test.describe("accessibility smoke", () => {
     await page.keyboard.press("Control+k");
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
   });
+
+  test("map layers panel closes with Escape", async ({ page }) => {
+    await page.goto("/?demo=1#/");
+    await expect(page.getByRole("main")).toBeVisible({ timeout: 15_000 });
+    await page.locator('button[aria-controls="map-layers-panel"]').click();
+    await expect(page.locator("#map-layers-panel.is-open")).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#map-layers-panel.is-open")).toHaveCount(0, {
+      timeout: 5_000,
+    });
+  });
 });

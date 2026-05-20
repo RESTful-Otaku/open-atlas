@@ -6,7 +6,8 @@
   import { onMount } from "svelte";
   import { Settings as SettingsIcon, Cpu, Radio, BookOpen, FlaskConical } from "@lucide/svelte";
 
-  import { reconnectNow } from "../connection.svelte";
+  import { connectionErrorDisplay } from "../connection-errors";
+  import { autoReconnectStatusLine, reconnectNow } from "../connection.svelte";
   import { installDemoData } from "../demo-install.svelte";
   import { resolveStdbWebSocketUri } from "../stdb-endpoint";
   import { dashboard } from "../state.svelte";
@@ -16,6 +17,8 @@
   import { requestLlmInsight } from "../llm";
   import { ensureLlmReady, readiness, refreshRemoteReadiness } from "../readiness.svelte";
   import FeedApisPanel from "../components/FeedApisPanel.svelte";
+  import CompactNumber from "../components/CompactNumber.svelte";
+  import OpsConsole from "../components/OpsConsole.svelte";
   import {
     readStoredTheme,
     setTheme,
@@ -73,6 +76,7 @@
   }
 </script>
 
+<section class="settings-page">
 <section class="settings">
   <header>
     <div class="settings-title">
@@ -85,6 +89,72 @@
       page.
     </p>
   </header>
+
+  <div class="card">
+    <h3>
+      <Radio size={14} strokeWidth={1.75} /> SpacetimeDB stream
+    </h3>
+    <p>
+      State: <strong>{dashboard.connection}</strong>{#if dashboard.dataMode === "demo"} (not used in demo; preview label only).{:else}.{/if} The
+      UI subscribes to <code>event</code>, <code>world_state</code>, <code>signal</code>, and
+      related tables when not in demo mode.
+    </p>
+    {#if dashboard.dataMode !== "demo"}
+      {@const reconnectNote = autoReconnectStatusLine()}
+      {#if reconnectNote}
+        <p class="settings-sub" role="status">{reconnectNote}</p>
+      {/if}
+    {/if}
+    {#if dashboard.dataMode !== "demo" && dashboard.connectionLastError}
+      {@const err = connectionErrorDisplay(dashboard.connectionLastError)}
+      <p class="err-block" role="alert">
+        {#if err}
+          <strong>{err.summary}</strong> — {err.remediation}
+          <span class="err-raw">({err.raw})</span>
+        {:else}
+          <strong>Last error</strong> — {dashboard.connectionLastError}
+        {/if}
+      </p>
+    {/if}
+    {#if dashboard.dataMode !== "demo"}
+      <p class="settings-actions">
+        <button type="button" class="btn" onclick={() => reconnectNow()}>
+          Reconnect to SpacetimeDB now
+        </button>
+      </p>
+    {/if}
+    <p class="settings-sub">
+      <span class="lbl">WebSocket (effective)</span> — <code>{stdbEffective}</code>
+    </p>
+    <p class="settings-sub">
+      <span class="lbl">Vite</span> — {#if stdbFromEnv}
+        <code>VITE_STDB_URI</code> is set to <code>{stdbFromEnv}</code> (overrides
+        same-host default).
+      {:else}
+        <code>VITE_STDB_URI</code> is unset; the app uses this page’s hostname on
+        port 3000 (<code>localhost</code> / <code>::1</code> →
+        <code>127.0.0.1</code> because dev SpacetimeDB binds IPv4 loopback only).
+        LAN URLs like <code>http://192.168.x.x:5173</code> use
+        <code>ws://192.168.x.x:3000</code> — run SpacetimeDB on
+        <code>0.0.0.0:3000</code> for that to work.
+      {/if}
+      <code>VITE_STDB_DB</code> = <code>{stdbDb}</code>. Override in
+      <code>web/.env</code> and rebuild for production.
+    </p>
+  </div>
+
+  <div class="card card--wide card--ops" id="ops-console">
+    <h3>
+      <Radio size={14} strokeWidth={1.75} /> Operations console
+    </h3>
+    <p>
+      Live operator view: SpacetimeDB connection events, ingest health, feed polls,
+      and Prometheus counters. Polls <code>/status</code>, <code>/feeds</code>, and
+      <code>/metrics</code> every ~8s while expanded (Vite dev proxies to
+      <code>127.0.0.1:8080</code>).
+    </p>
+    <OpsConsole />
+  </div>
 
   <div class="card">
     <h3>
@@ -121,7 +191,8 @@
     </p>
     <p class="row">
       Status: {#if dashboard.dataMode === "demo"}
-        <span class="ok">demo mode active</span> — {dashboard.events.length} events
+        <span class="ok">demo mode active</span> —
+        <CompactNumber value={dashboard.events.length} /> events
         in buffer.
       {:else}
         <span class="muted">off — you are on live (or connecting) data.</span>
@@ -153,54 +224,14 @@
 
   <div class="card">
     <h3>
-      <Radio size={14} strokeWidth={1.75} /> SpacetimeDB stream
-    </h3>
-    <p>
-      State: <strong>{dashboard.connection}</strong>{#if dashboard.dataMode === "demo"} (not used in demo; preview label only).{:else}.{/if} The
-      UI subscribes to <code>event</code>, <code>world_state</code>, <code>signal</code>, and
-      related tables when not in demo mode.
-    </p>
-    {#if dashboard.dataMode !== "demo" && dashboard.connectionLastError}
-      <p class="err-block" role="alert">
-        <strong>Last error</strong> — {dashboard.connectionLastError}
-      </p>
-    {/if}
-    {#if dashboard.dataMode !== "demo"}
-      <p class="settings-actions">
-        <button type="button" class="btn" onclick={() => reconnectNow()}>
-          Reconnect to SpacetimeDB now
-        </button>
-      </p>
-    {/if}
-    <p class="settings-sub">
-      <span class="lbl">WebSocket (effective)</span> — <code>{stdbEffective}</code>
-    </p>
-    <p class="settings-sub">
-      <span class="lbl">Vite</span> — {#if stdbFromEnv}
-        <code>VITE_STDB_URI</code> is set to <code>{stdbFromEnv}</code> (overrides
-        same-host default).
-      {:else}
-        <code>VITE_STDB_URI</code> is unset; the app uses this page’s hostname on
-        port 3000 (<code>localhost</code> / <code>::1</code> →
-        <code>127.0.0.1</code> because dev SpacetimeDB binds IPv4 loopback only).
-        LAN URLs like <code>http://192.168.x.x:5173</code> use
-        <code>ws://192.168.x.x:3000</code> — run SpacetimeDB on
-        <code>0.0.0.0:3000</code> for that to work.
-      {/if}
-      <code>VITE_STDB_DB</code> = <code>{stdbDb}</code>. Override in
-      <code>web/.env</code> and rebuild for production.
-    </p>
-  </div>
-
-  <div class="card">
-    <h3>
       <Radio size={14} strokeWidth={1.75} /> Ingest service
     </h3>
     <p>
       The ingest process pushes events into SpacetimeDB. The UI never reads
       ingest directly — only the database WebSocket. In Vite dev,
-      <code>GET /ready</code> and <code>GET /status</code> proxy to
-      <code>127.0.0.1:8080</code>.
+      <code>GET /ready</code>, <code>GET /status</code>, and <code>GET /metrics</code>
+      proxy to <code>127.0.0.1:8080</code>. Use the <strong>Operations console</strong>
+      above for auto-refreshing health, feeds, and Prometheus counters.
     </p>
     <p class="row">
       Readiness: {#if readiness.ingestReady === null}
@@ -232,6 +263,7 @@
       <button type="button" class="btn" onclick={() => void refreshRemoteReadiness()}>
         Check again
       </button>
+      <a class="btn btn-link" href="#ops-console">Open console</a>
     </p>
   </div>
 
@@ -296,11 +328,32 @@
     </p>
   </div>
 </section>
+</section>
 
 <style>
-  .settings {
+  .settings-page {
     padding: var(--space-8) var(--space-6);
+    max-width: 960px;
+  }
+  .settings {
     max-width: 880px;
+  }
+  .card--wide {
+    max-width: none;
+  }
+  .card--ops {
+    scroll-margin-top: var(--space-6);
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-1));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .card--ops h3 {
+    color: var(--text-1);
+  }
+  .btn-link {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    margin-left: 8px;
   }
   .settings-title {
     display: inline-flex;
@@ -368,6 +421,14 @@
   .btn:hover {
     background: var(--bg-3);
     border-color: var(--border-2);
+  }
+  .err-raw {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: var(--text-3);
+    word-break: break-word;
   }
   .err-block {
     margin-top: var(--space-2) !important;

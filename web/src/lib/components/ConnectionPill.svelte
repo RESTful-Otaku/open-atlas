@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { dashboard } from "../state.svelte";
+  import { connectionErrorHint } from "../connection-errors";
   import { reconnectNow } from "../connection.svelte";
+  import { dashboard } from "../state.svelte";
 
   const LABELS: Record<typeof dashboard.connection, string> = {
     connecting: "Connecting…",
@@ -19,9 +20,8 @@
   const settingsTitle = $derived(
     dashboard.dataMode === "demo"
       ? "Synthetic demo data — no WebSocket. Settings still lists integration."
-      : dashboard.connectionLastError
-        ? `Last error: ${dashboard.connectionLastError} — open settings for URI/module help`
-        : "View settings — SpacetimeDB connection and integration",
+      : connectionErrorHint(dashboard.connectionLastError) ??
+          "View settings — SpacetimeDB connection and integration",
   );
 </script>
 

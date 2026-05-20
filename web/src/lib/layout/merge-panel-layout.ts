@@ -42,6 +42,25 @@ export function mergePanelLayout(
   return { order, spans };
 }
 
+/**
+ * Move `fromId` to the slot currently occupied by `toId` (same semantics as
+ * drag-drop reorder between two panels).
+ */
+export function reorderBetween(
+  order: readonly string[],
+  fromId: string,
+  toId: string,
+): string[] {
+  if (fromId === toId) return [...order];
+  const o = [...order];
+  const i = o.indexOf(fromId);
+  const j = o.indexOf(toId);
+  if (i < 0 || j < 0) return o;
+  o.splice(i, 1);
+  o.splice(j, 0, fromId);
+  return o;
+}
+
 export function moveId(
   order: readonly string[],
   id: string,

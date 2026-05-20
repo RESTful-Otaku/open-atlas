@@ -141,5 +141,3 @@ export function approximateMoonPoint(simUtcMs: number): { lat: number; lng: numb
   if (moonLon < -180) moonLon += 360;
   return { lat: moonLat, lng: moonLon };
 }
-
-export const GLOBE_STARS_BACKGROUND = `${TEXTURE_BASE}/night-sky.png`;

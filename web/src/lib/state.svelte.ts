@@ -12,8 +12,9 @@
  *
  * # Bounds
  *
- * Each projected list has a fixed maximum size. The module *already*
- * caps the rings on the server, but we apply a second cap here so:
+ * Each projected list has a fixed maximum size. Events use a **24h UTC
+ * retention window** plus count caps (`event-retention-trim.ts`). The
+ * module already caps rings on the server; we apply a second cap here so:
  *   * a browser that connects to a module with a larger ring than we
  *     expect still stays responsive; and
  *   * subscription queries like `ORDER BY ordinal DESC LIMIT N` have a
@@ -37,7 +38,7 @@ import { NOTIFY_CODES } from "./notify/notify-codes";
 import {
   MAX_CAUSAL_EDGES,
   MAX_EVENT_NARRATIVES,
-  MAX_EVENTS,
+  MAX_EVENTS_HARD_CEILING,
   MAX_SEVERITY_HISTORY,
   MAX_SIGNALS,
 } from "./data-limits";
@@ -56,6 +57,7 @@ export {
   MAX_CAUSAL_EDGES,
   MAX_EVENT_NARRATIVES,
   MAX_EVENTS,
+  MAX_EVENTS_HARD_CEILING,
   MAX_SEVERITY_HISTORY,
   MAX_SIGNALS,
 } from "./data-limits";
@@ -85,6 +87,12 @@ export const dashboard = $state({
    * hint). Cleared on successful subscription setup.
    */
   connectionLastError: null as string | null,
+  /**
+   * Auto-reconnect backoff (live mode only). `attempt` is 1-based while
+   * scheduled; `0` when idle. `exhausted` when max attempts reached.
+   */
+  autoReconnectAttempt: 0,
+  autoReconnectExhausted: false,
   /** `demo` = synthetic `demo-seed` data; `live` = SpacetimeDB projection. */
   dataMode: "live" as "live" | "demo",
 });
@@ -141,6 +149,8 @@ function readCanonicalPayload(json: string): {
   true_track_deg?: number;
   baro_altitude_m?: number;
   on_ground?: boolean;
+  temperature_2m?: number;
+  wind_speed_10m?: number;
 } {
   if (!json) return {};
   try {
@@ -163,6 +173,10 @@ function readCanonicalPayload(json: string): {
       baro_altitude_m:
         typeof p.baro_altitude_m === "number" ? p.baro_altitude_m : undefined,
       on_ground: typeof p.on_ground === "boolean" ? p.on_ground : undefined,
+      temperature_2m:
+        typeof p.temperature_2m === "number" ? p.temperature_2m : undefined,
+      wind_speed_10m:
+        typeof p.wind_speed_10m === "number" ? p.wind_speed_10m : undefined,
     };
   } catch {
     return {};
@@ -185,6 +199,8 @@ function projectEvent(row: Event): UiEvent {
     true_track_deg: canon.true_track_deg,
     baro_altitude_m: canon.baro_altitude_m,
     on_ground: canon.on_ground,
+    temperature_2m: canon.temperature_2m,
+    wind_speed_10m: canon.wind_speed_10m,
   };
 }
 
@@ -618,7 +634,9 @@ export function flushPendingSeverityUpdates(): boolean {
 
 function mergeEventInPlace(next: UiEvent): void {
   if (batchEvents !== null) {
-    commitEventsBuffer(mergeOrAppendById(batchEvents, next, MAX_EVENTS + 64));
+    commitEventsBuffer(
+      mergeOrAppendById(batchEvents, next, MAX_EVENTS_HARD_CEILING),
+    );
     return;
   }
   pendingEvents.set(next.id, next);

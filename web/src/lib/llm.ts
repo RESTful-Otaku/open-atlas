@@ -7,8 +7,17 @@
  */
 
 const DEFAULT_BASE = "/api/llm";
-/** Match openatlas-llm-bridge default timeout (300s) with headroom. */
-const INSIGHT_TIMEOUT_MS = 320_000;
+/** Default insight timeout (slow CPU models). Override: VITE_LLM_INSIGHT_TIMEOUT_MS */
+const DEFAULT_INSIGHT_TIMEOUT_MS = 120_000;
+
+function insightTimeoutMs(): number {
+  const raw = import.meta.env.VITE_LLM_INSIGHT_TIMEOUT_MS as string | undefined;
+  if (raw) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 30_000) return n;
+  }
+  return DEFAULT_INSIGHT_TIMEOUT_MS;
+}
 
 function llmBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_LLM_BASE as string | undefined;
@@ -59,9 +68,9 @@ function llmFailureHint(status: number, message: string): string {
   return "";
 }
 
-export async function requestLlmInsight(
+async function requestLlmInsightOnce(
   snapshot: Record<string, unknown>,
-  userPrompt?: string,
+  userPrompt: string | undefined,
 ): Promise<LlmInsightResponse> {
   const url = `${llmBaseUrl()}/v1/insight`;
   let r: Response;
@@ -69,7 +78,7 @@ export async function requestLlmInsight(
     r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(INSIGHT_TIMEOUT_MS),
+      signal: AbortSignal.timeout(insightTimeoutMs()),
       body: JSON.stringify({
         snapshot,
         user_prompt: userPrompt?.trim() || undefined,
@@ -77,8 +86,12 @@ export async function requestLlmInsight(
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    const timeoutNote =
+      msg.includes("timeout") || msg.includes("aborted")
+        ? ` Insight timed out after ${Math.round(insightTimeoutMs() / 1000)}s — try a smaller model or raise VITE_LLM_INSIGHT_TIMEOUT_MS / OPENATLAS_OLLAMA_TIMEOUT_SECS.`
+        : "";
     throw new Error(
-      `${msg}. Is openatlas-llm-bridge running? Try ./dev.sh llm:start and ensure Vite dev proxies /api/llm.`,
+      `${msg}.${timeoutNote} Is openatlas-llm-bridge running? Try ./dev.sh llm:start and ensure Vite dev proxies /api/llm.`,
     );
   }
   if (!r.ok) {
@@ -92,6 +105,29 @@ export async function requestLlmInsight(
     throw new Error(`${msg}${llmFailureHint(r.status, msg)}`);
   }
   return (await r.json()) as LlmInsightResponse;
+}
+
+export async function requestLlmInsight(
+  snapshot: Record<string, unknown>,
+  userPrompt?: string,
+  options?: { retries?: number },
+): Promise<LlmInsightResponse> {
+  const retries = options?.retries ?? 1;
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await requestLlmInsightOnce(snapshot, userPrompt);
+    } catch (e) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      if (attempt >= retries) break;
+    }
+  }
+  throw lastErr ?? new Error("LLM request failed");
+}
+
+/** Base URL used for bridge probes (Settings, ops console). */
+export function llmBaseUrlForDisplay(): string {
+  return llmBaseUrl();
 }
 
 /**
