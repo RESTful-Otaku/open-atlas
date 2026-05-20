@@ -20,8 +20,9 @@
       </div>
       <h1 class="viz-h1">Charts, graphs, and maps</h1>
       <p class="viz-lead">
-        This page registers modular EChart types (bars, pies, treemaps, Sankey, graphs, …) and
-        MapLibre layers (heat, points, line routes) on a dark basemap, with realistic dummy logistics /
+        This page registers modular EChart types (bars, lines, pies, heatmaps, Sankey,
+        map choropleth, custom <code>renderItem</code>, …) and MapLibre layers (heat,
+        points, line routes) on a dark basemap, with realistic dummy logistics /
         traffic data. Use it to verify rendering without live APIs.
       </p>
     </div>
@@ -68,8 +69,6 @@
   .viz-page {
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
     min-width: 0;
     width: 100%;
     box-sizing: border-box;
@@ -83,11 +82,9 @@
   }
   .viz-body {
     display: flex;
-    flex: 1 1 auto;
     flex-direction: column;
     gap: var(--space-6);
     min-width: 0;
-    min-height: 0;
     width: 100%;
     align-items: stretch;
   }

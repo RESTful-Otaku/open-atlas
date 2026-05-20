@@ -14,7 +14,9 @@ export interface HubTile {
   readonly id: string;
   readonly title: string;
   readonly status: StatusLevel;
-  readonly headline: string;
+  /** Large count shown in the tile headline (compact + hover when ≥ 1k). */
+  readonly headlineCount: number | null;
+  readonly headlineUnit: string;
   readonly subMetric: string;
   readonly accent: string;
   readonly riskIndex: number;
@@ -43,7 +45,7 @@ export function buildHubTiles(
       id: entry.id,
       title: domainLabel(entry.id),
       status: bucketRisk(risk),
-      headline: headlineFor(entry.id, state),
+      ...headlineFor(entry.id, state),
       subMetric: subMetricFor(entry.id, insight, signalForDomain),
       accent: entry.color,
       riskIndex: risk,
@@ -62,24 +64,24 @@ export function buildHubTiles(
 function headlineFor(
   domain: string,
   state: UiWorldState | undefined,
-): string {
-  if (!state) return "No data";
+): { headlineCount: number | null; headlineUnit: string } {
+  if (!state) return { headlineCount: null, headlineUnit: "No data" };
   const count = state.event_count;
   switch (domain) {
     case "cyber":
-      return `${formatCompact(count)} incidents`;
+      return { headlineCount: count, headlineUnit: "incidents" };
     case "space":
-      return `${formatCompact(count)} objects`;
+      return { headlineCount: count, headlineUnit: "objects" };
     case "demographics":
-      return `${formatCompact(count)} events`;
+      return { headlineCount: count, headlineUnit: "events" };
     case "infrastructure":
-      return `${formatCompact(count)} nodes`;
+      return { headlineCount: count, headlineUnit: "nodes" };
     case "transport":
-      return `${formatCompact(count)} flows`;
+      return { headlineCount: count, headlineUnit: "flows" };
     case "health":
-      return `${formatCompact(count)} clusters`;
+      return { headlineCount: count, headlineUnit: "clusters" };
     default:
-      return `${formatCompact(count)} events`;
+      return { headlineCount: count, headlineUnit: "events" };
   }
 }
 
@@ -95,17 +97,6 @@ function subMetricFor(
     return signal.reason;
   }
   return `${domain} baseline`;
-}
-
-/**
- * Compact integer formatter: 1_234 → "1.2k", 1_200_000 → "1.2M". Kept
- * local to avoid pulling Intl.NumberFormat's locale dependency into the
- * hub hot path.
- */
-function formatCompact(value: number): string {
-  if (value < 1_000) return String(value);
-  if (value < 1_000_000) return `${(value / 1_000).toFixed(1)}k`;
-  return `${(value / 1_000_000).toFixed(1)}M`;
 }
 
 /**

@@ -10,6 +10,7 @@ import { bumpDashboardRevision, bumpDomainsRevision } from "./dashboard-revision
 import { invalidateDomainEventsCache } from "./domain-events-cache";
 import { sameOrderedEvents, sameOrderedIds } from "./buffer-trim";
 import { invalidateGeoEventIndex } from "./geo-event-index";
+import { trimEventsByRetention } from "./event-retention-trim";
 import {
   MAX_CAUSAL_EDGES,
   MAX_EVENT_NARRATIVES,
@@ -138,9 +139,7 @@ export function sortAndTrimDashboardBuffers(options?: {
   let streamChanged = streamDirty;
   let domainsChanged = pendingDomains || severityDirty;
 
-  const nextEvents = [...dashboard.events]
-    .sort((a, b) => b.ordinal - a.ordinal)
-    .slice(0, MAX_EVENTS);
+  const nextEvents = trimEventsByRetention(dashboard.events);
   if (!sameOrderedEvents(dashboard.events, nextEvents)) {
     dashboard.events = nextEvents;
     streamChanged = true;

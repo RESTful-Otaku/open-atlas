@@ -7,7 +7,7 @@
   import { dashboardData } from "../../dashboard-revision.svelte";
   import { dashboard } from "../../state.svelte";
   import { domainColor } from "../../colors";
-  import EChartsPanel from "../../viz/EChartsPanel.svelte";
+  import FullscreenChartShell from "../../viz/FullscreenChartShell.svelte";
   import { setSelectedDomain } from "../../state.svelte";
   import { resolveDomainFromChartClick } from "../chart-click";
   import {
@@ -29,11 +29,16 @@
   }: Props = $props();
 
   const accent = $derived(domainColor(accentDomain));
+  const fullscreenTitle = $derived(
+    `Matrix · ${kind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`,
+  );
   const option = $derived.by(() => {
     void dashboardData.revision;
     void dashboardData.domainsRevision;
-    return memoMatrixChart(kind, () =>
-      matrixChartOption(kind, {
+    return memoMatrixChart(
+      `${kind}:${[...domains].sort().join(",")}`,
+      () =>
+        matrixChartOption(kind, {
         events: dashboard.events,
         domainState: dashboard.domainState,
         domains,
@@ -48,7 +53,12 @@
   }
 </script>
 
-<EChartsPanel {option} class="matrix-echart" onChartClick={handleChartClick} />
+<FullscreenChartShell
+  title={fullscreenTitle}
+  {option}
+  embedClass="matrix-echart"
+  onChartClick={handleChartClick}
+/>
 
 <style>
   :global(.matrix-echart) {

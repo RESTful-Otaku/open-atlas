@@ -1,0 +1,44 @@
+{
+  "contract_version": 1,
+  "description": "Minimal ordered ingest_event sequence for replay scaffold. Target: byte-identical SpacetimeDB tables when replayed via HTTP reducers; oracle: openatlas-core WorldGraph.",
+  "steps": [
+    {
+      "reducer": "ingest_event",
+      "event": {
+        "id": "550e8400-e29b-41d4-a716-446655440001",
+        "timestamp": "2024-06-01T12:00:00Z",
+        "domain": "seismic",
+        "severity_score": 0.55,
+        "location": { "lat": 35.0, "lon": -120.0, "region_tags": ["us-west"] },
+        "payload": { "schema_version": 1, "source": "replay-fixture" }
+      }
+    },
+    {
+      "reducer": "ingest_event",
+      "event": {
+        "id": "550e8400-e29b-41d4-a716-446655440002",
+        "timestamp": "2024-06-01T12:05:00Z",
+        "domain": "climate",
+        "severity_score": 0.42,
+        "location": null,
+        "payload": { "schema_version": 1, "source": "replay-fixture" }
+      }
+    },
+    {
+      "reducer": "ingest_event",
+      "event": {
+        "id": "550e8400-e29b-41d4-a716-446655440003",
+        "timestamp": "2024-06-01T12:10:00Z",
+        "domain": "seismic",
+        "severity_score": 0.88,
+        "location": { "lat": 36.0, "lon": -121.0, "region_tags": [] },
+        "payload": { "schema_version": 1, "source": "replay-fixture" }
+      }
+    }
+  ],
+  "expect": {
+    "event_count": 3,
+    "world_state_domain_count_min": 2,
+    "signal_count_min": 0
+  }
+}

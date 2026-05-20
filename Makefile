@@ -11,7 +11,8 @@
 
 .PHONY: help up down run run-local-sim run-local-live run-local-hybrid \
 	run-cloud-sim run-cloud-live web web-cloud web-demo test build verify \
-	verify-full clean status logs init-config up-sim up-live up-cloud-sim up-cloud-live
+	verify-full clean status logs init-config up-sim up-live up-cloud-sim up-cloud-live \
+	replay-test
 
 INGEST_MODE ?= hybrid
 export OPENATLAS_INGEST_MODE := $(INGEST_MODE)
@@ -69,6 +70,9 @@ web-demo:
 
 test:
 	@./dev.sh test
+
+replay-test:
+	@./scripts/replay-fixture.sh
 
 build:
 	@./dev.sh build

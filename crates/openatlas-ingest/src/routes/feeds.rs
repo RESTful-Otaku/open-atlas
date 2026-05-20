@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -12,6 +12,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    auth,
     feed_config::{self, feed_label, known_secret_keys, mask_secret, FeedSecretsFile},
     feed_poll::{self, POLL_INTERVAL_OPTIONS_SECS},
     feeds::{self, descriptor_for},
@@ -256,8 +257,12 @@ fn connection_status(
 
 pub async fn update_poll_intervals(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<UpdatePollIntervalsRequest>,
 ) -> impl IntoResponse {
+    if let Err(resp) = auth::check_admin_auth(&headers, &state.bind_addr) {
+        return resp;
+    }
     let current = feed_poll::load_poll_config();
     match feed_poll::merge_and_persist(current, body.intervals) {
         Ok(_) => {
@@ -276,8 +281,12 @@ pub async fn update_poll_intervals(
 
 pub async fn update_secrets(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<UpdateSecretsRequest>,
 ) -> impl IntoResponse {
+    if let Err(resp) = auth::check_admin_auth(&headers, &state.bind_addr) {
+        return resp;
+    }
     let current = feed_config::load_secrets_file();
     match feed_config::merge_and_persist(current, body.secrets) {
         Ok(_) => {

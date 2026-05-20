@@ -4,6 +4,7 @@
   import { computeTrend, fmtFixed, trendGlyph, trendLabel } from "../format";
   import type { UiWorldState } from "../types";
 
+  import CompactNumber from "./CompactNumber.svelte";
   import Panel from "./Panel.svelte";
   import Sparkline from "./Sparkline.svelte";
 
@@ -58,7 +59,7 @@
 
           <dl class="domain-card-subgrid">
             <dt>Events</dt>
-            <dd>{entry.event_count}</dd>
+            <dd><CompactNumber value={entry.event_count} /></dd>
             <dt>Avg severity</dt>
             <dd>{fmtFixed(entry.avg_severity, 2)}</dd>
           </dl>

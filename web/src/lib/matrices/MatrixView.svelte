@@ -6,15 +6,17 @@
 -->
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { ChevronDown, ChevronUp, Download, GripVertical } from "@lucide/svelte";
+  import { flip } from "svelte/animate";
+  import { cubicOut } from "svelte/easing";
+  import { ChevronDown, ChevronUp, Download, ExternalLink, GripVertical } from "@lucide/svelte";
 
   import { LiveFeedPill } from "../primitives";
-  import { domainColor } from "../colors";
+  import { domainColor, domainLabel } from "../colors";
   import { dashboard } from "../state.svelte";
   import { navigate } from "../router.svelte";
   import LayoutEditBar from "../layout/LayoutEditBar.svelte";
   import { loadPanelLayout, savePanelLayout, clearPanelLayout } from "../layout/panel-layout-persist";
-  import { mergePanelLayout, moveId, setSpan } from "../layout/merge-panel-layout";
+  import { mergePanelLayout, moveId, reorderBetween, setSpan } from "../layout/merge-panel-layout";
   import type { PanelLayoutState } from "../layout/panel-layout-types";
 
   import type { MatrixCatalogEntry, MatrixHeaderAction, MatrixPanel } from "./types";
@@ -26,6 +28,7 @@
   const { matrix }: Props = $props();
 
   const accentColor = $derived(domainColor(matrix.accentDomain));
+  const domainDeskPath = $derived(`/domain/${matrix.accentDomain}`);
 
   // When the matrix defines `tabs`, `activeTab` selects which `tabId` each
   // panel is shown under (see `visiblePanels` below). `activeTab` resets
@@ -114,6 +117,20 @@
   let panelLayout = $state<PanelLayoutState>({ order: [], spans: {} });
   let layoutEdit = $state(false);
   let dragId = $state<string | null>(null);
+  /** Drop target while dragging — drives live reorder preview (committed order updates on drop). */
+  let dragOverId = $state<string | null>(null);
+  let reduceMotion = $state(false);
+
+  $effect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reduceMotion = mq.matches;
+    const fn = () => {
+      reduceMotion = mq.matches;
+    };
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  });
 
   $effect(() => {
     const k = layoutStorageKey;
@@ -127,15 +144,24 @@
     panelLayout = mergePanelLayout(loadPanelLayout(k), defOrder, defSpans);
   });
 
+  const matrixPreviewOrder = $derived.by(() => {
+    if (!layoutEdit || !dragId || !dragOverId || dragId === dragOverId) {
+      return panelLayout.order;
+    }
+    return reorderBetween(panelLayout.order, dragId, dragOverId);
+  });
+
   const sortedMatrixPanels = $derived.by((): readonly MatrixPanel[] => {
     const vis = visiblePanels;
-    const want = panelLayout.order.filter((id) => vis.some((p) => p.id === id));
+    const want = matrixPreviewOrder.filter((id) => vis.some((p) => p.id === id));
     const inOrder: MatrixPanel[] = want
       .map((id) => vis.find((p) => p.id === id))
       .filter((p): p is MatrixPanel => p !== undefined);
     const rest = vis.filter((p) => !want.includes(p.id));
     return [...inOrder, ...rest];
   });
+
+  const matrixFlipDuration = $derived(reduceMotion ? 0 : 280);
 
   function persistMatrixLayout(): void {
     savePanelLayout(layoutStorageKey, panelLayout);
@@ -180,22 +206,33 @@
   function onMDragStart(e: DragEvent, id: string): void {
     dragId = id;
     e.dataTransfer?.setData("text/plain", id);
+    e.dataTransfer!.effectAllowed = "move";
   }
-  function onMDragOver(e: DragEvent): void {
+  function onMDragEnd(): void {
+    dragId = null;
+    dragOverId = null;
+  }
+  function onMDragOverPanel(e: DragEvent, targetId: string): void {
     e.preventDefault();
+    e.dataTransfer!.dropEffect = "move";
+    if (layoutEdit && dragId) {
+      dragOverId = targetId;
+    }
+  }
+  function onMDragLeaveGrid(e: DragEvent): void {
+    const rel = e.relatedTarget as Node | null;
+    const cur = e.currentTarget as HTMLElement;
+    if (rel && cur.contains(rel)) return;
+    dragOverId = null;
   }
   function onMDrop(e: DragEvent, targetId: string): void {
     e.preventDefault();
     const from = dragId ?? e.dataTransfer?.getData("text/plain");
+    dragOverId = null;
     dragId = null;
     if (!from || from === targetId) return;
-    const o = [...panelLayout.order];
-    const i = o.indexOf(from);
-    const j = o.indexOf(targetId);
-    if (i < 0 || j < 0) return;
-    o.splice(i, 1);
-    o.splice(j, 0, from);
-    panelLayout = { order: o, spans: panelLayout.spans };
+    const next = reorderBetween(panelLayout.order, from, targetId);
+    panelLayout = { order: next, spans: panelLayout.spans };
     persistMatrixLayout();
   }
 
@@ -215,6 +252,18 @@
     </div>
 
     <div class="matrix-header-actions">
+      <a
+        class="matrix-btn matrix-btn-link"
+        href="#{domainDeskPath}"
+        title="Open {domainLabel(matrix.accentDomain)} domain desk with charts and map"
+        onclick={(e) => {
+          e.preventDefault();
+          navigate(domainDeskPath);
+        }}
+      >
+        <ExternalLink size={13} strokeWidth={1.75} />
+        <span>{domainLabel(matrix.accentDomain)} desk</span>
+      </a>
       <LiveFeedPill />
       {#if matrix.headerActions}
         {#each matrix.headerActions as action (action.label + (action.command ?? ""))}
@@ -270,15 +319,33 @@
     </nav>
   {/if}
 
-  <div class="matrix-grid">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="matrix-grid"
+    ondragover={(e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "move";
+    }}
+    ondragleave={layoutEdit ? onMDragLeaveGrid : undefined}
+  >
     {#each sortedMatrixPanels as panel (panel.id)}
       {@const spanM = (panelLayout.spans[panel.id] ?? panel.span) as 1 | 2 | 3}
       <!-- svelte-ignore a11y_no_static_element_interactions (drop target) -->
       <section
         class="matrix-panel"
         class:matrix-panel--edit={layoutEdit}
+        class:matrix-panel--drag-over={layoutEdit &&
+          dragId !== null &&
+          dragOverId === panel.id &&
+          dragId !== panel.id}
+        class:matrix-panel--dragging={layoutEdit && dragId === panel.id}
         data-span={String(spanM)}
-        ondragover={layoutEdit ? onMDragOver : undefined}
+        animate:flip={{ duration: matrixFlipDuration, easing: cubicOut }}
+        ondragover={layoutEdit
+          ? (e) => {
+              onMDragOverPanel(e, panel.id);
+            }
+          : undefined}
         ondrop={layoutEdit
           ? (e) => {
               onMDrop(e, panel.id);
@@ -294,7 +361,8 @@
               role="button"
               tabindex="0"
               draggable="true"
-              ondragstart={(e) => onMDragStart(e, panel.id)}><GripVertical
+              ondragstart={(e) => onMDragStart(e, panel.id)}
+              ondragend={onMDragEnd}><GripVertical
                 size={14}
                 strokeWidth={1.75}
               /></span
@@ -453,6 +521,15 @@
     color: var(--sev-high);
     border-color: color-mix(in oklab, var(--sev-high) 35%, var(--border-1));
   }
+  .matrix-btn-link {
+    text-decoration: none;
+    color: var(--matrix-accent);
+    border-color: color-mix(in srgb, var(--matrix-accent) 40%, var(--border-1));
+  }
+  .matrix-btn-link:hover {
+    background: color-mix(in srgb, var(--matrix-accent) 12%, var(--bg-2));
+  }
+
   .matrix-btn[data-variant="primary"] {
     background: linear-gradient(
       135deg,
@@ -564,6 +641,14 @@
   }
   .matrix-panel--edit {
     position: relative;
+  }
+  .matrix-panel--drag-over {
+    z-index: 1;
+    border-color: color-mix(in srgb, var(--matrix-accent) 55%, var(--border-1));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--matrix-accent) 35%, transparent);
+  }
+  .matrix-panel--dragging {
+    opacity: 0.82;
   }
   .matrix-panel--edit::after {
     content: "";

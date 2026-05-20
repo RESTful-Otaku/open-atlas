@@ -18,6 +18,8 @@
   } from "../feed-config";
   import { feedLive } from "../feed-live.svelte";
   import { ingestModeLabel } from "../ingest-status";
+  import { formatCompactNumber } from "../format-compact-number";
+  import CompactNumber from "./CompactNumber.svelte";
 
   let catalog = $state<FeedCatalog | null>(null);
   let loadError = $state<string | null>(null);
@@ -99,7 +101,7 @@
       feedActionMsg = {
         ...feedActionMsg,
         [feed.name]: r.ok
-          ? `Test OK — ${r.event_count} events (${r.duration_ms} ms)`
+          ? `Test OK — ${formatCompactNumber(r.event_count).display} events (${r.duration_ms} ms)`
           : `Test failed — ${r.message}`,
       };
       await reload();
@@ -120,7 +122,7 @@
       feedActionMsg = {
         ...feedActionMsg,
         [feed.name]: r.ok
-          ? `Reconnected — ${r.event_count} events (${r.duration_ms} ms)`
+          ? `Reconnected — ${formatCompactNumber(r.event_count).display} events (${r.duration_ms} ms)`
           : `Reconnect failed — ${r.message}`,
       };
       await reload();
@@ -270,14 +272,17 @@
                 <div class="feed-meta">next {formatNextPoll(feed.next_poll_at)}</div>
                 {#if feed.last_events_accepted > 0 || feed.last_events_duplicate > 0}
                   <div class="feed-meta">
-                    +{feed.last_events_accepted} new, {feed.last_events_duplicate} dup
+                    +<CompactNumber value={feed.last_events_accepted} /> new,
+                    <CompactNumber value={feed.last_events_duplicate} /> dup
                   </div>
                 {/if}
               </td>
               <td class="mono">
-                {feed.success_count}
+                <CompactNumber value={feed.success_count} />
                 {#if feed.failure_count > 0}
-                  <span class="err"> / {feed.failure_count} fail</span>
+                  <span class="err">
+                    / <CompactNumber value={feed.failure_count} /> fail</span
+                  >
                 {/if}
               </td>
               <td class="feed-actions">

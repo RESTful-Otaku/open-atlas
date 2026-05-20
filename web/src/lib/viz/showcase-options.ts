@@ -18,6 +18,7 @@ import {
   boxplotFromSample,
   boxplotRuns,
   crossDockMinutes,
+  demoZonesGeo,
   graphSample,
   logisticsSankey,
   marketShare,
@@ -30,10 +31,18 @@ import {
   trafficByHour,
   treemapHier,
 } from "./showcase-datasets";
+import { echarts } from "../echarts";
 
 /** Deep-clone to satisfy ECharts option types (mutable trees vs `as const` datasets). */
 function mut(x: unknown): any {
   return JSON.parse(JSON.stringify(x));
+}
+
+let demoMapRegistered = false;
+function ensureDemoMapRegistered(): void {
+  if (demoMapRegistered) return;
+  echarts.registerMap("openatlas_demo_zones", mut(demoZonesGeo));
+  demoMapRegistered = true;
 }
 
 const tAxis = { ...axisLineStyle };
@@ -639,6 +648,101 @@ function calendarHeatmap(): EChartsOption {
   });
 }
 
+function mapChoroplethDemo(): EChartsOption {
+  ensureDemoMapRegistered();
+  return withTransparentBackground({
+    ...common,
+    title: {
+      text: "Geo map (choropleth)",
+      left: 0,
+      top: 0,
+      textStyle: { color: "#e4e4e7", fontSize: 12 },
+    },
+    visualMap: {
+      min: 0,
+      max: 100,
+      left: 12,
+      bottom: 28,
+      textStyle: { color: "#a1a1aa", fontSize: 10 },
+      inRange: { color: ["#0f172a", "#22d3ee", "#f59e0b"] },
+    },
+    series: [
+      {
+        type: "map",
+        map: "openatlas_demo_zones",
+        roam: true,
+        emphasis: { label: { color: "#fafafa" } },
+        data: [
+          { name: "Zone A", value: 72 },
+          { name: "Zone B", value: 45 },
+          { name: "Zone C", value: 91 },
+        ],
+        label: { show: true, fontSize: 10, color: "#e4e4e7" },
+      },
+    ],
+  });
+}
+
+function customLaneBarsDemo(): EChartsOption {
+  const values = [62, 88, 47];
+  return withTransparentBackground({
+    ...common,
+    title: {
+      text: "Custom series (renderItem)",
+      left: 0,
+      top: 0,
+      textStyle: { color: "#e4e4e7", fontSize: 12 },
+    },
+    grid: gridReadability,
+    xAxis: {
+      type: "category",
+      data: ["Lane A", "Lane B", "Lane C"],
+      axisLine: tAxis,
+      axisLabel: { color: "#a1a1aa" },
+    },
+    yAxis: {
+      type: "value",
+      splitLine: tSplit,
+      max: 100,
+      axisLabel: { color: "#a1a1aa" },
+    },
+    series: [
+      {
+        type: "custom",
+        name: "throughput",
+        renderItem(_params, api) {
+          const xIndex = api.value(0) as number;
+          const yVal = api.value(1) as number;
+          const start = api.coord([xIndex, 0]);
+          const end = api.coord([xIndex, yVal]);
+          const width = 20;
+          return {
+            type: "group",
+            children: [
+              {
+                type: "rect",
+                shape: {
+                  x: (start[0] ?? 0) - width / 2,
+                  y: end[1],
+                  width,
+                  height: (start[1] ?? 0) - (end[1] ?? 0),
+                },
+                style: {
+                  fill: chartPalette[xIndex % chartPalette.length]!,
+                  opacity: 0.85,
+                },
+              },
+            ],
+          };
+        },
+        dimensions: ["laneIdx", "value"],
+        data: values.map((v, i) => [i, v]),
+        z: 2,
+      },
+    ],
+  });
+}
+
 export interface ShowcaseEntry {
   id: string;
   title: string;
@@ -673,4 +777,11 @@ export const SHOWCASE_ECHARTS: readonly ShowcaseEntry[] = [
   { id: "river", title: "Theme river", subtitle: "Grid / traffic / logistics stack", build: themeRiverViz },
   { id: "graph", title: "Force graph", subtitle: "Nodes + edges", build: graphForce },
   { id: "lines2d", title: "Lines (2D path)", subtitle: "Animated path + effect", build: linesCartesian },
+  { id: "map-geo", title: "Map (choropleth)", subtitle: "registerMap + regional fill", build: mapChoroplethDemo },
+  {
+    id: "custom-lanes",
+    title: "Custom series",
+    subtitle: "renderItem canvas bars",
+    build: customLaneBarsDemo,
+  },
 ] as const;

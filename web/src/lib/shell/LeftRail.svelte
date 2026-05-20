@@ -3,14 +3,19 @@
   Width is persisted in localStorage (see `rail.svelte.ts`).
 -->
 <script lang="ts">
-  import { ChevronsLeft, ChevronsRight } from "@lucide/svelte";
+  import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutGrid } from "@lucide/svelte";
 
   import { router, navigate } from "../router.svelte";
   import { VIEW_CATALOG, hrefForNavEntry, type ViewCatalogEntry } from "../views";
-  import { leftRail, toggleLeftRail } from "./rail.svelte";
+  import { domainsRail, leftRail, toggleDomainsRail, toggleLeftRail } from "./rail.svelte";
 
   const topEntries = $derived<readonly ViewCatalogEntry[]>(
-    VIEW_CATALOG.filter((e) => e.nav && e.id !== "settings"),
+    VIEW_CATALOG.filter(
+      (e) => e.nav && e.id !== "settings" && !e.id.startsWith("domain-"),
+    ),
+  );
+  const domainEntries = $derived<readonly ViewCatalogEntry[]>(
+    VIEW_CATALOG.filter((e) => e.nav && e.id.startsWith("domain-")),
   );
   const bottomEntries = $derived<readonly ViewCatalogEntry[]>(
     VIEW_CATALOG.filter((e) => e.nav && e.id === "settings"),
@@ -84,6 +89,54 @@
           </button>
         </li>
       {/each}
+      {#if leftRail.expanded && domainEntries.length > 0}
+        <li class="rail-domains-wrap">
+          <button
+            type="button"
+            class="rail-section-toggle"
+            aria-expanded={domainsRail.expanded}
+            aria-controls="rail-domains-list"
+            onclick={() => toggleDomainsRail()}
+          >
+            <span class="rail-ico" aria-hidden="true">
+              <LayoutGrid size={18} strokeWidth={1.75} />
+            </span>
+            <span class="rail-copy">
+              <span class="rail-title">Domains</span>
+              <span class="rail-desc">{domainEntries.length} desks</span>
+            </span>
+            <span
+              class="rail-section-chev"
+              class:rail-section-chev-open={domainsRail.expanded}
+              aria-hidden="true"
+            >
+              <ChevronDown size={14} strokeWidth={2} />
+            </span>
+          </button>
+          {#if domainsRail.expanded}
+            <ul id="rail-domains-list" class="rail-domains-list">
+              {#each domainEntries as entry (entry.id)}
+                <li>
+                  <button
+                    type="button"
+                    class="rail-row rail-row-domain"
+                    class:is-active={isActive(entry)}
+                    aria-current={isActive(entry) ? "page" : undefined}
+                    onclick={() => go(entry)}
+                  >
+                    <span class="rail-ico" aria-hidden="true">
+                      <entry.icon size={16} strokeWidth={1.75} />
+                    </span>
+                    <span class="rail-copy">
+                      <span class="rail-title">{entry.title}</span>
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </li>
+      {/if}
     </ul>
   </div>
 
@@ -274,5 +327,58 @@
   }
   .left-rail.rail--expanded .rail-row.is-active .rail-ico {
     color: var(--accent);
+  }
+
+  .rail-domains-wrap {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border-1);
+  }
+  .rail-section-toggle {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 36px;
+    padding: 4px 4px 4px 2px;
+    gap: 8px;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    color: var(--text-3);
+    cursor: pointer;
+    font: inherit;
+  }
+  .rail-section-toggle:hover {
+    color: var(--text-1);
+    background: var(--overlay);
+    border-color: var(--border-1);
+  }
+  .rail-section-chev {
+    display: inline-flex;
+    margin-left: auto;
+    opacity: 0.7;
+    transition: transform 0.2s ease;
+  }
+  .rail-section-chev-open {
+    transform: rotate(180deg);
+  }
+  .rail-domains-list {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0 0 0 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: min(40vh, 280px);
+    overflow-y: auto;
+  }
+  .rail-row-domain {
+    min-height: 30px;
+    padding-left: 4px;
+  }
+  .rail-row-domain .rail-title {
+    font-size: 11px;
+    font-weight: 500;
   }
 </style>

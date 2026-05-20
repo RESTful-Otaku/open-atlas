@@ -7,6 +7,61 @@ import { chartPalette } from "./chart-theme";
 
 export const WEEKS = ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"] as const;
 
+/** Minimal GeoJSON for {@link showcase-options} map choropleth (three fictive zones). */
+export const demoZonesGeo = {
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { name: "Zone A" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [0, 55],
+            [22, 55],
+            [22, 40],
+            [0, 40],
+            [0, 55],
+          ],
+        ],
+      },
+    },
+    {
+      type: "Feature",
+      properties: { name: "Zone B" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [24, 52],
+            [50, 52],
+            [50, 38],
+            [24, 38],
+            [24, 52],
+          ],
+        ],
+      },
+    },
+    {
+      type: "Feature",
+      properties: { name: "Zone C" },
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [2, 36],
+            [48, 36],
+            [48, 22],
+            [2, 22],
+            [2, 36],
+          ],
+        ],
+      },
+    },
+  ],
+} as const;
+
 export const portThroughputKteu = {
   weeks: [...WEEKS],
   shanghai: [412, 428, 405, 438, 451, 462, 448, 470],

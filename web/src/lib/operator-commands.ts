@@ -6,6 +6,7 @@
 
 import { DOMAIN_CATALOG } from "./colors";
 import { navigate } from "./router.svelte";
+import { applyNlFilterIntent, parseNlFilterIntent } from "./nl-filter-intent";
 import { setSelectedDomain } from "./state.svelte";
 import { MATRIX_CATALOG } from "./matrices/catalog";
 
@@ -29,6 +30,15 @@ export type OperatorResult =
  * Run a line from the operator bar. Return human-readable result.
  */
 export function runOperatorLine(line: string): OperatorResult {
+  const nl = parseNlFilterIntent(line);
+  if (nl) {
+    applyNlFilterIntent(nl);
+    const scope = nl.domain ? `domain filter: ${nl.domain}` : "cleared domain filter";
+    const window =
+      nl.hours !== null ? ` · recency hint: last ${nl.hours}h` : "";
+    return { kind: "ok", message: `NL filter: ${nl.label} (${scope}${window}).` };
+  }
+
   const w = normalizeWords(line);
   if (w.length === 0) return { kind: "err", message: "Empty command." };
 
@@ -44,6 +54,7 @@ export function runOperatorLine(line: string): OperatorResult {
         "  map — global map",
         "  entities | settings | legacy",
         "  domain <id> | filter <id> — scope dashboard to a domain; use id like energy, finance",
+        "  NL filter — e.g. finance last 6h (domain + recency hint; see Ops strip)",
         "  all | clear — clear domain filter (all domains)",
         "  matrix <id> — open a matrix (e.g. matrix threat, matrix economic)",
         "  isolate|reroute|analyze … — not available client-side; requires backend M9",

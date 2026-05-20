@@ -54,6 +54,7 @@ mod tests {
         let rate_limiter = Arc::new(rate_limit::FeedRateLimiter::new());
         rate_limit::install(rate_limiter.clone());
         let state = AppState {
+            bind_addr: "127.0.0.1:8080".parse().expect("loopback"),
             started_at: Utc::now(),
             feed_runtime: Arc::new(RwLock::new(std::collections::HashMap::new())),
             spawned_feeds: Arc::new(RwLock::new(std::collections::HashSet::new())),

@@ -4,7 +4,8 @@
   import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard } from "../state.svelte";
   import { MAX_EVENTS } from "../data-limits";
-  import { fmtInt, fmtFixed } from "../format";
+  import { fmtFixed } from "../format";
+  import CompactNumber from "./CompactNumber.svelte";
   import Sparkline from "./Sparkline.svelte";
 
   const BUCKETS = 24;
@@ -47,11 +48,13 @@
       <Activity size={14} strokeWidth={1.75} />
     </div>
     <div class="kpi-value">
-      <span>{fmtInt(dashboard.events.length)}</span>
+      <CompactNumber value={dashboard.events.length} />
       <span class="kpi-suffix">streamed</span>
     </div>
     <div class="kpi-caption">
-      Bounded ring buffer · {dashboard.events.length}/{MAX_EVENTS}
+      Bounded ring buffer · <CompactNumber value={dashboard.events.length} />/<CompactNumber
+        value={MAX_EVENTS}
+      />
     </div>
   </article>
 
@@ -61,7 +64,7 @@
       <AlertTriangle size={14} strokeWidth={1.75} />
     </div>
     <div class="kpi-value">
-      <span>{fmtInt(dashboard.recentSignals.length)}</span>
+      <CompactNumber value={dashboard.recentSignals.length} />
       <span class="kpi-suffix">signals</span>
     </div>
     <div class="kpi-caption">Threshold inference</div>
@@ -87,7 +90,7 @@
       <Layers size={14} strokeWidth={1.75} />
     </div>
     <div class="kpi-value">
-      <span>{fmtInt(domainCount)}</span>
+      <CompactNumber value={domainCount} />
       <span class="kpi-suffix">tracked</span>
     </div>
     <div class="kpi-caption">Reporting in current window</div>

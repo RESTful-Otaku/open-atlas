@@ -44,14 +44,31 @@ async function fetchIngestOk(): Promise<{
   return { ok: true, err: null, status: result.status };
 }
 
+const CAPABLE_CACHE_MS = 5 * 60_000;
+let capableCached: boolean | null = null;
+let capableCachedAt = 0;
+
 /**
- * Refresh LLM readiness before analysis. When `deep` is true, also runs a tiny
- * Ollama completion (catches CUDA / model load failures that /v1/ready misses).
+ * Refresh LLM readiness before analysis.
+ * - Default (`deep=false`): fast ping via `/v1/ready` only.
+ * - `deep=true`: also runs `/v1/capable` (slow on cold CPU) — use Settings test
+ *   or when ping fails; result is cached for five minutes.
  */
 export async function ensureLlmReady(deep = false): Promise<boolean> {
   await refreshRemoteReadiness();
-  if (deep) {
-    readiness.llmReady = await checkLlmBridgeCapable();
+  if (readiness.llmReady === true && !deep) {
+    return true;
+  }
+  const cacheFresh =
+    capableCached !== null && Date.now() - capableCachedAt < CAPABLE_CACHE_MS;
+  if (!deep && cacheFresh) {
+    readiness.llmReady = capableCached;
+    return capableCached === true;
+  }
+  if (deep || readiness.llmReady === false) {
+    capableCached = await checkLlmBridgeCapable();
+    capableCachedAt = Date.now();
+    readiness.llmReady = capableCached;
   }
   return readiness.llmReady === true;
 }

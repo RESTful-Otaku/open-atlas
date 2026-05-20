@@ -25,6 +25,8 @@
     geoMapCaption,
     geoMapTitle,
   } from "../data-source-copy";
+  import CompactNumber from "../components/CompactNumber.svelte";
+  import DomainAnalystStrip from "../components/DomainAnalystStrip.svelte";
 
   const domainId = $derived(
     router.match.path
@@ -202,11 +204,18 @@
           accent={catalog.color}
           events={domainEventsAll}
           severityHistory={severityHistory}
-          state={state}
+          causalEdges={relatedEdges}
+          worldState={state}
           dataMode={dashboard.dataMode}
         />
       {/key}
     </section>
+
+    <DomainAnalystStrip
+      domainId={catalog.id}
+      domainEvents={domainEventsAll}
+      relatedEdges={relatedEdges}
+    />
 
     <section
       class="domain-panel domain-narr"
@@ -236,7 +245,7 @@
           <p class="domain-narrative muted">
             No narrative for this domain yet. Event counts and risk still
             update from the world-state ring: <strong
-              >{state.event_count}</strong
+              ><CompactNumber value={state.event_count} /></strong
             >
             events, risk
             {state.risk_index.toFixed(2)}.

@@ -80,7 +80,7 @@ make test            # fmt + clippy + unit tests
 make verify          # test + subscription SQL + runtime health (if stack up)
 make verify-full     # + prove-live (+ prove-llm when bridge/Ollama up)
 
-Principal-engineering review notes: [docs/REVIEW_REPORT.md](docs/REVIEW_REPORT.md)
+Principal-engineering review: [docs/REVIEW_REPORT.md](docs/REVIEW_REPORT.md) · **Roadmap:** [docs/roadmap/README.md](docs/roadmap/README.md)
 
 # Ingest modes
 ./dev.sh up:sim      # simulators only
@@ -199,9 +199,10 @@ All tables live in [`crates/openatlas-stdb-module/src/lib.rs`](crates/openatlas-
 
 | Table            | Purpose                                             |
 | ---------------- | --------------------------------------------------- |
-| `event`          | Immutable `WorldEvent` facts. Capped at 50 000 rows. |
-| `signal`         | Anomaly signals emitted by inference. Ring of 10 000. |
-| `causal_edge`    | Directed influence between two events. Ring of 10 000. |
+| `event`          | Immutable facts. Ring **800** max + **24h** retention. |
+| `signal`         | Anomaly signals. Ring **400** + 24h.                |
+| `causal_edge`    | Directed influence between events. Ring **600** + 24h. |
+| `ingest_audit`   | Ingest outcomes (private — not browser-synced). **2000** rows. |
 | `world_state`    | Per-domain aggregate (event count, avg severity, risk). |
 | `domain_insight` | Narrative summary per domain, with source URL.      |
 | `ordinal_counter`| Monotonic sequencer for `event.ordinal` (private).  |
@@ -224,7 +225,8 @@ transaction.
 | `OPENATLAS_STDB_DB`          | `openatlas`             | Database/module name                        |
 | `OPENATLAS_INGEST_MODE`      | `sim` (or `live` via `./dev.sh start`) | `sim` · `live` · `static` — how ingest sources events |
 | `OPENATLAS_ENABLE_LIVE_FEEDS`| unset                   | Legacy: `1` implies `live` when ingest mode is unset |
-| `OPENATLAS_API_KEY`          | unset                   | Reject `/status`-adjacent admin writes unless `x-openatlas-key` matches |
+| `OPENATLAS_BIND`             | `127.0.0.1:8080`        | Ingest HTTP listen address (`0.0.0.0:8080` requires `OPENATLAS_API_KEY`) |
+| `OPENATLAS_API_KEY`          | unset                   | Required for `PUT /feeds*` when set or when bind is not loopback; header `x-openatlas-key` |
 | `FRED_API_KEY`, `EIA_API_KEY`| unset (or `.dev/feed-secrets.json`) | FRED / EIA feeds; see Settings or `docs/feed-secrets.example.json` |
 | `OPENATLAS_FEED_SECRETS`     | `.dev/feed-secrets.json`| Alternate path for persisted feed API keys  |
 | `VITE_STDB_URI`, `VITE_STDB_DB` | same as above        | Used by the Svelte dashboard at build time  |
@@ -247,9 +249,6 @@ transaction.
 
 ## Roadmap
 
-- Replay harness that feeds a recorded reducer log into a fresh
-  SpacetimeDB instance and asserts byte-identical state.
-- Benchmark harness targeting 10 000+ events/sec through the reducer.
-- Native reducer subscriptions in the CLI (SDK) to replace polling.
-- Additional feeds: OSM Overpass, Our World in Data, NASA EONET
-  polygons.
+Phased checklists: **[docs/roadmap/README.md](docs/roadmap/README.md)** (trust → UX → ship → depth).
+
+Highlights: byte-identical replay harness (scaffold in CI), `event_recent` sync cap, benchmark tier, CLI SDK subscriptions, additional feeds per spec.

@@ -114,6 +114,30 @@
     if (!el?.isConnected) return;
     applyChartOption();
   });
+
+  /** For fullscreen shells: reset built-in zoom, brush, and toolbox drill state (data option unchanged). */
+  export function resetInteractions(): void {
+    const c = chart;
+    if (!c) return;
+    try {
+      c.dispatchAction({ type: "restore" });
+    } catch {
+      /* no-op */
+    }
+    try {
+      c.dispatchAction({
+        type: "brush",
+        command: "clear",
+        areas: [],
+      } as never);
+    } catch {
+      /* brush may be unavailable */
+    }
+  }
+
+  export function getEchartsInstance(): ECharts | null {
+    return chart;
+  }
 </script>
 
 <div

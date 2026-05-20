@@ -1,12 +1,12 @@
 //! Shared harness for HTTP integration tests against the ingest router.
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::Router;
 use chrono::Utc;
 use openatlas_ingest::{
-    feed_config, health::initialize_feed_runtime, ingest_mode::IngestMode, metrics::IngestMetrics,
-    rate_limit, routes::router, state::AppState, stdb::StdbClient,
+    auth, feed_config, health::initialize_feed_runtime, ingest_mode::IngestMode,
+    metrics::IngestMetrics, rate_limit, routes::router, state::AppState, stdb::StdbClient,
 };
 use tokio::sync::RwLock;
 
@@ -16,6 +16,9 @@ pub fn test_state() -> AppState {
     let rate_limiter = Arc::new(rate_limit::FeedRateLimiter::new());
     rate_limit::install(rate_limiter.clone());
     AppState {
+        bind_addr: auth::resolve_bind_addr().unwrap_or_else(|_| {
+            "127.0.0.1:8080".parse::<SocketAddr>().expect("loopback parse")
+        }),
         started_at: Utc::now(),
         feed_runtime: Arc::new(RwLock::new(std::collections::HashMap::new())),
         spawned_feeds: Arc::new(RwLock::new(std::collections::HashSet::new())),

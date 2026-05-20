@@ -6,19 +6,7 @@
   import { useNarrativeSubscription } from "../narrative-subscription";
 
   useNarrativeSubscription();
-  import {
-    Flame,
-    Globe as GlobeIcon,
-    Grid3x3,
-    Layers,
-    Link2,
-    MapPin,
-    Moon,
-    Plane,
-    Sun,
-    SunDim,
-    Wind,
-  } from "@lucide/svelte";
+  import { ChevronDown, Flame, Grid3x3, Layers, MapPin } from "@lucide/svelte";
 
   import {
     buildCausalLineCollection,
@@ -31,13 +19,20 @@
     saveMapDomainSet,
   } from "../map/map-domains-persist";
   import {
+    LAYER_ADMIN_FILL,
+    LAYER_ADMIN_LINE,
     LAYER_CAUSAL,
+    LAYER_CLIMATE_TEMP,
     LAYER_DEMO_CONTOUR,
     LAYER_DEMO_TRANSPORT,
     LAYER_DEMO_WIND,
+    LAYER_NIGHT,
     LAYER_POINTS,
     LAYER_SUN,
     LAYER_TERM,
+    SRC_ADMIN,
+    SRC_CLIMATE_WEATHER,
+    SRC_NIGHT,
     LAYER_TRACKING,
     LAYER_TRACKING_PATHS,
     layerHeatId,
@@ -66,10 +61,18 @@
   import { mapThemeFor } from "../theme-map";
   import { onThemeChange, readThemeFromDocument } from "../theme-events";
   import {
+    buildNightSideDisc,
     buildSunPointFeature,
     buildTerminatorLine,
     subsolarPoint,
   } from "../map/solar-geometry";
+  import {
+    climateWeatherFeatureCollection,
+    climateWeatherPoints,
+    eventsForMapDisplay,
+    mapUses7dFallback,
+  } from "../map/map-sim-time";
+  import { loadAdminBoundaries } from "../map/globe-admin-boundaries";
   import { dashboardData } from "../dashboard-revision.svelte";
   import { getGeoEventIndex } from "../geo-event-index";
   import { dashboard, matchesSelectedDomain } from "../state.svelte";
@@ -77,9 +80,11 @@
   import { DOMAIN_CATALOG, domainColor, hexToRgba } from "../colors";
   import type { UiEvent } from "../types";
 
+  import CompactNumber from "./CompactNumber.svelte";
   import EventMapHoverCard from "./EventMapHoverCard.svelte";
+  import MapLayersPanel from "./MapLayersPanel.svelte";
+  import OpsStrip from "./OpsStrip.svelte";
   import Panel from "./Panel.svelte";
-  import ThreeGlobe from "./ThreeGlobe.svelte";
 
   interface Props {
     /**
@@ -104,19 +109,117 @@
   let mapSurfaceEl: HTMLDivElement | undefined = $state();
   type MapPointHover = { x: number; y: number; id: string };
   let mapPointHover = $state<MapPointHover | null>(null);
+  /** Last point hover while moving toward the card (map may fire leave first). */
+  let stickyMapPointHover = $state<MapPointHover | null>(null);
+  /** Pointer over the hover card — do not dismiss while true. */
+  let hoverCardPointerInside = $state(false);
+  let stickyHoverClearTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Pinned inspector — stays open for clicks until unpinned or Escape. */
+  let inspectorPinned = $state(false);
+  let pinnedEventId = $state<string | null>(null);
+  let stickyInspectorPos = $state({ x: 0, y: 0 });
+
+  const shownMapPointHover = $derived(
+    mapPointHover ?? stickyMapPointHover,
+  );
+
+  function cancelStickyHoverClear(): void {
+    if (stickyHoverClearTimer !== undefined) {
+      clearTimeout(stickyHoverClearTimer);
+      stickyHoverClearTimer = undefined;
+    }
+  }
+
+  function setMapPointHover(next: MapPointHover | null): void {
+    cancelStickyHoverClear();
+    if (next) {
+      mapPointHover = next;
+      stickyMapPointHover = next;
+      if (inspectorPinned) {
+        stickyInspectorPos = { x: next.x, y: next.y };
+      }
+      return;
+    }
+    mapPointHover = null;
+    if (hoverCardPointerInside || inspectorPinned) return;
+    stickyHoverClearTimer = setTimeout(() => {
+      stickyHoverClearTimer = undefined;
+      if (!hoverCardPointerInside && !inspectorPinned) stickyMapPointHover = null;
+    }, 320);
+  }
+
+  function dismissMapPointHover(): void {
+    cancelStickyHoverClear();
+    mapPointHover = null;
+    stickyMapPointHover = null;
+    hoverCardPointerInside = false;
+  }
+
+  function clearMapPointHover(): void {
+    setMapPointHover(null);
+  }
+
   const mapHoverEvent = $derived.by(() => {
-    const m = mapPointHover;
+    const m = shownMapPointHover;
     if (!m) return null;
     void dashboardData.revision;
-    return getGeoEventIndex(dashboard.events).eventById.get(m.id) ?? null;
+    return getGeoEventIndex(mapDisplayEvents).eventById.get(m.id) ?? null;
+  });
+
+  const pinnedInspectorEvent = $derived.by(() => {
+    if (!inspectorPinned || !pinnedEventId) return null;
+    void dashboardData.revision;
+    return getGeoEventIndex(mapDisplayEvents).eventById.get(pinnedEventId) ?? null;
+  });
+
+  const inspectorEvent = $derived(pinnedInspectorEvent ?? mapHoverEvent);
+
+  const inspectorPos = $derived.by(() => {
+    if (inspectorPinned) return stickyInspectorPos;
+    const m = shownMapPointHover;
+    return { x: m?.x ?? 0, y: m?.y ?? 0 };
+  });
+
+  function setInspectorPin(next: boolean): void {
+    if (!next) {
+      inspectorPinned = false;
+      pinnedEventId = null;
+      return;
+    }
+    const ev = mapHoverEvent;
+    if (!ev) return;
+    inspectorPinned = true;
+    pinnedEventId = ev.id;
+    stickyInspectorPos = {
+      x: shownMapPointHover?.x ?? stickyInspectorPos.x,
+      y: shownMapPointHover?.y ?? stickyInspectorPos.y,
+    };
+    cancelStickyHoverClear();
+  }
+
+  function dismissInspector(): void {
+    if (inspectorPinned) {
+      inspectorPinned = false;
+      pinnedEventId = null;
+    }
+    dismissMapPointHover();
+  }
+
+  $effect(() => {
+    if (inspectorPinned && pinnedEventId && !pinnedInspectorEvent) {
+      inspectorPinned = false;
+      pinnedEventId = null;
+    }
   });
 
   type Mode = "heat" | "points" | "both";
 
   let container: HTMLDivElement | undefined = $state();
+  /** Layers panel (domains, overlays, solar) — floats over map without resizing it. */
+  let mapLayersOpen = $state(false);
   let map = $state<MapLibreMap | null>(null);
   let loaded = $state(false);
-  let mode = $state<Mode>("both");
+  let mode = $state<Mode>("points");
   function utcDayStart(t: number): number {
     const d = new Date(t);
     return Date.UTC(
@@ -133,18 +236,22 @@
     })(),
   );
   const simUtcMs = $derived(simDayStart + simMinOfDay * 60_000);
-  let showTerminator = $state(true);
-  let showSubsun = $state(true);
-  let showMoon = $state(true);
-  let showCausal = $state(true);
-  /** NASA day/night textures + city lights (3D globe only). */
-  let showPhotorealEarth = $state(true);
+  let showTerminator = $state(false);
+  /** 2D night-side fill tracks solar scrub on full-page mercator (no extra terminator line). */
+  const map2DNightVisible = $derived(
+    !useWebGlGlobe && !embedded && projection === "mercator",
+  );
+  let showSubsun = $state(false);
+  let showMoon = $state(false);
+  let showCausal = $state(false);
+  /** Colored NASA day/night textures (3D globe only; off = CARTO + solar shade). */
+  let showPhotorealEarth = $state(false);
   /** Optional transport glyphs (separate from wind + pressure lines). */
   let showDemoLayers = $state(false);
   /** Wind segments + isobar-style contours (2D and 3D globe). */
-  let showWeatherOverlays = $state(true);
+  let showWeatherOverlays = $state(false);
   /** NORAD (TLE) + STDB aircraft + bundled maritime — see `/public/tracking/`. */
-  let showPublicTracking = $state(true);
+  let showPublicTracking = $state(false);
   let tleCacheReady = $state(false);
   /** Demo-only OpenSky poll; live mode uses SpacetimeDB transport events. */
   let airTrackingRowsDemo = $state<PublicTrackRow[]>([]);
@@ -155,9 +262,19 @@
     [...DOMAIN_CATALOG].sort((a, b) => a.label.localeCompare(b.label)),
   );
   function setMapDomain(id: string, on: boolean): void {
-    const n = new Set(mapDomainSet);
-    if (on) n.add(id);
-    else n.delete(id);
+    let n: Set<string>;
+    if (mapDomainSet.size === 0) {
+      const all = allDomainIds();
+      if (on) {
+        n = new Set(all);
+      } else {
+        n = new Set(all.filter((d) => d !== id));
+      }
+    } else {
+      n = new Set(mapDomainSet);
+      if (on) n.add(id);
+      else n.delete(id);
+    }
     mapDomainSet = n;
     saveMapDomainSet(n);
   }
@@ -176,7 +293,7 @@
     const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
     for (const event of events) {
       if (!matchesSelectedDomain(event.domain)) continue;
-      if (!mapDomainSet.has(event.domain)) continue;
+      if (mapDomainSet.size > 0 && !mapDomainSet.has(event.domain)) continue;
       if (!isGeoEvent(event)) continue;
       const sev = event.severity_score;
       const w = Number.isFinite(sev) ? Math.max(0.12, sev) : 0.25;
@@ -203,6 +320,17 @@
   const simUtcLabel = $derived(
     simDate.toISOString().slice(0, 16).replace("T", " "),
   );
+
+  /** Events shown on map layers (24h replay, 7d fallback when sparse). */
+  const mapDisplayEvents = $derived.by(() => {
+    void dashboardData.revision;
+    return eventsForMapDisplay(dashboard.events, simUtcMs);
+  });
+  const map7dFallback = $derived.by(() => {
+    void dashboardData.revision;
+    void simUtcMs;
+    return mapUses7dFallback(dashboard.events, simUtcMs);
+  });
 
   const airFromStdb = $derived.by(() => {
     void dashboardData.revision;
@@ -236,17 +364,18 @@
     return trackingPathsToFeatureCollection(paths);
   });
 
-  const locatedCount = $derived.by(() => {
+  /** Geo points actually drawn on map/globe layers (same rules as `toFeatureCollection`). */
+  const mapGeoPointCount = $derived.by(() => {
     void dashboardData.revision;
-    let n = 0;
-    for (const e of getGeoEventIndex(dashboard.events).geoEvents) {
-      if (matchesSelectedDomain(e.domain) && mapDomainSet.has(e.domain)) n++;
-    }
-    return n;
+    void simUtcMs;
+    void mapDomainSet;
+    void dashboard.selectedDomain;
+    return toFeatureCollection(mapDisplayEvents).features.length;
   });
+  const locatedCount = $derived(mapGeoPointCount);
   const mapDomainsActiveLabel = $derived(
     mapDomainSet.size === 0
-      ? "none"
+      ? "all"
       : mapDomainSet.size === allDomainIds().length
         ? "all"
         : `${mapDomainSet.size} of ${allDomainIds().length}`,
@@ -283,7 +412,7 @@
 
     const teardownMap = (): void => {
       setupGen += 1;
-      mapPointHover = null;
+      dismissMapPointHover();
       ro?.disconnect();
       ro = null;
       const container = m?.getContainer();
@@ -353,9 +482,22 @@
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
+      inst.addSource(SRC_NIGHT, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      inst.addSource(SRC_ADMIN, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        generateId: true,
+      });
       inst.addSource(SRC_DEMO, {
         type: "geojson",
         data: buildDemoMapCollection(),
+      });
+      inst.addSource(SRC_CLIMATE_WEATHER, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
       });
       inst.addSource(SRC_TRACKING, {
         type: "geojson",
@@ -456,6 +598,39 @@
       }
 
       inst.addLayer({
+        id: LAYER_ADMIN_FILL,
+        type: "fill",
+        source: SRC_ADMIN,
+        paint: {
+          "fill-color": [
+            "case",
+            ["boolean", ["feature-state", "hover"], false],
+            "rgba(56, 189, 248, 0.28)",
+            "rgba(148, 163, 184, 0.05)",
+          ],
+        },
+      });
+      inst.addLayer({
+        id: LAYER_ADMIN_LINE,
+        type: "line",
+        source: SRC_ADMIN,
+        paint: {
+          "line-color": [
+            "case",
+            ["boolean", ["feature-state", "hover"], false],
+            "rgba(56, 189, 248, 0.9)",
+            "rgba(148, 163, 184, 0.32)",
+          ],
+          "line-width": [
+            "case",
+            ["boolean", ["feature-state", "hover"], false],
+            2.2,
+            0.7,
+          ],
+        },
+      });
+
+      inst.addLayer({
         id: LAYER_DEMO_CONTOUR,
         type: "line",
         source: SRC_DEMO,
@@ -465,6 +640,42 @@
           "line-width": 1,
           "line-dasharray": [3, 3],
           "line-opacity": 0.5,
+        },
+        layout: { visibility: "none" },
+      });
+      inst.addLayer({
+        id: LAYER_CLIMATE_TEMP,
+        type: "circle",
+        source: SRC_CLIMATE_WEATHER,
+        paint: {
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            10,
+            4,
+            18,
+            8,
+            28,
+          ],
+          "circle-color": [
+            "interpolate",
+            ["linear"],
+            ["get", "temp"],
+            -20,
+            "#38bdf8",
+            5,
+            "#22d3ee",
+            15,
+            "#facc15",
+            28,
+            "#f97316",
+            38,
+            "#ef4444",
+          ],
+          "circle-opacity": 0.58,
+          "circle-blur": 0.75,
         },
         layout: { visibility: "none" },
       });
@@ -499,9 +710,9 @@
             ["linear"],
             ["get", "influence"],
             0,
-            1.1,
+            1.8,
             1,
-            3.6,
+            5.2,
           ],
           "line-opacity": [
             "interpolate",
@@ -654,6 +865,27 @@
         },
       });
       inst.addLayer({
+        id: LAYER_NIGHT,
+        type: "fill",
+        source: SRC_NIGHT,
+        paint: {
+          "fill-color": "rgba(6, 12, 28, 0.55)",
+          "fill-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            0.16,
+            3,
+            0.22,
+            8,
+            0.28,
+          ],
+          "fill-antialias": true,
+        },
+        layout: { visibility: "none" },
+      });
+      inst.addLayer({
         id: LAYER_TERM,
         type: "line",
         source: SRC_SOLAR,
@@ -683,6 +915,34 @@
 
       loaded = true;
       applyMode(inst, mode);
+      flushEventAndCausalLayers();
+      flushSolarLayers();
+      flushClimateWeatherLayers();
+      flushTrackingLayers();
+      syncMapOverlays(inst);
+
+      void loadAdminBoundaries().then((fc) => {
+        const src = inst.getSource(SRC_ADMIN) as maplibregl.GeoJSONSource | undefined;
+        if (src) src.setData(fc);
+      });
+
+      let hoveredAdminId: string | number | undefined;
+      inst.on("mousemove", LAYER_ADMIN_FILL, (e) => {
+        if (!e.features?.length) return;
+        const id = e.features[0]?.id;
+        if (id === undefined || id === hoveredAdminId) return;
+        if (hoveredAdminId !== undefined) {
+          inst.removeFeatureState({ source: SRC_ADMIN, id: hoveredAdminId }, "hover");
+        }
+        hoveredAdminId = id;
+        inst.setFeatureState({ source: SRC_ADMIN, id: hoveredAdminId }, { hover: true });
+      });
+      inst.on("mouseleave", LAYER_ADMIN_FILL, () => {
+        if (hoveredAdminId !== undefined) {
+          inst.removeFeatureState({ source: SRC_ADMIN, id: hoveredAdminId }, "hover");
+          hoveredAdminId = undefined;
+        }
+      });
 
       if (!emb) {
         applyMapPresentation(inst, { projection: "mercator" }, theme);
@@ -745,28 +1005,28 @@
           const top = feats[0];
           if (top?.layer.id === LAYER_TRACKING) {
             inst.getCanvas().style.cursor = "help";
-            mapPointHover = null;
+            clearMapPointHover();
             return;
           }
           inst.getCanvas().style.cursor = "pointer";
           const pr = top.properties;
           const id = pr && "id" in pr ? pr.id : null;
           if (id != null) {
-            mapPointHover = {
+            setMapPointHover({
               x: e.point.x,
               y: e.point.y,
               id: String(id),
-            };
+            });
           } else {
-            mapPointHover = null;
+            clearMapPointHover();
           }
         } else {
           inst.getCanvas().style.cursor = "";
-          mapPointHover = null;
+          clearMapPointHover();
         }
       };
       const onMapOut = (): void => {
-        mapPointHover = null;
+        clearMapPointHover();
         inst.getCanvas().style.cursor = "";
       };
       inst.on("mousemove", onPointHoverMove);
@@ -814,7 +1074,7 @@
   const flushEventAndCausalLayers = rafCoalesce(() => {
     const currentMap = map;
     if (!currentMap || !loaded) return;
-    const events = dashboard.events;
+    const events = mapDisplayEvents;
     const edges = dashboard.recentCausalEdges;
     const eventsSrc = currentMap.getSource(SRC_EVENTS) as
       | maplibregl.GeoJSONSource
@@ -846,19 +1106,27 @@
     if (pathSrc) pathSrc.setData(trackingPathsCollection);
   }, 250);
 
-  const flushSolarLayers = debounce(() => {
+  const flushSolarLayers = rafCoalesce(() => {
     const currentMap = map;
     if (!currentMap || !loaded) return;
     const when = new Date(simUtcMs);
     const sub = subsolarPoint(when);
-    const f: GeoJSON.Feature[] = [];
-    if (showTerminator) f.push(buildTerminatorLine(sub));
+    const f: GeoJSON.Feature[] = [buildTerminatorLine(sub)];
     if (showSubsun) f.push(buildSunPointFeature(sub));
     const s = currentMap.getSource(SRC_SOLAR) as
       | maplibregl.GeoJSONSource
       | undefined;
     if (s) s.setData({ type: "FeatureCollection", features: f });
-  }, 200);
+    const nightSrc = currentMap.getSource(SRC_NIGHT) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (nightSrc) {
+      nightSrc.setData({
+        type: "FeatureCollection",
+        features: [buildNightSideDisc(sub)],
+      });
+    }
+  });
 
   function syncMapOverlays(m: MapLibreMap): void {
     const setVis = (id: string, on: boolean): void => {
@@ -867,9 +1135,11 @@
     };
     setVis(LAYER_DEMO_CONTOUR, showWeatherOverlays);
     setVis(LAYER_DEMO_WIND, showWeatherOverlays);
+    setVis(LAYER_CLIMATE_TEMP, showWeatherOverlays);
     setVis(LAYER_DEMO_TRANSPORT, showDemoLayers);
     setVis(LAYER_CAUSAL, showCausal);
     setVis(LAYER_TERM, showTerminator);
+    setVis(LAYER_NIGHT, map2DNightVisible);
     setVis(LAYER_SUN, showSubsun);
     setVis(LAYER_TRACKING, showPublicTracking);
     setVis(LAYER_TRACKING_PATHS, showPublicTracking);
@@ -877,18 +1147,44 @@
 
   $effect(() => {
     if (useWebGlGlobe) return;
+    void loaded;
     void dashboardData.revision;
     void dashboard.recentCausalEdges;
     void mapDomainSet;
+    void mapDisplayEvents;
+    void simUtcMs;
     flushEventAndCausalLayers();
+  });
+
+  const flushClimateWeatherLayers = debounce(() => {
+    const currentMap = map;
+    if (!currentMap || !loaded) return;
+    const src = currentMap.getSource(SRC_CLIMATE_WEATHER) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (!src) return;
+    const pts = climateWeatherPoints(dashboard.events, simUtcMs);
+    src.setData(climateWeatherFeatureCollection(pts));
+  }, 200);
+
+  $effect(() => {
+    if (useWebGlGlobe) return;
+    void loaded;
+    void simUtcMs;
+    void mapDisplayEvents;
+    void showTerminator;
+    void map2DNightVisible;
+    void showSubsun;
+    flushSolarLayers();
   });
 
   $effect(() => {
     if (useWebGlGlobe) return;
+    void loaded;
+    void dashboardData.revision;
     void simUtcMs;
-    void showTerminator;
-    void showSubsun;
-    flushSolarLayers();
+    void showWeatherOverlays;
+    flushClimateWeatherLayers();
   });
 
   $effect(() => {
@@ -904,12 +1200,15 @@
     void showWeatherOverlays;
     void showCausal;
     void showTerminator;
+    void map2DNightVisible;
     void showSubsun;
     void showPublicTracking;
     syncMapOverlays(currentMap);
   });
 
   $effect(() => {
+    if (useWebGlGlobe) return;
+    void loaded;
     void tleCacheReady;
     void simUtcMs;
     void airFromStdb;
@@ -931,6 +1230,13 @@
     simDayStart = utcDayStart(n);
     const d = new Date(n);
     simMinOfDay = d.getUTCHours() * 60 + d.getUTCMinutes();
+  }
+
+  function toggleMapLayers(): void {
+    mapLayersOpen = !mapLayersOpen;
+  }
+  function closeMapLayers(): void {
+    mapLayersOpen = false;
   }
 
   onMount(() => {
@@ -988,138 +1294,80 @@
   </div>
 {/snippet}
 
-{#snippet overlayToggles()}
-  <div class="map-ovl" role="group" aria-label="Map overlays">
-    <label class="map-ovl-item" title="Day/night boundary">
-      <input type="checkbox" bind:checked={showTerminator} />
-      <Sun size={13} strokeWidth={1.75} />
-      <span>Term</span>
-    </label>
-    <label class="map-ovl-item" title="Subsolar point">
-      <input type="checkbox" bind:checked={showSubsun} />
-      <SunDim size={13} strokeWidth={1.75} />
-      <span>Subsol</span>
-    </label>
-    {#if useWebGlGlobe}
-      <label class="map-ovl-item" title="Approximate moon position">
-        <input type="checkbox" bind:checked={showMoon} />
-        <Moon size={13} strokeWidth={1.75} />
-        <span>Moon</span>
-      </label>
-      <label
-        class="map-ovl-item"
-        title="Day/night Earth shader with city lights on the night side"
-      >
-        <input type="checkbox" bind:checked={showPhotorealEarth} />
-        <GlobeIcon size={13} strokeWidth={1.75} />
-        <span>Earth</span>
-      </label>
-    {/if}
-    <label class="map-ovl-item" title="Causal edges when both events have place">
-      <input type="checkbox" bind:checked={showCausal} />
-      <Link2 size={13} strokeWidth={1.75} />
-      <span>Causal</span>
-    </label>
-    <label class="map-ovl-item" title="Wind segments + isobar-style pressure contours">
-      <input type="checkbox" bind:checked={showWeatherOverlays} />
-      <Wind size={13} strokeWidth={1.75} />
-      <span>Weather</span>
-    </label>
-    <label class="map-ovl-item" title="Sample transport / hub glyphs (independent)">
-      <input type="checkbox" bind:checked={showDemoLayers} />
-      <Layers size={13} strokeWidth={1.75} />
-      <span>Demo</span>
-    </label>
-    <label
-      class="map-ovl-item"
-      title="Celestrak TLEs (NORAD), OpenSky ADS-B, sample AIS-style vessels — public & rate-limited"
-    >
-      <input type="checkbox" bind:checked={showPublicTracking} />
-      <Plane size={13} strokeWidth={1.75} />
-      <span>Orbits & traffic</span>
-    </label>
-  </div>
-{/snippet}
-
-{#snippet domainDataToggles()}
-  <div
-    class="map-domains"
-    role="group"
-    aria-label="Data domains shown on the map (heatmap and points). Zoomed-out views use broader heat; points strengthen as you zoom in."
-  >
-    <div class="map-domains-head">
-      <span class="map-domains-title">Data domains</span>
-      <span class="map-domains-badge">{mapDomainsActiveLabel}</span>
+{#snippet mapFloatControls()}
+  <div class="map-float-ui" aria-live="polite">
+    {#if mapLayersOpen}
       <button
         type="button"
-        class="map-domains-ctl"
-        onclick={selectAllMapDomains}
-      >
-        All
-      </button>
-      <button type="button" class="map-domains-ctl" onclick={clearMapDomains}>
-        None
-      </button>
+        class="map-layers-backdrop"
+        aria-label="Close map layers"
+        onclick={closeMapLayers}
+      ></button>
+    {/if}
+    <div class="map-float-anchor">
+      <div class="map-float-bar">
+        {@render modeButtons()}
+        <div class="map-mode">
+          <button
+            type="button"
+            class:is-active={mapLayersOpen}
+            aria-expanded={mapLayersOpen}
+            aria-controls="map-layers-panel"
+            onclick={toggleMapLayers}
+            title="Domains, overlays, and solar time"
+          >
+            <Layers size={14} strokeWidth={1.75} aria-hidden="true" />
+            Layers
+            <span class="map-layers-chev" class:map-layers-chev-open={mapLayersOpen} aria-hidden="true">
+              <ChevronDown size={14} strokeWidth={2} />
+            </span>
+          </button>
+        </div>
+      </div>
+      <MapLayersPanel
+        open={mapLayersOpen}
+        {useWebGlGlobe}
+        {mapDomainsActiveLabel}
+        {simUtcLabel}
+        bind:minOfDay={simMinOfDay}
+        bind:showTerminator
+        bind:showSubsun
+        bind:showMoon
+        bind:showPhotorealEarth
+        bind:showCausal
+        bind:showWeatherOverlays
+        bind:showDemoLayers
+        bind:showPublicTracking
+        {mapDomainSet}
+        {domainPickOrder}
+        onDomainToggle={setMapDomain}
+        onSelectAllDomains={selectAllMapDomains}
+        onClearDomains={clearMapDomains}
+        onSnapSimToNow={snapSimToNow}
+      />
     </div>
-    <div class="map-domains-grid">
-      {#each domainPickOrder as d (d.id)}
-        <label class="map-dom-ch" title="Toggle {d.label} events on this map">
-          <input
-            type="checkbox"
-            checked={mapDomainSet.has(d.id)}
-            onchange={(ev) => {
-              const t = ev.currentTarget as HTMLInputElement;
-              setMapDomain(d.id, t.checked);
-            }}
-          />
-          <span
-            class="map-dom-swatch"
-            style:background={d.color}
-            aria-hidden="true"
-          ></span>
-          <span class="map-dom-txt">{d.label}</span>
-        </label>
-      {/each}
-    </div>
-  </div>
-{/snippet}
-
-{#snippet timeControl()}
-  <div class="map-time" role="group" aria-label="Simulated UTC time for solar layer">
-    <span class="map-time-lbl" title="ISO UTC, scrubbed for terminator">{simUtcLabel} UTC</span>
-    <input
-      class="map-time-sl"
-      type="range"
-      min="0"
-      max="1439"
-      bind:value={simMinOfDay}
-    />
-    <button type="button" class="map-time-now" onclick={snapSimToNow} title="Use current time">
-      Now
-    </button>
   </div>
 {/snippet}
 
 {#if embedded}
   <Panel title="Global event map" span={panelSpan}>
-    {#snippet header()}
-      <div class="map-head-stack">
-        <div class="map-head-tools">
-          {@render modeButtons()}
-          {@render overlayToggles()}
-          {@render timeControl()}
-        </div>
-        {@render domainDataToggles()}
-      </div>
-    {/snippet}
-
     <div class="map-wrap" bind:this={mapSurfaceEl}>
+      {@render mapFloatControls()}
       <div bind:this={container} class="map"></div>
       <EventMapHoverCard
-        event={mapHoverEvent}
-        x={mapPointHover?.x ?? 0}
-        y={mapPointHover?.y ?? 0}
+        event={inspectorEvent}
+        x={inspectorPos.x}
+        y={inspectorPos.y}
         container={mapSurfaceEl ?? null}
+        pinned={inspectorPinned}
+        docked={inspectorPinned}
+        onPinChange={setInspectorPin}
+        onDismiss={dismissInspector}
+        onCardPointerChange={(inside) => {
+          hoverCardPointerInside = inside;
+          if (inside) cancelStickyHoverClear();
+          else if (!inspectorPinned) dismissMapPointHover();
+        }}
       />
     </div>
   </Panel>
@@ -1130,225 +1378,254 @@
       ? "2D global operations map"
       : "Three.js operable 3D Earth globe"}
   >
-    <header class="map-globe-head">
-      <div class="map-globe-titles">
-        <span class="map-globe-kicker"
+    <header class="map-command-bar" aria-label="Map command bar">
+      <div class="map-command-titles">
+        <span class="map-command-kicker"
           >{projection === "mercator"
             ? "North-up · pan & zoom"
             : "SpacetimeDB · drag to orbit · scroll to zoom"}</span
         >
-        <h2 class="map-globe-title">
+        <h2 class="map-command-title">
           {projection === "mercator" ? "Global 2D map" : "Global 3D Earth (WebGL)"}
         </h2>
-        <p class="map-globe-meta">
-          {locatedCount} geo-located point{locatedCount === 1 ? "" : "s"} in
+        <p class="map-command-meta">
+          <CompactNumber value={locatedCount} /> geo-located point{locatedCount === 1
+            ? ""
+            : "s"} in
           view · layers: {mapDomainsActiveLabel}
+          {#if map7dFallback}
+            · 7d replay window
+          {/if}
           {#if dashboard.selectedDomain}
-            (global filter: {dashboard.selectedDomain})
+            · filter: {dashboard.selectedDomain}
           {/if}
         </p>
       </div>
-      <div class="map-globe-tools">
-        <div class="map-globe-tools-row">
-          {@render modeButtons()}
-          {@render overlayToggles()}
-          {@render timeControl()}
-        </div>
-        {@render domainDataToggles()}
-      </div>
+      <OpsStrip simUtcLabel={simUtcLabel} simMinOfDay={simMinOfDay} embeddedInCommandBar />
     </header>
     <div class="map-wrap map-wrap-globe" bind:this={mapSurfaceEl}>
+      {@render mapFloatControls()}
       {#if useWebGlGlobe}
-        <ThreeGlobe
-          {mode}
-          {showTerminator}
-          {showSubsun}
-          {showMoon}
-          {showCausal}
-          {showPhotorealEarth}
-          showTrackingPaths={showPublicTracking}
-          {showWeatherOverlays}
-          mapDomainSet={mapDomainSet}
-          {simUtcMs}
-          publicTracking={trackingGlobePoints}
-          trackingPathRows={publicTrackingRows}
-          onMapPointScreen={(d) => {
-            mapPointHover = d;
-          }}
-        />
+        {#await import("./ThreeGlobe.svelte")}
+          <div class="map-globe-loading" role="status" aria-busy="true">
+            Loading 3D globe…
+          </div>
+        {:then { default: ThreeGlobe }}
+          <ThreeGlobe
+            {mode}
+            showSolarShading={true}
+            {showTerminator}
+            {showSubsun}
+            {showMoon}
+            {showCausal}
+            {showPhotorealEarth}
+            showTrackingPaths={showPublicTracking}
+            {showWeatherOverlays}
+            mapDomainSet={mapDomainSet}
+            {simUtcMs}
+            publicTracking={trackingGlobePoints}
+            trackingPathRows={publicTrackingRows}
+            onMapPointScreen={(d) => {
+              if (d) setMapPointHover(d);
+              else clearMapPointHover();
+            }}
+          />
+        {:catch}
+          <div class="map-globe-loading" role="alert">
+            Could not load 3D globe. Use the 2D map route or refresh.
+          </div>
+        {/await}
       {:else}
         <div bind:this={container} class="map"></div>
       {/if}
+      {#if mapGeoPointCount === 0}
+        <div class="map-empty" role="status">
+          <p class="map-empty-kicker">Instrument room</p>
+          <p class="map-empty-title">No geo-located events in this view</p>
+          <p class="map-empty-body">
+            {#if map7dFallback}
+              Showing a 7-day replay window (no events in the last 24h at this sim time).
+            {:else}
+              Replay window is the last 24h ending at the scrubbed UTC instant.
+            {/if}
+            Scrub solar time,
+            {#if dashboard.selectedDomain}
+              clear the hub domain filter ({dashboard.selectedDomain}), or
+            {:else if mapDomainSet.size > 0}
+              enable more domains in
+            {:else}
+              pick domains in
+            {/if}
+            <button type="button" class="map-empty-link" onclick={toggleMapLayers}>Layers</button>
+            (empty selection = all domains).
+            Check feed health in
+            <a class="map-empty-link" href="#/settings">Settings</a>.
+          </p>
+        </div>
+      {/if}
       <EventMapHoverCard
-        event={mapHoverEvent}
-        x={mapPointHover?.x ?? 0}
-        y={mapPointHover?.y ?? 0}
+        event={inspectorEvent}
+        x={inspectorPos.x}
+        y={inspectorPos.y}
         container={mapSurfaceEl ?? null}
+        pinned={inspectorPinned}
+        docked={inspectorPinned}
+        onPinChange={setInspectorPin}
+        onDismiss={dismissInspector}
+        onCardPointerChange={(inside) => {
+          hoverCardPointerInside = inside;
+          if (inside) cancelStickyHoverClear();
+          else if (!inspectorPinned) dismissMapPointHover();
+        }}
       />
     </div>
   </section>
 {/if}
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key !== "Escape") return;
+    if (inspectorPinned) {
+      dismissInspector();
+      return;
+    }
+    closeMapLayers();
+  }}
+/>
+
 <style>
-  .map-head-stack {
+  .map-float-ui {
+    position: absolute;
+    inset: 0;
+    z-index: 14;
+    pointer-events: none;
+  }
+  .map-layers-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    margin: 0;
+    padding: 0;
+    border: none;
+    cursor: default;
+    pointer-events: auto;
+    background: color-mix(in srgb, var(--bg-0) 12%, transparent);
+  }
+  .map-float-anchor {
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    /* Clear MapLibre NavigationControl (top-right, ~36px + margin). */
+    right: 54px;
+    z-index: 12;
     display: flex;
     flex-direction: column;
-    align-items: stretch;
+    align-items: flex-end;
+    gap: 8px;
+    width: min(100% - 16px, 22rem);
+    max-width: 22rem;
+    max-height: calc(100% - 20px);
+    pointer-events: auto;
+  }
+  .map-float-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
     gap: var(--space-2);
     width: 100%;
-    min-width: 0;
+    padding: 4px;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--glass-surface, var(--bg-glass)) 85%, transparent);
+    border: 1px solid var(--border-1);
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(10px);
   }
-  .map-head-tools,
-  .map-globe-tools-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-    justify-content: flex-end;
+
+  .map-layers-chev {
+    display: inline-flex;
+    margin-left: 2px;
+    opacity: 0.7;
+    transition: transform 0.28s cubic-bezier(0.33, 1, 0.68, 1);
   }
-  .map-globe-tools {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-2);
-    min-width: 0;
+  .map-layers-chev-open {
+    transform: rotate(180deg);
   }
-  .map-domains {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 6px 0 2px;
-    border-top: 1px solid var(--border-1);
-    max-width: 100%;
+
+  @media (max-width: 520px) {
+    .map-float-anchor {
+      left: 8px;
+      right: 54px;
+      width: auto;
+      max-width: none;
+    }
   }
-  .map-domains-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 10px;
+  @media (prefers-reduced-motion: reduce) {
+    .map-layers-chev {
+      transition: none;
+    }
   }
-  .map-domains-title {
+
+  .map-empty {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 4;
+    max-width: min(400px, calc(100% - 32px));
+    padding: var(--space-5) var(--space-5) var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-2);
+    background: var(--glass-surface, var(--bg-glass));
+    box-shadow: var(--shadow), var(--shadow-glow-soft, none);
+    backdrop-filter: blur(14px);
+    text-align: center;
+    pointer-events: auto;
+  }
+  .map-empty-kicker {
+    margin: 0 0 var(--space-2);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-3);
+    letter-spacing: 0.14em;
+    color: var(--accent);
   }
-  .map-domains-badge {
-    font-size: 10px;
-    font-family: var(--font-mono);
-    color: var(--text-3);
-  }
-  .map-domains-ctl {
-    font-size: 10px;
-    font-weight: 500;
-    padding: 2px 8px;
-    border-radius: calc(var(--radius) - 2px);
-    border: 1px solid var(--border-1);
-    background: var(--bg-2);
-    color: var(--text-2);
-    cursor: pointer;
-  }
-  .map-domains-ctl:hover {
+  .map-empty-title {
+    margin: 0 0 var(--space-2);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
     color: var(--text-1);
   }
-  .map-domains-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-    gap: 2px 8px;
-    max-height: 7.2rem;
-    overflow-y: auto;
-    padding: 2px 0;
-  }
-  .map-dom-ch {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
+  .map-empty-body {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.45;
     color: var(--text-2);
+  }
+  .map-empty-link {
+    font: inherit;
+    font-weight: 600;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    padding: 0;
     cursor: pointer;
-    user-select: none;
+    text-decoration: underline;
   }
-  .map-dom-ch input {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-    accent-color: var(--accent);
-  }
-  .map-dom-swatch {
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
-    flex-shrink: 0;
-    box-shadow: 0 0 0 1px var(--map-swatch-ring);
-  }
-  .map-dom-txt {
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  a.map-empty-link {
+    text-decoration: underline;
   }
 
-  .map-ovl {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 8px;
-    font-size: 10px;
-    color: var(--text-3);
+  .map-wrap:not(.map-wrap-globe) {
+    height: 480px;
   }
-  .map-ovl-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 4px 2px 0;
-    cursor: pointer;
-    user-select: none;
-  }
-  .map-ovl-item input {
-    width: 12px;
-    height: 12px;
-    accent-color: var(--accent);
-  }
-
-  .map-time {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 10px;
-    max-width: 100%;
-  }
-  .map-time-lbl {
-    font-size: 10px;
-    font-family: var(--font-mono);
-    color: var(--text-3);
-    white-space: nowrap;
-  }
-  .map-time-sl {
-    flex: 1 1 120px;
-    min-width: 100px;
-    max-width: 200px;
-    accent-color: var(--accent);
-  }
-  .map-time-now {
-    font-size: 10px;
-    font-weight: 500;
-    padding: 3px 8px;
-    border-radius: calc(var(--radius) - 2px);
-    border: 1px solid var(--border-1);
-    background: var(--bg-2);
-    color: var(--text-2);
-    cursor: pointer;
-  }
-  .map-time-now:hover {
-    color: var(--text-1);
-    border-color: var(--border-2);
-  }
-
   .map-wrap {
     position: relative;
+    isolation: isolate;
+    container-type: size;
+    container-name: map-surface;
     width: 100%;
-    height: 480px;
     border-radius: var(--radius);
     overflow: visible;
     border: 1px solid var(--border-1);
@@ -1374,36 +1651,41 @@
 
   .map-mode {
     display: inline-flex;
-    gap: 2px;
+    gap: 0;
     padding: 3px;
-    background: var(--bg-2);
+    background: var(--glass-surface, var(--bg-glass));
     border: 1px solid var(--border-1);
-    border-radius: var(--radius);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(10px);
   }
   .map-mode button {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     background: transparent;
-    color: var(--text-2);
+    color: var(--text-3);
     font-size: 11px;
     font-weight: 500;
-    padding: 4px 10px;
+    padding: 5px 12px;
     border: 0;
-    border-radius: calc(var(--radius) - 4px);
+    border-radius: var(--radius-pill);
     cursor: pointer;
     transition:
       background var(--motion-fast) var(--ease),
-      color var(--motion-fast) var(--ease);
+      color var(--motion-fast) var(--ease),
+      box-shadow var(--motion-fast) var(--ease);
   }
   .map-mode button:hover {
     color: var(--text-1);
     background: var(--overlay);
   }
   .map-mode button.is-active {
-    background: var(--bg-3);
+    background: color-mix(in srgb, var(--accent) 18%, var(--bg-2));
     color: var(--text-1);
-    box-shadow: inset 0 0 0 1px var(--border-2);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+      0 0 12px -4px color-mix(in srgb, var(--accent) 40%, transparent);
   }
 
   :global(.oa-popup .maplibregl-popup-content) {
@@ -1444,25 +1726,31 @@
   .map-globe-root {
     display: flex;
     flex-direction: column;
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     min-width: 0;
+    height: 100%;
   }
-  .map-globe-head {
+  .map-command-bar {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: var(--space-4);
+    gap: var(--space-3) var(--space-4);
     padding: var(--space-3) var(--space-5);
     border-bottom: 1px solid var(--border-1);
-    background: var(--bg-glass);
-    backdrop-filter: blur(8px);
+    background: var(--glass-surface, var(--bg-glass));
+    backdrop-filter: blur(12px);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 8%, transparent);
   }
-  .map-globe-titles {
+  .map-command-bar :global(.ops-strip) {
+    flex-shrink: 0;
+    align-self: center;
+  }
+  .map-command-titles {
     min-width: 0;
   }
-  .map-globe-kicker {
+  .map-command-kicker {
     display: block;
     font-size: 10px;
     text-transform: uppercase;
@@ -1470,14 +1758,14 @@
     color: var(--text-3);
     margin: 0 0 var(--space-1);
   }
-  .map-globe-title {
+  .map-command-title {
     margin: 0;
     font-size: 18px;
     font-weight: 600;
     color: var(--text-1);
     letter-spacing: -0.02em;
   }
-  .map-globe-meta {
+  .map-command-meta {
     margin: 6px 0 0;
     font-size: 12px;
     line-height: 1.4;
@@ -1486,10 +1774,21 @@
   .map-wrap-globe {
     flex: 1 1 auto;
     width: 100%;
-    min-height: max(55vh, 320px);
-    height: auto;
+    min-height: 0;
+    height: 100%;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
   }
-  .map-globe-tools {
-    flex-shrink: 0;
+  .map-globe-loading {
+    display: grid;
+    place-items: center;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    font-size: 13px;
+    color: var(--text-2);
+    background: color-mix(in srgb, var(--bg-1) 92%, transparent);
   }
 </style>

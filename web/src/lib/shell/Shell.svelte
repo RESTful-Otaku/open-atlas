@@ -10,7 +10,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { router } from "../router.svelte";
-  import { viewForPattern } from "../views";
+  import { mainScrollModeForPattern, viewForPattern } from "../views";
   import ActiveRoute from "./ActiveRoute.svelte";
   import LeftRail from "./LeftRail.svelte";
   import ShellTopBar from "./ShellTopBar.svelte";
@@ -83,6 +83,9 @@
   });
 
   const activeView = $derived(viewForPattern(router.match.pattern));
+  const mainScrollMode = $derived(
+    mainScrollModeForPattern(router.match.pattern),
+  );
   const showTicker = $derived(routeShowsTicker(router.match.pattern));
   const showCommandBar = $derived(
     routeShowsCommandBar(router.match.pattern),
@@ -155,7 +158,8 @@
   <main
     id="shell-main"
     class="shell-main"
-    class:shell-main-fill={activeView.id === "globe" || activeView.id === "map" || activeView.id === "viz" || activeView.id === "exec-hub" || activeView.id === "matrix"}
+    class:shell-main-fill={mainScrollMode === "fill"}
+    data-scroll={mainScrollMode}
     aria-label={activeView.title}
   >
     <ActiveRoute />
@@ -268,15 +272,21 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: hidden;
   }
   /**
    * Route views must not shrink to the intrinsic min-content of inner grids
    * (ECharts, etc.); they take the full `1fr` main column width.
    */
   .shell-main.shell-main-fill > :global(*) {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    min-height: 0;
+    height: 100%;
     box-sizing: border-box;
   }
 </style>

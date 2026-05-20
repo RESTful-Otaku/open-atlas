@@ -26,6 +26,27 @@ async fn health_returns_ok_plaintext() {
 }
 
 #[tokio::test]
+async fn metrics_returns_prometheus_text() {
+    let app = common::test_router(IngestMode::Hybrid).await;
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+    assert!(text.contains("openatlas_ingest_events_fetched_total"));
+    assert!(text.contains("# TYPE openatlas_ingest_batch_calls_total counter"));
+}
+
+#[tokio::test]
 async fn status_includes_data_plane_and_metrics() {
     let app = common::test_router(IngestMode::Hybrid).await;
     let response = app

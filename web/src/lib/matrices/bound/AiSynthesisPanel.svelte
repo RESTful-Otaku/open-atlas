@@ -82,7 +82,7 @@
     llmLoading = true;
     llmError = null;
     try {
-      await ensureLlmReady(true);
+      await ensureLlmReady(false);
       if (!llmCanRun(llmCtx, readiness.llmReady)) {
         llmError =
           llmBlockedReason(llmCtx, readiness.llmReady) ??

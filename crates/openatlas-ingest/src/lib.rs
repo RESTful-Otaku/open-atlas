@@ -3,6 +3,7 @@
 //! The binary (`main.rs`) is a thin wrapper; integration tests and tools
 //! import this crate.
 
+pub mod auth;
 pub mod circuit;
 pub mod feed_config;
 pub mod feed_poll;

@@ -4,6 +4,7 @@
   import { domainColor, domainLabel } from "../colors";
   import { fmtFixed, severityPercent, shortId, shortTime } from "../format";
 
+  import CompactNumber from "./CompactNumber.svelte";
   import Panel from "./Panel.svelte";
 
   const { span = 6 }: { span?: number } = $props();
@@ -21,7 +22,11 @@
 
 <Panel title="Live event stream" {span} scroll flush>
   {#snippet header()}
-    <span>{rows.length} of {dashboard.events.length}</span>
+    <span
+      ><CompactNumber value={rows.length} /> of <CompactNumber
+        value={dashboard.events.length}
+      /></span
+    >
   {/snippet}
 
   {#if rows.length === 0}

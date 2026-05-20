@@ -4,11 +4,12 @@
 import type { EChartsOption } from "echarts";
 import { dashboardData } from "./dashboard-revision.svelte";
 import { memoByRevisions } from "./chart-cache-memo";
-import type { MatrixChartKind } from "./matrices/matrix-charts";
 import type { UiEvent, UiWorldState } from "./types";
 
 let riskCache: import("./chart-cache-memo").RevisionCacheEntry | null = null;
 let heatCache: import("./chart-cache-memo").RevisionCacheEntry | null = null;
+let hubPieCache: import("./chart-cache-memo").RevisionCacheEntry | null = null;
+let hubLineCache: import("./chart-cache-memo").RevisionCacheEntry | null = null;
 const matrixCaches = new Map<string, import("./chart-cache-memo").RevisionCacheEntry>();
 
 type PackCacheEntry<T> = {
@@ -51,15 +52,48 @@ export function memoHubHeatmap(
   return option;
 }
 
-export function memoMatrixChart(
-  kind: MatrixChartKind,
+export function memoHubShare(
+  _events: readonly UiEvent[],
   build: () => EChartsOption,
 ): EChartsOption {
   const revision = dashboardData.revision;
   const domainRev = dashboardData.domainsRevision;
-  const prev = matrixCaches.get(kind) ?? null;
+  const { entry, option } = memoByRevisions(
+    hubPieCache,
+    revision,
+    domainRev,
+    build,
+  );
+  hubPieCache = entry;
+  return option;
+}
+
+export function memoHubTimeline(
+  _events: readonly UiEvent[],
+  build: () => EChartsOption,
+): EChartsOption {
+  const revision = dashboardData.revision;
+  const domainRev = dashboardData.domainsRevision;
+  const { entry, option } = memoByRevisions(
+    hubLineCache,
+    revision,
+    domainRev,
+    build,
+  );
+  hubLineCache = entry;
+  return option;
+}
+
+/** Cache key must include matrix scope (domains); same kind differs per board. */
+export function memoMatrixChart(
+  cacheKey: string,
+  build: () => EChartsOption,
+): EChartsOption {
+  const revision = dashboardData.revision;
+  const domainRev = dashboardData.domainsRevision;
+  const prev = matrixCaches.get(cacheKey) ?? null;
   const { entry, option } = memoByRevisions(prev, revision, domainRev, build);
-  matrixCaches.set(kind, entry);
+  matrixCaches.set(cacheKey, entry);
   return option;
 }
 

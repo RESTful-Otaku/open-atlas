@@ -73,6 +73,99 @@ export function hubDomainRiskBars(
   };
 }
 
+/**
+ * Donut of event counts by domain — complements risk bars (which use world_state).
+ */
+export function hubEventSharePie(events: readonly UiEvent[]): EChartsOption {
+  const counts = new Map<string, number>();
+  for (const d of DOMAIN_CATALOG) {
+    counts.set(d.id, 0);
+  }
+  for (const e of events) {
+    counts.set(e.domain, (counts.get(e.domain) ?? 0) + 1);
+  }
+  const data = DOMAIN_CATALOG.map((d) => ({
+    name: domainLabel(d.id),
+    value: counts.get(d.id) ?? 0,
+    itemStyle: { color: domainColor(d.id) },
+  })).filter((d) => d.value > 0);
+
+  if (data.length === 0) {
+    return {
+      backgroundColor: "transparent",
+      textStyle: { color: chartTextMuted() },
+      title: {
+        text: "No events in buffer",
+        left: "center",
+        top: "middle",
+        textStyle: { color: chartTextMuted(), fontSize: 12 },
+      },
+      series: [],
+    };
+  }
+
+  return {
+    backgroundColor: "transparent",
+    textStyle: { color: chartTextMuted() },
+    tooltip: { ...tooltipBase, trigger: "item" },
+    series: [
+      {
+        type: "pie",
+        radius: ["38%", "68%"],
+        center: ["50%", "52%"],
+        data,
+        itemStyle: { borderRadius: 3, borderColor: "#09090b", borderWidth: 1 },
+        label: { color: chartTextMuted(), fontSize: 9 },
+      },
+    ],
+  };
+}
+
+/** Event arrivals by UTC hour in the current buffer (line + area). */
+export function hubUtcHourIngestLine(events: readonly UiEvent[]): EChartsOption {
+  const hours = Array.from({ length: 24 }, (_, h) => `${h}h`);
+  const buckets = new Array(24).fill(0);
+  for (const e of events) {
+    const t = Date.parse(e.timestamp);
+    if (!Number.isFinite(t)) continue;
+    buckets[new Date(t).getUTCHours()] += 1;
+  }
+  const maxY = Math.max(1, ...buckets);
+
+  return {
+    backgroundColor: "transparent",
+    textStyle: { color: chartTextMuted() },
+    tooltip: { ...tooltipBase, trigger: "axis" },
+    grid: { left: 40, right: 16, top: 12, bottom: 28 },
+    xAxis: {
+      type: "category",
+      data: hours,
+      axisLabel: { color: chartTextMuted(), fontSize: 8, interval: 3 },
+      axisLine: { lineStyle: { color: chartGridLine() } },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      max: maxY,
+      splitLine: { lineStyle: { color: chartGridLine() } },
+      axisLabel: { color: chartTextMuted(), fontSize: 9 },
+    },
+    series: [
+      {
+        name: "Events",
+        type: "line",
+        data: buckets,
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 4,
+        areaStyle: { opacity: 0.12 },
+        lineStyle: { width: 2, color: "#38bdf8" },
+        itemStyle: { color: "#38bdf8" },
+      },
+    ],
+  };
+}
+
 /** Domain × UTC hour event counts (when events exist in the buffer). */
 export function hubActivityHeatmap(events: readonly UiEvent[]): EChartsOption {
   const domains = DOMAIN_CATALOG.map((d) => d.id);

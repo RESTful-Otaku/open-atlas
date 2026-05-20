@@ -3,9 +3,11 @@
   WebGL / MapLibre / ECharts memory is not retained across the whole catalog.
 -->
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { Component } from "svelte";
+  import { fade } from "svelte/transition";
   import { router } from "../router.svelte";
-  import { viewForPattern } from "../views";
+  import { mainScrollModeForPattern, viewForPattern } from "../views";
   import { loadViewForPattern, peekCachedView } from "../view-loaders";
   import {
     cancelScheduledDashboardFlush,
@@ -14,6 +16,7 @@
   } from "../dashboard-flush";
 
   const entry = $derived(viewForPattern(router.match.pattern));
+  const scrollMode = $derived(mainScrollModeForPattern(router.match.pattern));
 
   /** Remount when pattern changes, or when parametric routes need a fresh instance. */
   const routeKey = $derived.by(() => {
@@ -26,6 +29,12 @@
 
   let View: Component | null = $state(null);
   let loadError = $state<string | null>(null);
+  let routeFadeMs = $state(0);
+
+  onMount(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    routeFadeMs = reduced ? 0 : 180;
+  });
   let loadGen = 0;
   let loadedPattern: string | null = null;
 
@@ -79,7 +88,14 @@
 
 {#key routeKey}
   {#if View}
-    <View />
+    <div
+      class="route-view"
+      data-scroll={scrollMode}
+      in:fade={{ duration: routeFadeMs }}
+      out:fade={{ duration: routeFadeMs > 0 ? 120 : 0 }}
+    >
+      <View />
+    </div>
   {:else if loadError}
     <div class="route-loading route-loading--error" role="alert">
       <span class="route-loading-label">Could not load {entry.title}</span>
@@ -93,6 +109,23 @@
 {/key}
 
 <style>
+  .route-view {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .route-view[data-scroll="fill"] {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+  }
+  .route-view[data-scroll="page"] {
+    flex: 0 0 auto;
+    min-height: auto;
+    height: auto;
+  }
   .route-loading {
     display: grid;
     place-items: center;

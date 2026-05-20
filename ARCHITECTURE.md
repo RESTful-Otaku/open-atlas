@@ -240,6 +240,31 @@ See [`docs/DATA_PLANE.md`](docs/DATA_PLANE.md) for the full tier model.
 6. Map ADS-B glyphs come from STDB transport events (`stdb-aircraft.ts`), not
    browser OpenSky polls. NORAD TLEs use bundled static files only.
 
+**Charts:** Modular ECharts (`web/src/lib/echarts.ts`) registers one bundle per
+series family. The **Hub** adds risk bars, domain×hour heatmap, event-share pie,
+and UTC-hour line charts (`HubOverviewCharts.svelte`). **Domain desks**
+(`views/domain/domain-desk-charts.ts`) give **each** of the 13 `DOMAIN_CATALOG`
+entries a **distinct** primary chart type fed from the domain’s live event buffer
+(stacked bars, donut, histogram, line+area, parallel, radar, scatter+effect,
+OHLC, regional stacks, force graph + `relatedEdges`, sunburst, Nightingale
+rose, tree). **Five** panels per desk add complementary views (stress trajectories,
+heatmaps, Sankey, funnel, treemap, gauge, boxplot, pictorial bar, theme river,
+plain scatter, `lines` paths, etc.) in a **per-domain** mix so chart types stay
+varied without copying the primary. **`FullscreenChartShell`** (`viz/FullscreenChartShell.svelte`)
+wraps hub, matrix, domain, and gallery cards: inline charts stay minimal (no default
+toolbox); fullscreen uses a modal with expand/minimize/reset controls and full
+`withInteractiveDefaults` for zoom/brush/restore. **Domain desk grid**
+(`DomainChartsBlock.svelte`) caps **three** columns on wide viewports, then two /
+one column as the viewport narrows; operators can **drag-reorder**, **cycle 1–3
+column spans**, persist the layout in **localStorage** (`domain-chart-layout.ts`),
+and use **Save layout** / **Default view** plus the **View Transitions API** (where
+supported) for smoother reordering. **Matrix** tabs map distinct
+`MatrixChartKind` values in `matrices/matrix-charts.ts` so each command board
+exposes different visuals from the same telemetry. **`#/viz`**
+(`VizShowcaseView.svelte`) is the full gallery including map choropleth
+(`registerMap`) and custom `renderItem` series; **Legacy** overview embeds a
+compact sample strip (`LegacyVizStrip.svelte`).
+
 ### Invariants
 
 - `dashboard.events`, `recentSignals`, and `recentCausalEdges` are

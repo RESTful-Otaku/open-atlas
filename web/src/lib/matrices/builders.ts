@@ -120,7 +120,8 @@ export function domainKpiCells(
   return [
     {
       label: "Events",
-      value: state ? String(state.event_count) : "—",
+      value: "—",
+      valueNumber: state?.event_count,
     },
     {
       label: "Avg severity",

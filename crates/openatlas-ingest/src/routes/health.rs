@@ -17,6 +17,15 @@ pub(crate) async fn health() -> &'static str {
     "ok"
 }
 
+/// Prometheus text exposition of process-local ingest counters.
+pub(crate) async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let body = state.metrics.snapshot().to_prometheus_text();
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        body,
+    )
+}
+
 pub(crate) async fn ready(State(state): State<AppState>) -> impl IntoResponse {
     if state.stdb.is_reachable().await {
         (axum::http::StatusCode::OK, Json(json!({ "ready": true }))).into_response()

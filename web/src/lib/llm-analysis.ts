@@ -55,7 +55,23 @@ export async function runDashboardLlm(
   userPrompt: string,
 ): Promise<LlmInsightResponse> {
   const snapshot = buildLlmSnapshot(ctx.snapshot);
-  return requestLlmInsight(snapshot, userPrompt);
+  return requestLlmInsight(snapshot, userPrompt, { retries: 1 });
+}
+
+export function domainBriefingPrompt(domainId: string): string {
+  return `You are the OpenAtlas domain analyst for "${domainId}".
+Using ONLY TELEMETRY_JSON (scope_domain, world_state, domain_insights, recent_events, recent_signals top entries, causal_edges_sample, desk_chart_stats), write a concise operator briefing in Markdown:
+
+## ${domainId} — live assessment
+- 3–4 sentences on posture citing risk_index, event_count, avg_severity from world_state.
+## Signals & anomalies
+- Bullet top signals by score; cite anomaly_count_recent and trend from domain_insights.
+## Causal context
+- Use desk_chart_stats causal_inbound/outbound and causal_edges_sample; say if sparse.
+## Recommended actions
+- 2–3 concrete next steps for an analyst on this domain desk.
+
+Be quantitative. Do not invent metrics or events not in the JSON.`;
 }
 
 export const DAILY_BRIEFING_PROMPT = `You are the OpenAtlas executive briefing officer.
@@ -76,6 +92,13 @@ Use causal_edges_sample when non-empty; otherwise state that linkage data is spa
 3–5 actionable steps for an analyst watching this dashboard.
 
 Be specific and quantitative where the JSON provides numbers. Do not invent events, regions, or metrics. If a section lacks data, say so in one sentence.`;
+
+export function llmSnapshotForDomain(
+  input: Omit<LlmSnapshotInput, "capturedAt" | "scopeDomain">,
+  domainId: string,
+): LlmSnapshotInput {
+  return llmSnapshotFromDashboard({ ...input, scopeDomain: domainId });
+}
 
 export function matrixSynthesisPrompt(
   matrixId: string,

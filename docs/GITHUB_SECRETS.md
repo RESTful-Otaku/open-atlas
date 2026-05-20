@@ -19,7 +19,7 @@ Only these two names are accepted by `PUT /feeds` and `.dev/feed-secrets.json` (
 
 | Name | Status | Notes |
 |------|--------|-------|
-| `OPENATLAS_API_KEY` | Documented, not wired in ingest yet | Planned admin header `x-openatlas-key` — reserve in **production** env if you add auth later |
+| `OPENATLAS_API_KEY` | Optional | Required for `PUT /feeds*` when set or when ingest binds non-loopback; header `x-openatlas-key` |
 
 ### SpacetimeDB (usually variables, not secrets)
 

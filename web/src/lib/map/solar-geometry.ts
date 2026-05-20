@@ -110,3 +110,32 @@ export function buildSunPointFeature(sub: {
     geometry: { type: "Point", coordinates: [sub.lon, sub.lat] },
   };
 }
+
+/**
+ * Rough night-side disc (antipodal to subsolar) for 2D fill — moves with solar scrub.
+ */
+export function buildNightSideDisc(
+  sub: { lat: number; lon: number },
+  samples = 192,
+): GeoJSON.Feature<GeoJSON.Polygon> {
+  let cLon = sub.lon + 180;
+  if (cLon > 180) cLon -= 360;
+  if (cLon < -180) cLon += 360;
+  const cLat = -sub.lat;
+  const ring: [number, number][] = [];
+  const radiusDeg = 82;
+  for (let i = 0; i <= samples; i += 1) {
+    const t = (2 * Math.PI * i) / samples;
+    const lat = cLat + radiusDeg * Math.sin(t) * 0.92;
+    const lon = cLon + radiusDeg * Math.cos(t) / Math.max(0.35, Math.cos((cLat * Math.PI) / 180));
+    ring.push([
+      Math.max(-180, Math.min(180, lon)),
+      Math.max(-85, Math.min(85, lat)),
+    ]);
+  }
+  return {
+    type: "Feature",
+    properties: { kind: "night" },
+    geometry: { type: "Polygon", coordinates: [ring] },
+  };
+}

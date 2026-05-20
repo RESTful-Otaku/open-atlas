@@ -89,6 +89,8 @@ Options on manual run:
 
 Add your real deploy steps in the workflow (SpacetimeDB publish, rsync, systemd) or in environment secrets/variables.
 
+**Post-deploy smoke:** [`scripts/post-deploy-smoke.sh`](../scripts/post-deploy-smoke.sh) curls `/health`, `/ready`, `/status`, and `/metrics` (Prometheus text). `e2e-qa.sh` runs it when ingest is reachable. Optional workflow job `post-deploy-smoke` runs when variable `STAGING_INGEST_URL` is set — see [`docs/DEPLOY.md`](DEPLOY.md) checklist.
+
 **Gate:** `Staging gate`
 
 ## Production (`deploy-production.yml`)

@@ -58,8 +58,7 @@ export function buildCausalLineCollection(
     const a = eventById.get(edge.source_event_id);
     const b = eventById.get(edge.target_event_id);
     if (!a || !b || !isGeoEvent(a) || !isGeoEvent(b)) continue;
-    if (mapDomains !== null) {
-      if (mapDomains.size === 0) continue;
+    if (mapDomains !== null && mapDomains.size > 0) {
       if (!mapDomains.has(a.domain) || !mapDomains.has(b.domain)) continue;
     }
     const inf = Math.max(0, Math.min(1, edge.influence_score));

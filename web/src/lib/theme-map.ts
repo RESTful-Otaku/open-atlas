@@ -16,6 +16,8 @@ export interface MapThemeSpec {
   globeAtmosphereColor: string;
   mapCanvasBackground: string;
   terminatorStroke: string;
+  /** Max atmosphere thickness in globe-radius units (subtle halo). */
+  globeAtmosphereAltitude: number;
   skyGlobe: SkySpecification;
   lightGlobe: LightSpecification;
   lightMercator: LightSpecification;
@@ -31,9 +33,10 @@ const DARK: MapThemeSpec = {
     "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   cartoRasterPrefix: "dark_all",
   globeBackground: "#040a14",
-  globeAtmosphereColor: "rgb(80, 130, 190)",
+  globeAtmosphereColor: "rgba(56, 189, 248, 0.22)",
   mapCanvasBackground: "#0a1524",
   terminatorStroke: "rgba(180, 210, 255, 0.5)",
+  globeAtmosphereAltitude: 0.11,
   skyGlobe: {
     "sky-color": "#060d18",
     "horizon-color": "#4a6fa0",
@@ -63,7 +66,9 @@ const DIM: MapThemeSpec = {
     "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   cartoRasterPrefix: "dark_all",
   globeBackground: "#0c1220",
+  globeAtmosphereColor: "rgba(94, 234, 212, 0.18)",
   mapCanvasBackground: "#101828",
+  globeAtmosphereAltitude: 0.11,
   skyGlobe: {
     "sky-color": "#0a1018",
     "horizon-color": "#3d5a80",
@@ -80,9 +85,10 @@ const LIGHT: MapThemeSpec = {
     "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
   cartoRasterPrefix: "light_all",
   globeBackground: "#e8eef5",
-  globeAtmosphereColor: "rgb(120, 170, 220)",
+  globeAtmosphereColor: "rgba(56, 130, 190, 0.24)",
   mapCanvasBackground: "#dce4ef",
   terminatorStroke: "rgba(30, 64, 120, 0.55)",
+  globeAtmosphereAltitude: 0.13,
   skyGlobe: {
     "sky-color": "#c5e3f6",
     "horizon-color": "#94a3b8",

@@ -85,7 +85,7 @@ export function buildGlobePoints(
   const pts: GlobeEventPoint[] = [];
   for (const e of geoEvents) {
     if (!matchesSelectedDomain(e.domain)) continue;
-    if (!mapDomains.has(e.domain)) continue;
+    if (mapDomains.size > 0 && !mapDomains.has(e.domain)) continue;
     if (!isGeoEvent(e)) continue;
     const sev = e.severity_score;
     const w = Number.isFinite(sev) ? Math.max(0.12, sev) : 0.28;
@@ -120,7 +120,6 @@ export function buildGlobeArcs(
   edges: readonly UiCausalEdge[],
   mapDomains: ReadonlySet<string> | null,
 ): GlobeArc[] {
-  if (mapDomains !== null && mapDomains.size === 0) return [];
   const eventById = new Map<string, UiEvent>();
   for (const event of events) {
     eventById.set(event.id, event);
@@ -138,7 +137,7 @@ export function buildGlobeArcs(
     const a = eventById.get(edge.source_event_id);
     const b = eventById.get(edge.target_event_id);
     if (!a || !b || !isGeoEvent(a) || !isGeoEvent(b)) continue;
-    if (mapDomains !== null) {
+    if (mapDomains !== null && mapDomains.size > 0) {
       if (!mapDomains.has(a.domain) || !mapDomains.has(b.domain)) continue;
     }
     const inf = Math.max(0, Math.min(1, edge.influence_score));
@@ -150,7 +149,7 @@ export function buildGlobeArcs(
       endLat: b.location.lat,
       endLng: b.location.lon,
       color: c1,
-      w: 0.2 + inf * 1.6,
+      w: 0.45 + inf * 2.4,
       id: edge.id,
       altitude: arcAltitudeForGlobe(
         a.location.lat,

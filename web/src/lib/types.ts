@@ -33,6 +33,9 @@ export interface UiEvent {
   true_track_deg?: number;
   baro_altitude_m?: number;
   on_ground?: boolean;
+  /** Open-Meteo ingest fields when present. */
+  temperature_2m?: number;
+  wind_speed_10m?: number;
 }
 
 export interface UiSignal {

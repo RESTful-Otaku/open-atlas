@@ -8,6 +8,7 @@
   import { ingestModeLabel } from "../ingest-status";
   import { reconnectNow } from "../connection.svelte";
   import { navigate } from "../router.svelte";
+  import CompactNumber from "./CompactNumber.svelte";
 
   const show = $derived(
     dashboard.dataMode === "live" &&
@@ -37,7 +38,9 @@
         {:else if readiness.ingestStatus}
           Ingest mode: <strong>{ingestModeLabel(readiness.ingestStatus.ingest_mode)}</strong>.
           {#if readiness.ingestStatus.stdb_event_count != null}
-            SpacetimeDB holds <strong>{readiness.ingestStatus.stdb_event_count}</strong>
+            SpacetimeDB holds <strong
+              ><CompactNumber value={readiness.ingestStatus.stdb_event_count} /></strong
+            >
             events.
           {/if}
           If the UI buffer stays at zero after reconnect, refresh the page.

@@ -34,9 +34,7 @@ const COLORS: Record<PublicTrackClass, string> = {
   ship_mil: "rgba(249, 115, 22, 0.9)",
 };
 
-const EARTH_R_KM = 6371;
-/** Exaggerate altitude above the globe surface for visibility. */
-const ALT_SCALE = 4.0;
+import { trackingAltitudeGlobeUnits } from "../map/tracking-altitude";
 
 const MAX_SATS = 90;
 const MAX_AIR = 200;
@@ -286,7 +284,7 @@ export function toTrackingGeoJson(rows: PublicTrackRow[]): GeoJSON.FeatureCollec
 
 export function toTrackingGlobePoints(rows: PublicTrackRow[]): GlobeEventPoint[] {
   return rows.map((r) => {
-    const baseAlt = Math.min(0.14, 0.002 + (r.hKm / EARTH_R_KM) * ALT_SCALE);
+    const baseAlt = trackingAltitudeGlobeUnits(r.hKm, r.class);
     const isIss =
       r.class.startsWith("sat") && /ISS|CSS|TIANGONG|STATION|HUBBLE/i.test(r.name);
     const isAir = r.class === "air";

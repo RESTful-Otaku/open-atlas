@@ -23,8 +23,9 @@
  *
  * # Reconnect strategy
  *
- * The SDK tears down the connection on fatal errors. Reconnect is manual
- * (Settings or the status pill) so a bad subscription does not loop.
+ * On disconnect the client schedules exponential backoff reconnects (max
+ * 8 attempts, 2s base). Operators can still call `reconnectNow()` from
+ * Settings or the status pill to reset backoff immediately.
  */
 
 import { DbConnection, type EventContext } from "./stdb";
@@ -64,6 +65,13 @@ import { installDemoData } from "./demo-install.svelte";
 import { resolveStdbWebSocketUri } from "./stdb-endpoint";
 import { notifyStdbMessage } from "./notify/notify";
 import { NOTIFY_CODES } from "./notify/notify-codes";
+import {
+  logStdbConnected,
+  logStdbConnecting,
+  logStdbDisconnected,
+  logStdbError,
+  logStdbReconnectAttempt,
+} from "./observability/connection-log";
 
 const DEFAULT_MODULE = "openatlas";
 
@@ -79,22 +87,38 @@ let narrativeSubscriptionActive = false;
 /** Views that need narrative rows (Hub, event detail, map with hover). */
 let narrativeConsumerCount = 0;
 
+function syncReconnectUi(): void {
+  dashboard.autoReconnectAttempt =
+    reconnectTimer !== undefined ? reconnectAttempts : 0;
+  dashboard.autoReconnectExhausted =
+    dashboard.dataMode !== "demo" &&
+    reconnectAttempts >= MAX_AUTO_RECONNECT_ATTEMPTS &&
+    reconnectTimer === undefined &&
+    dashboard.connection === "offline";
+}
+
 function clearReconnectTimer(): void {
   if (reconnectTimer !== undefined) {
     clearTimeout(reconnectTimer);
     reconnectTimer = undefined;
   }
+  syncReconnectUi();
 }
 
 function scheduleAutoReconnect(): void {
   if (shuttingDown || dashboard.dataMode === "demo") return;
   if (reconnectTimer !== undefined) return;
-  if (reconnectAttempts >= MAX_AUTO_RECONNECT_ATTEMPTS) return;
+  if (reconnectAttempts >= MAX_AUTO_RECONNECT_ATTEMPTS) {
+    syncReconnectUi();
+    return;
+  }
   const delay = Math.min(
     30_000,
     RECONNECT_BASE_MS * 2 ** reconnectAttempts,
   );
   reconnectAttempts += 1;
+  logStdbReconnectAttempt(reconnectAttempts);
+  syncReconnectUi();
   reconnectTimer = setTimeout(() => {
     reconnectTimer = undefined;
     if (
@@ -127,10 +151,26 @@ export function connectDb(): void {
  * any half-open socket, and open a fresh connection. Use when the pill
  * shows offline or after changing env.
  */
+/** Operator-facing line for Settings / OpsStrip when backoff is active. */
+export function autoReconnectStatusLine(): string | null {
+  if (dashboard.dataMode === "demo") return null;
+  if (dashboard.connection === "connecting") {
+    return "Connecting to SpacetimeDB…";
+  }
+  if (dashboard.autoReconnectExhausted) {
+    return `Auto-reconnect stopped after ${MAX_AUTO_RECONNECT_ATTEMPTS} attempts — use Reconnect in Settings.`;
+  }
+  if (dashboard.autoReconnectAttempt > 0) {
+    return `Auto-reconnect attempt ${dashboard.autoReconnectAttempt} of ${MAX_AUTO_RECONNECT_ATTEMPTS} (exponential backoff).`;
+  }
+  return null;
+}
+
 export function reconnectNow(): void {
   if (shuttingDown) return;
   clearReconnectTimer();
   reconnectAttempts = 0;
+  dashboard.autoReconnectExhausted = false;
   if (dashboard.dataMode === "demo") {
     installDemoData();
     return;
@@ -147,6 +187,7 @@ export function reconnectNow(): void {
   narrativeSubscriptionActive = false;
   setConnectionLastError(null);
   setConnection("connecting");
+  logStdbConnecting();
   openConnection();
 }
 
@@ -159,6 +200,8 @@ export function disconnectDb(): void {
   shuttingDown = true;
   clearReconnectTimer();
   reconnectAttempts = 0;
+  dashboard.autoReconnectAttempt = 0;
+  dashboard.autoReconnectExhausted = false;
   connectionOpening = false;
   narrativeHandlersInstalled = false;
   narrativeSubscriptionActive = false;
@@ -171,6 +214,7 @@ export function disconnectDb(): void {
     activeConnection = null;
   }
   setConnection("offline");
+  logStdbDisconnected("shutdown");
 }
 
 /**
@@ -189,6 +233,7 @@ function openConnection(): void {
   clearReconnectTimer();
   connectionOpening = true;
   setConnection("connecting");
+  logStdbConnecting();
   const uri = resolveStdbWebSocketUri();
   const db = import.meta.env.VITE_STDB_DB ?? DEFAULT_MODULE;
   if (import.meta.env.DEV) {
@@ -210,23 +255,28 @@ function openConnection(): void {
         const msg = error?.message ? String(error.message) : "connect error";
         console.error("spacetimedb connect error", error);
         setConnectionLastError(msg);
+        logStdbError(msg);
         handleLostConnection();
       })
       .onDisconnect((_ctx, error) => {
         if (error) {
           console.warn("spacetimedb disconnected with error", error);
-          setConnectionLastError(
-            error instanceof Error ? error.message : String(error),
-          );
+          const errMsg =
+            error instanceof Error ? error.message : String(error);
+          setConnectionLastError(errMsg);
+          logStdbDisconnected(errMsg);
+        } else {
+          logStdbDisconnected();
         }
         handleLostConnection();
       })
       .build();
   } catch (err) {
     console.error("failed to build SpacetimeDB connection", err);
-    setConnectionLastError(
-      err instanceof Error ? err.message : "failed to build connection",
-    );
+    const buildMsg =
+      err instanceof Error ? err.message : "failed to build connection";
+    setConnectionLastError(buildMsg);
+    logStdbError(buildMsg);
     connectionOpening = false;
     handleLostConnection();
     return;
@@ -239,9 +289,12 @@ function openConnection(): void {
 function onConnected(connection: DbConnection): void {
   connectionOpening = false;
   reconnectAttempts = 0;
+  dashboard.autoReconnectAttempt = 0;
+  dashboard.autoReconnectExhausted = false;
   clearReconnectTimer();
   setConnectionLastError(null);
   setConnection("live");
+  logStdbConnected();
   installRowHandlers(connection);
   subscribeDashboardQueries(connection);
 }
@@ -372,6 +425,7 @@ function subscribeDashboardQueries(connection: DbConnection): void {
       const msg = formatSubscriptionError(err);
       console.error("subscription error", ctx);
       setConnectionLastError(msg);
+      logStdbError(`Subscription: ${msg}`);
       notifyStdbMessage(
         NOTIFY_CODES.STDB_SUBSCRIPTION,
         "Data subscription failed",
@@ -410,4 +464,5 @@ function handleLostConnection(): void {
   }
   setConnection("offline");
   scheduleAutoReconnect();
+  syncReconnectUi();
 }

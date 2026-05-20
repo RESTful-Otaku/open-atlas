@@ -6,11 +6,14 @@
   across economic, health, resource, and transport mockups.
 -->
 <script lang="ts">
+  import CompactNumber from "../../components/CompactNumber.svelte";
   import { TrendArrow } from "../../primitives";
 
   export interface KpiCell {
     readonly label: string;
     readonly value: string;
+    /** When set, renders {@link CompactNumber} instead of the string `value`. */
+    readonly valueNumber?: number;
     readonly delta?: number;
     readonly deltaLabel?: string;
     /** Force a tone; if omitted the trend arrow colours itself from `delta`. */
@@ -30,7 +33,13 @@
   {#each cells as cell (cell.label)}
     <div class="kpi-cell" data-tone={cell.tone ?? "default"}>
       <div class="kpi-label">{cell.label}</div>
-      <div class="kpi-value mono">{cell.value}</div>
+      <div class="kpi-value mono">
+        {#if cell.valueNumber != null}
+          <CompactNumber value={cell.valueNumber} />
+        {:else}
+          {cell.value}
+        {/if}
+      </div>
       {#if cell.delta !== undefined}
         <TrendArrow
           delta={cell.delta}

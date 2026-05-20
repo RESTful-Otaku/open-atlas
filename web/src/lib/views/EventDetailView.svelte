@@ -26,6 +26,10 @@
   useNarrativeSubscription();
   import { domainColor, domainLabel } from "../colors";
   import { signalsForEvent } from "../map/event-map-hover";
+  import {
+    causalNeighborsForEvent,
+    eventDetailPath,
+  } from "../map/causal-neighbors";
   import { domainIcon } from "../domain-icons";
   import {
     PanelHeader,
@@ -57,6 +61,11 @@
   );
   const eventSignals = $derived(
     event ? signalsForEvent(event.id, dashboard.recentSignals, 20) : [],
+  );
+  const causalNeighbors = $derived(
+    event
+      ? causalNeighborsForEvent(event.id, dashboard.recentCausalEdges, 12)
+      : null,
   );
   const domainTrend = $derived(
     event ? (dashboard.domainSeverityHistory[event.domain] ?? []) : [],
@@ -307,6 +316,57 @@
             {/if}
           </div>
         </section>
+
+        {#if causalNeighbors && (causalNeighbors.counts.incoming > 0 || causalNeighbors.counts.outgoing > 0)}
+          <section class="panel ed-causal">
+            <PanelHeader title="Causal links" />
+            <div class="ed-body">
+              <p class="ed-causal-sum mono">
+                {causalNeighbors.counts.incoming} incoming ·
+                {causalNeighbors.counts.outgoing} outgoing
+                <span class="ed-muted-inline">(current ring)</span>
+              </p>
+              {#if causalNeighbors.incoming.length > 0}
+                <h4 class="ed-causal-dir">Upstream</h4>
+                <ul class="ed-causal-list">
+                  {#each causalNeighbors.incoming as link (link.eventId + link.direction)}
+                    <li>
+                      <button
+                        type="button"
+                        class="ed-causal-link"
+                        onclick={() => navigate(eventDetailPath(link.eventId))}
+                      >
+                        #{link.eventId}
+                      </button>
+                      <span class="mono ed-causal-score"
+                        >{link.influenceScore.toFixed(2)}</span
+                      >
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if causalNeighbors.outgoing.length > 0}
+                <h4 class="ed-causal-dir">Downstream</h4>
+                <ul class="ed-causal-list">
+                  {#each causalNeighbors.outgoing as link (link.eventId + link.direction)}
+                    <li>
+                      <button
+                        type="button"
+                        class="ed-causal-link"
+                        onclick={() => navigate(eventDetailPath(link.eventId))}
+                      >
+                        #{link.eventId}
+                      </button>
+                      <span class="mono ed-causal-score"
+                        >{link.influenceScore.toFixed(2)}</span
+                      >
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          </section>
+        {/if}
 
         {#if narrative}
         <section class="panel">
@@ -595,6 +655,55 @@
   .ed-muted {
     color: var(--text-3);
     font-style: italic;
+  }
+  .ed-muted-inline {
+    color: var(--text-3);
+    font-weight: 400;
+    font-style: normal;
+  }
+  .ed-causal-sum {
+    margin: 0 0 var(--space-3);
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .ed-causal-dir {
+    margin: var(--space-2) 0 var(--space-1);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .ed-causal-list {
+    list-style: none;
+    margin: 0 0 var(--space-3);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ed-causal-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: 12px;
+  }
+  .ed-causal-link {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .ed-causal-link:hover {
+    text-decoration: underline;
+  }
+  .ed-causal-score {
+    color: var(--text-3);
+    font-size: 11px;
   }
 
   .ed-disruptions {

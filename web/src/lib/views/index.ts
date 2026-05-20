@@ -140,3 +140,10 @@ export function viewForPattern(pattern: string): ViewCatalogEntry {
 export function hrefForNavEntry(entry: ViewCatalogEntry): string {
   return entry.navHref ?? entry.pattern;
 }
+
+/** Globe and 2D map fill the shell main column; everything else scrolls there. */
+export type MainScrollMode = "fill" | "page";
+
+export function mainScrollModeForPattern(pattern: string): MainScrollMode {
+  return pattern === "/" || pattern === "/map" ? "fill" : "page";
+}
