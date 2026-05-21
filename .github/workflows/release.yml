@@ -1,0 +1,263 @@
+# Semver pre-release: bump from VERSION → tag v* on main → build web + Android + iOS → GitHub pre-release.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump mode
+        type: choice
+        options:
+          - prerelease
+          - none
+        default: prerelease
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump-and-tag:
+    name: Bump version and tag main
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute next version
+        id: bump
+        env:
+          OPENATLAS_BUMP_MODE: ${{ inputs.bump }}
+        run: |
+          chmod +x scripts/ci/*.sh
+          ./scripts/ci/release-bump.sh
+
+      - name: Sync version into projects
+        env:
+          OPENATLAS_RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: ./scripts/ci/sync-version-to-projects.sh
+
+      - name: Commit version bump on main
+        run: |
+          git add VERSION Cargo.toml web/package.json
+          if [[ -f web/android/app/build.gradle ]]; then
+            git add web/android/app/build.gradle
+          fi
+          if [[ -f web/ios/App/App.xcodeproj/project.pbxproj ]]; then
+            git add web/ios/App/App.xcodeproj/project.pbxproj
+          fi
+          if git diff --staged --quiet; then
+            echo "No file changes to commit (version already synced)"
+          else
+            git commit -m "chore(release): ${{ steps.bump.outputs.tag }}"
+          fi
+
+      - name: Create and push tag
+        run: |
+          TAG="${{ steps.bump.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists" >&2
+            exit 1
+          fi
+          git tag -a "$TAG" -m "OpenAtlas ${{ steps.bump.outputs.version }}"
+          git push origin main
+          git push origin "$TAG"
+
+  build-web:
+    name: Build web bundle
+    needs: bump-and-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-and-tag.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Build Maincloud web dist
+        env:
+          OPENATLAS_MOBILE_TARGET: maincloud
+          OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL: "1"
+          OPENATLAS_APP_VERSION: ${{ needs.bump-and-tag.outputs.version }}
+          MOBILE_ENV_REPO_ROOT: ${{ github.workspace }}
+          MOBILE_ENV_WEB: ${{ github.workspace }}/web
+        run: |
+          chmod +x scripts/mobile-env.sh scripts/sync-brand-assets.sh
+          # shellcheck source=scripts/mobile-env.sh
+          source scripts/mobile-env.sh
+          mobile_write_env_local
+          cd web
+          bun install --frozen-lockfile
+          bun run build
+          mkdir -p ../dist/release
+          tar -czf "../dist/release/openatlas-web-${{ needs.bump-and-tag.outputs.version }}.tar.gz" -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-web
+          path: dist/release/openatlas-web-*.tar.gz
+          if-no-files-found: error
+
+  build-android:
+    name: Build Android APK
+    needs: bump-and-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-and-tag.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+
+      - name: Apply version to native projects
+        env:
+          OPENATLAS_RELEASE_VERSION: ${{ needs.bump-and-tag.outputs.version }}
+        run: |
+          chmod +x scripts/ci/*.sh
+          ./scripts/ci/set-native-app-version.sh
+
+      - name: Build Maincloud release APK
+        env:
+          OPENATLAS_MOBILE_TARGET: maincloud
+          OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL: "1"
+          OPENATLAS_MOBILE_VARIANT: release
+          OPENATLAS_APP_VERSION: ${{ needs.bump-and-tag.outputs.version }}
+        run: |
+          chmod +x scripts/mobile-build-apk.sh scripts/ci/*.sh scripts/sync-brand-assets.sh
+          ./scripts/ci/install-android-build-prereqs.sh
+          ./scripts/mobile-build-apk.sh
+          mkdir -p dist/release
+          cp -f dist/mobile/openatlas-maincloud-release-unsigned.apk \
+            "dist/release/openatlas-${{ needs.bump-and-tag.outputs.version }}-maincloud-android.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: dist/release/openatlas-*-maincloud-android.apk
+          if-no-files-found: error
+
+  build-ios:
+    name: Build iOS
+    needs: bump-and-tag
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-and-tag.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Check iOS signing secrets
+        id: signing
+        run: |
+          if [[ -n "${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install iOS codesigning
+        if: steps.signing.outputs.ready == 'true'
+        env:
+          IOS_BUILD_CERTIFICATE_BASE64: ${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}
+          IOS_BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_BUILD_PROVISION_PROFILE_BASE64 }}
+          IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: ./scripts/ci/install-ios-codesign.sh
+
+      - name: Build iOS (Maincloud)
+        env:
+          OPENATLAS_MOBILE_TARGET: maincloud
+          OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL: "1"
+          OPENATLAS_MOBILE_VARIANT: release
+          OPENATLAS_APP_VERSION: ${{ needs.bump-and-tag.outputs.version }}
+          IOS_BUILD_CERTIFICATE_BASE64: ${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}
+          IOS_BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_BUILD_PROVISION_PROFILE_BASE64 }}
+          IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          chmod +x scripts/mobile-build-ios.sh scripts/ci/*.sh scripts/sync-brand-assets.sh
+          ./scripts/mobile-build-ios.sh
+          mkdir -p dist/release
+          VER="${{ needs.bump-and-tag.outputs.version }}"
+          if [[ -f dist/mobile/openatlas-maincloud-ios-simulator.zip ]]; then
+            cp dist/mobile/openatlas-maincloud-ios-simulator.zip \
+              "dist/release/openatlas-${VER}-ios-simulator.zip"
+          fi
+          if [[ -f dist/mobile/openatlas-maincloud-ios.ipa ]]; then
+            cp dist/mobile/openatlas-maincloud-ios.ipa \
+              "dist/release/openatlas-${VER}-maincloud-ios.ipa"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-ios
+          path: dist/release/openatlas-*-ios*
+          if-no-files-found: warn
+
+  publish-github-release:
+    name: Publish GitHub pre-release
+    needs: [bump-and-tag, build-web, build-android, build-ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-and-tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate release notes
+        env:
+          OPENATLAS_RELEASE_VERSION: ${{ needs.bump-and-tag.outputs.version }}
+          OPENATLAS_RELEASE_TAG: ${{ needs.bump-and-tag.outputs.tag }}
+        run: |
+          chmod +x scripts/ci/generate-release-notes.sh
+          ./scripts/ci/generate-release-notes.sh dist/release-notes.md
+
+      - name: Stage release assets
+        run: |
+          mkdir -p dist/upload
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.apk' -o -name '*.ipa' -o -name '*.zip' \) \
+            -exec cp -f {} dist/upload/ \;
+          ls -la dist/upload/
+
+      - name: Create GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.bump-and-tag.outputs.tag }}"
+          VER="${{ needs.bump-and-tag.outputs.version }}"
+          TITLE="OpenAtlas ${VER} (pre-release)"
+          gh release create "$TAG" \
+            --target main \
+            --title "$TITLE" \
+            --notes-file dist/release-notes.md \
+            --prerelease \
+            dist/upload/*
+

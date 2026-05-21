@@ -452,33 +452,25 @@ do_mobile_run() {
 }
 
 do_mobile_ios() {
-    style_header "📱 iOS (build + Xcode)"
+    style_header "📱 iOS (Maincloud build + Xcode)"
     mobile_ensure_deps
+    export OPENATLAS_MOBILE_TARGET="${OPENATLAS_MOBILE_TARGET:-maincloud}"
+    export OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL="${OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL:-1}"
+    export OPENATLAS_MOBILE_VARIANT="${OPENATLAS_MOBILE_VARIANT:-debug}"
+    export MOBILE_ENV_REPO_ROOT="${SCRIPT_DIR}"
+    export MOBILE_ENV_WEB="${FRONTEND_DIR}"
+    chmod +x "${SCRIPT_DIR}/scripts/mobile-build-ios.sh" 2>/dev/null || true
+    "${SCRIPT_DIR}/scripts/mobile-build-ios.sh"
     local os
     os="$(uname -s)"
     if [[ "$os" != "Darwin" ]]; then
-        style_warn "iOS app build and Xcode require macOS — skipped on ${os}"
-        style_muted "On a Mac: ./dev.sh run-ios  (build → cap sync ios → open Xcode)"
-        style_muted "Docs: docs/MOBILE.md#ios-notes"
-        if [[ -d "${FRONTEND_DIR}/ios" ]]; then
-            style_header "Syncing web/dist → existing ios/ (Linux-safe)"
-            do_build_frontend
-            spin "cap sync ios" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync ios"
-            style_ok "ios/ synced — open the project on a Mac to run or archive"
-        else
-            style_muted "No ${FRONTEND_DIR}/ios yet — on Mac run: cd web && bunx cap add ios"
-        fi
+        style_muted "Full IPA / Xcode run requires macOS — web/ios synced above"
         return 0
     fi
-    if [[ ! -d "${FRONTEND_DIR}/ios" ]]; then
-        spin "cap add ios" bash -c "cd '${FRONTEND_DIR}' && bunx cap add ios"
-    fi
-    do_mobile_build
-    spin "cap sync ios" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync ios"
     bash -c "cd '${FRONTEND_DIR}' && bunx cap open ios"
-    style_ok "Opened Xcode — select a simulator or device, then Product → Run (⌘R)"
-    style_muted "First run: set Signing & Capabilities team in Xcode (Apple Developer account)"
-    style_muted "Simulator: iPhone 15+ recommended · Archive: Product → Archive for TestFlight"
+    style_ok "Opened Xcode — select simulator or device, then Product → Run (⌘R)"
+    style_muted "Maincloud STDB + Gemini in Settings · IPA: OPENATLAS_MOBILE_VARIANT=release ./scripts/mobile-build-ios.sh"
+    style_muted "First run: Signing & Capabilities → your Apple team"
 }
 
 ensure_frontend_deps() {

@@ -72,6 +72,13 @@ jobs:
           OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
         run: ./scripts/ci/write-feed-secrets-from-env.sh
 
+      - name: Install SpacetimeDB CLI
+        run: ./scripts/ci/install-spacetimedb-cli.sh
+
+      - name: Install jq (verify_feeds)
+        if: inputs.verify_feeds
+        run: sudo apt-get update -qq && sudo apt-get install -y jq
+
       - name: e2e-qa compile gates
         env:
           OPENATLAS_INGEST_MODE: sim

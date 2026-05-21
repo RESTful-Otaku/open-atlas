@@ -11,6 +11,7 @@ OpenAtlas uses **path-filtered** GitHub Actions workflows so PRs only run checks
 | **Staging** | `deploy-staging.yml` | After QA succeeds (or manual) | Build artifacts → staging environment |
 | **Production** | `deploy-production.yml` | Manual only | Approval-gated promotion |
 | **Nightly** | `nightly.yml` | Cron 04:00 UTC | Full matrix + optional live stack smoke |
+| **Release** | `release.yml` | Manual (`workflow_dispatch`) | Semver pre-release tag on `main` + web/Android/iOS assets |
 
 ## Path filters
 
@@ -111,9 +112,55 @@ Set repository **Variables** (optional):
 - `PRODUCTION_STDB_URI` — passed to `VITE_STDB_URI` at build time
 - `PRODUCTION_STDB_DB`
 
+## Release (`release.yml`)
+
+**Trigger:** Actions → **Release** → Run workflow (branch **main**).
+
+**Version source:** repo root [`VERSION`](../VERSION) holds the prerelease channel (e.g. `1.0.0-alpha`). Each run auto-increments the numeric suffix from existing git tags (`v1.0.0-alpha.1` → `v1.0.0-alpha.2`).
+
+| Input | Meaning |
+|-------|---------|
+| `prerelease` (default) | Bump alpha prerelease number from tags |
+| `none` | Use `VERSION` as-is (no increment) |
+
+**Steps:**
+
+1. Commit synced versions to `main` (`package.json`, `Cargo.toml`, native app metadata)
+2. Annotated tag `v{version}` on `main`
+3. Build **Maincloud** web tarball, Android release APK, iOS simulator (+ IPA if `IOS_*` secrets set)
+4. GitHub **pre-release** with generated changelog (commits since previous tag)
+
+**Artifacts on the GitHub Release:**
+
+- `openatlas-web-{version}.tar.gz`
+- `openatlas-{version}-maincloud-android.apk`
+- `openatlas-{version}-ios-simulator.zip` (and `-maincloud-ios.ipa` when signed)
+
+Mobile-only workflows (`mobile-android.yml`, `mobile-ios.yml`) remain for ad-hoc builds; semver releases use **Release** only.
+
 ## Nightly (`nightly.yml`)
 
 Full rust + web + STDB build; optional `e2e-qa` with local SpacetimeDB (`continue-on-error` for stack smoke). **Not required for merge.**
+
+## CI runner prerequisites
+
+Scripts under `scripts/ci/` keep workflows aligned. When adding a job that runs these commands, include the matching setup step.
+
+| Command / script | Requires |
+|------------------|----------|
+| `./scripts/e2e-qa.sh` | Rust (stable), bun, **SpacetimeDB CLI** (`install-spacetimedb-cli.sh`) |
+| `e2e-qa.sh --verify-feeds` | Above + **jq** + live ingest / feed secrets |
+| `./scripts/mobile-build-apk.sh` | bun, **JDK 21** (`actions/setup-java` + `install-android-build-prereqs.sh`), Android SDK |
+| `./scripts/mobile-build-ios.sh` | **macOS** + Xcode, bun; optional `IOS_*` secrets for IPA |
+| `spacetime build` | **SpacetimeDB CLI** |
+
+Common failures:
+
+| Error | Fix |
+|-------|-----|
+| `spacetime CLI not found` | Run `./scripts/ci/install-spacetimedb-cli.sh` before `e2e-qa` / wasm build |
+| `invalid source release: 21` | Use `java-version: "21"` (not 17); verify with `install-android-build-prereqs.sh` |
+| Release APK missing on `v*` tag | `mobile-android.yml` builds `release` on tag pushes (not debug only) |
 
 ## Reusable workflows
 
@@ -121,7 +168,7 @@ Full rust + web + STDB build; optional `e2e-qa` with local SpacetimeDB (`continu
 |------|-----|
 | `reusable-rust.yml` | Callable fmt / clippy / test |
 | `reusable-web.yml` | Callable check / unit / e2e |
-| `reusable-stdb.yml` | Callable STDB wasm build |
+| `reusable-stdb.yml` | Callable STDB wasm build (installs SpacetimeDB CLI) |
 
 Extend these when adding new workflows to avoid drift.
 

@@ -32,9 +32,9 @@ require_cmd() {
 }
 
 require_cmd bun "https://bun.sh"
-require_cmd java "JDK 17+ (see ./dev.sh mobile:doctor)"
+require_cmd java "JDK 21 (see ./dev.sh mobile:doctor)"
 
-# Gradle must not use Java 26 (jlink/androidJdkImage fails). Prefer JDK 21/17.
+# Gradle must not use Java 26 (jlink/androidJdkImage fails). Capacitor requires JDK 21.
 # shellcheck source=scripts/mobile-android-toolchain.sh
 source "${ROOT}/scripts/mobile-android-toolchain.sh"
 mobile_tc_load_env_file
@@ -57,6 +57,11 @@ fi
 
 if [[ ! -d "${WEB}/android" ]]; then
   (cd "$WEB" && bunx cap add android)
+fi
+
+if [[ -n "${OPENATLAS_APP_VERSION:-}" ]]; then
+  export OPENATLAS_RELEASE_VERSION="${OPENATLAS_APP_VERSION}"
+  bash "${ROOT}/scripts/ci/set-native-app-version.sh" 2>/dev/null || true
 fi
 
 log "==> Vite production build"

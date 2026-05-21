@@ -137,4 +137,7 @@ EOF
       _mobile_env_log "mobile env: emulator → 10.0.2.2 (local ./dev.sh stack)"
       ;;
   esac
+  if [[ -n "${OPENATLAS_APP_VERSION:-}" ]]; then
+    printf 'VITE_APP_VERSION=%s\n' "${OPENATLAS_APP_VERSION}" >>"$MOBILE_ENV_DEST"
+  fi
 }

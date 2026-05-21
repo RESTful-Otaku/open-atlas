@@ -11,8 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install SpacetimeDB CLI
-        run: |
-          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: ./scripts/ci/install-spacetimedb-cli.sh
       - name: Build WASM module
         run: spacetime build --module-path crates/openatlas-stdb-module
