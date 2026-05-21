@@ -34,6 +34,12 @@ require_cmd() {
 require_cmd bun "https://bun.sh"
 require_cmd java "JDK 17+ (see ./dev.sh mobile:doctor)"
 
+# Gradle must not use Java 26 (jlink/androidJdkImage fails). Prefer JDK 21/17.
+# shellcheck source=scripts/mobile-android-toolchain.sh
+source "${ROOT}/scripts/mobile-android-toolchain.sh"
+mobile_tc_load_env_file
+mobile_tc_ensure_java17
+
 mobile_write_env_local
 log "wrote ${WEB}/.env.local (target=${TARGET}, variant=${VARIANT})"
 
