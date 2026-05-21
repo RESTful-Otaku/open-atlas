@@ -62,6 +62,7 @@ import {
   hydrateNarrativesFromConnection,
 } from "./sync-dashboard-cache";
 import { installDemoData } from "./demo-install.svelte";
+import { stdbDatabaseName } from "./native-config";
 import { resolveStdbWebSocketUri } from "./stdb-endpoint";
 import { notifyStdbMessage } from "./notify/notify";
 import { NOTIFY_CODES } from "./notify/notify-codes";
@@ -235,7 +236,7 @@ function openConnection(): void {
   setConnection("connecting");
   logStdbConnecting();
   const uri = resolveStdbWebSocketUri();
-  const db = import.meta.env.VITE_STDB_DB ?? DEFAULT_MODULE;
+  const db = stdbDatabaseName() || DEFAULT_MODULE;
   if (import.meta.env.DEV) {
     console.info(
       "[openatlas] SpacetimeDB",

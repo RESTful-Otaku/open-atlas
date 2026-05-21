@@ -11,6 +11,9 @@ import {
   type IngestServiceStatus,
 } from "./ingest-status";
 import { shouldProbeIngest, shouldProbeLlm } from "./native-config";
+import { appendOpsLog } from "./observability/log-stream";
+import { formatLlmProbeLog, formatReadinessLog } from "./observability/ops-log-format";
+import { fetchLlmHealth } from "./ops/ops-console";
 import { dashboard } from "./state.svelte";
 
 export const readiness = $state({
@@ -20,6 +23,8 @@ export const readiness = $state({
   readinessRefreshing: false,
   ingestCheckErr: null as string | null,
 });
+
+let lastReadinessLogKey = "";
 
 async function fetchIngestOk(): Promise<{
   ok: boolean | null;
@@ -127,6 +132,49 @@ export async function refreshRemoteReadiness(): Promise<void> {
     readiness.ingestReady = ing.ok;
     readiness.ingestStatus = ing.status;
     readiness.ingestCheckErr = ing.err;
+
+    const logKey = [
+      ing.ok,
+      ing.err,
+      ing.status?.ingest_mode,
+      llm,
+      dashboard.dataMode,
+      dashboard.connection,
+      dashboard.connectionLastError,
+    ].join("|");
+    if (logKey !== lastReadinessLogKey) {
+      lastReadinessLogKey = logKey;
+      appendOpsLog(
+        ing.ok === true ? "ok" : ing.ok === false ? "error" : "info",
+        "readiness",
+        formatReadinessLog({
+          ok: ing.ok,
+          err: ing.err,
+          mode: ing.status?.ingest_mode,
+        }),
+      );
+      if (llm !== null && shouldProbeLlm()) {
+        const llmDetail = await fetchLlmHealth();
+        appendOpsLog(
+          llmDetail.ready ? "ok" : llmDetail.configured ? "warn" : "info",
+          "llm",
+          formatLlmProbeLog(llmDetail),
+        );
+      } else if (usesClientSideLlm()) {
+        appendOpsLog(
+          readiness.llmReady ? "ok" : "warn",
+          "llm",
+          readiness.llmReady
+            ? "Cloud LLM provider configured (Settings)"
+            : "Cloud LLM not ready — add API key in Settings",
+        );
+      }
+      appendOpsLog(
+        dashboard.connection === "live" ? "ok" : dashboard.connection === "connecting" ? "info" : "warn",
+        "app",
+        `UI state: dataMode=${dashboard.dataMode} connection=${dashboard.connection}${dashboard.connectionLastError ? ` · ${dashboard.connectionLastError}` : ""}`,
+      );
+    }
   } finally {
     readiness.readinessRefreshing = false;
   }

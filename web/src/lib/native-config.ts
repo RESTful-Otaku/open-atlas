@@ -8,6 +8,13 @@
  */
 
 import { isNativeApp } from "./mobile-layout";
+import {
+  loadMobileRuntimeConfig,
+  mobileRuntimeConfigEnabled,
+  resolveRuntimeIngestBase,
+  resolveRuntimeLlmBase,
+  resolveRuntimeStdbUri,
+} from "./mobile-runtime-config";
 
 const DEFAULT_LLM_BASE = "/api/llm";
 
@@ -26,6 +33,9 @@ export function joinServiceUrl(base: string, path: string): string {
 
 /** Ingest HTTP base (`openatlas-ingest` on :8080). Empty = same-origin / Vite proxy. */
 export function ingestBaseUrl(): string {
+  if (mobileRuntimeConfigEnabled()) {
+    return resolveRuntimeIngestBase();
+  }
   return trimBase(import.meta.env.VITE_INGEST_BASE as string | undefined);
 }
 
@@ -35,17 +45,26 @@ export function ingestUrl(path: string): string {
 
 /** LLM bridge base. Defaults to `/api/llm` (Vite proxy in dev). */
 export function llmBaseUrl(): string {
+  if (mobileRuntimeConfigEnabled()) {
+    const runtime = resolveRuntimeLlmBase();
+    return runtime || "";
+  }
   const fromEnv = trimBase(import.meta.env.VITE_LLM_BASE as string | undefined);
   return fromEnv || DEFAULT_LLM_BASE;
 }
 
-/** SpacetimeDB module name (build-time). */
+/** SpacetimeDB module name (build-time or mobile runtime override). */
 export function stdbDatabaseName(): string {
+  if (mobileRuntimeConfigEnabled()) {
+    return loadMobileRuntimeConfig().stdbDb;
+  }
   return (import.meta.env.VITE_STDB_DB as string | undefined)?.trim() || "openatlas";
 }
 
 /** Raw `VITE_STDB_URI` when set at build time (required for native against cloud/LAN). */
 export function stdbUriFromEnv(): string | undefined {
+  const runtime = resolveRuntimeStdbUri();
+  if (runtime) return runtime;
   const raw = (import.meta.env.VITE_STDB_URI as string | undefined)?.trim();
   return raw || undefined;
 }

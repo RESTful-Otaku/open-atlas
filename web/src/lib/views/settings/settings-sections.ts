@@ -5,9 +5,11 @@ import {
   FlaskConical,
   Radio,
   Settings as SettingsIcon,
+  Smartphone,
 } from "@lucide/svelte";
 
 export type SettingsSectionId =
+  | "deployment"
   | "stdb"
   | "ops"
   | "appearance"
@@ -26,6 +28,12 @@ export type SettingsSectionMeta = {
 };
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
+  {
+    id: "deployment",
+    title: "Deployment (cloud / live / demo)",
+    icon: Smartphone,
+    class: "settings-group",
+  },
   { id: "stdb", title: "SpacetimeDB stream", icon: Radio, anchorId: "stdb", class: "settings-group" },
   {
     id: "ops",
