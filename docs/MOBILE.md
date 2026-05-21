@@ -31,8 +31,9 @@ Requires ImageMagick (`magick` or `convert`). Adaptive icon background matches t
 From the repo root:
 
 ```bash
-./dev.sh run-android       # Recommended: full pipeline (see below)
-./dev.sh mobile:doctor     # Check JDK 17, SDK, adb, Pixel 9 Pro AVD (no build)
+./dev.sh run-android              # Maincloud QA on emulator (like production phone + host ingest)
+./dev.sh run-android:local        # Local ./dev.sh stack via 10.0.2.2
+./dev.sh mobile:doctor            # Check JDK, SDK, adb, Pixel 9 Pro AVD (no build)
 ./dev.sh mobile:setup      # bootstrap toolchain + cap add android + first sync
 ./dev.sh mobile:build      # vite build + cap sync
 ./dev.sh mobile:android    # bootstrap + debug APK via Gradle
@@ -51,9 +52,9 @@ This command is **idempotent** and handles missing dependencies when possible:
 
 1. **Toolchain bootstrap** — JDK 17 (`JAVA_HOME`, not Java 26), `ANDROID_HOME`, SDK packages, creates **`OpenAtlas_Pixel_9_Pro`** AVD (`pixel_9_pro` device profile) if missing
 2. **`bun test src/lib`** (skip with `OPENATLAS_MOBILE_SKIP_TESTS=1`)
-3. **`web/.env.local`** from `.env.mobile.example` (emulator `10.0.2.2`) or Maincloud template
-4. **Vite build** + **`cap sync android`**
-5. **Start emulator** (prefers `OpenAtlas_Pixel_9_Pro`, KVM/GPU when `/dev/kvm` exists)
+3. **Start emulator** (so env targets the emulator gateway when auto-detecting)
+4. **`web/.env.capacitor.local`** from `scripts/mobile-env.sh` (Maincloud + `10.0.2.2` ingest by default)
+5. **`bun run build:cap`** (Vite `--mode capacitor`) + **`cap sync android`**
 6. **`./gradlew assembleDebug`** → **`adb install -r`** → launch **`com.openatlas.app/.MainActivity`**
 
 Persisted env after bootstrap: **`.dev/android.env`** (gitignored) — `JAVA_HOME`, `ANDROID_HOME`, `PATH`, `OPENATLAS_AVD_NAME`.
@@ -81,34 +82,36 @@ OPENATLAS_ANDROID_DEVICE_ID=pixel_9_pro OPENATLAS_ANDROID_API_LEVEL=36  # defaul
 
 ### Build targets (env baked into APK)
 
-`./dev.sh run-android` **always regenerates** `web/.env.local` for the detected target (backs up the previous file):
+`./dev.sh run-android` writes **`web/.env.capacitor.local`** (gitignored) and builds with **`bun run build:cap`** so env is actually baked into the APK. It does **not** overwrite `web/.env.local` (desktop Vite dev keeps using the proxy).
 
 | Target | When | `VITE_*` endpoints |
 |--------|------|-------------------|
-| **emulator** (default) | `adb` serial `emulator-*` or no device | `10.0.2.2` → host STDB `:3000`, ingest `:8080`, LLM `:3847` |
+| **maincloud-emulator** (default for `run-android`) | Menu “Maincloud QA” or auto when `adb` sees `emulator-*` | `wss://maincloud.spacetimedb.com` + `10.0.2.2` ingest `:8080` / LLM `:3847` + `VITE_NATIVE_DEFAULT_LLM=gemini` |
+| **emulator** | `run-android:local` or explicit override | `10.0.2.2` → host STDB `:3000`, ingest `:8080`, LLM `:3847` |
 | **device** | USB/Wi‑Fi physical device | Auto LAN IP → same ports on your machine |
-| **maincloud** | Cloud STDB; on **emulator** also `10.0.2.2` ingest/LLM | `wss://maincloud.spacetimedb.com` + optional host `:8080` / `:3847` |
+| **maincloud** + `MAINCLOUD_PHYSICAL=1` | Release APK / physical phone | Maincloud STDB only (Gemini in Settings) |
 
 ```bash
-# Emulator + local ./dev.sh stack (start STDB/ingest/LLM on laptop first)
+# Recommended: Maincloud QA on emulator (matches phone STDB; host ingest for feeds/ops console)
+OPENATLAS_STDB_URI=https://maincloud.spacetimedb.com OPENATLAS_STDB_DB=openatlas \
+  OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh ingest:start
 ./dev.sh run-android
+# or: make mobile-run-maincloud
 
-# Physical phone: Maincloud STDB + ingest/LLM on laptop (same Wi‑Fi) — recommended for testing feeds
+# Local ./dev.sh stack on emulator (STDB + ingest on laptop)
+./dev.sh up
+./dev.sh run-android:local
+
+# Physical phone: Maincloud STDB + ingest/LLM on laptop (same Wi‑Fi)
 ./dev.sh spacetime:publish:cloud
 OPENATLAS_STDB_URI=https://maincloud.spacetimedb.com OPENATLAS_STDB_DB=openatlas ./dev.sh ingest:start
 OPENATLAS_MOBILE_TARGET=maincloud-lan ./scripts/mobile-build-apk.sh
 
-# Physical phone: Maincloud STDB only (no ingest URLs; no bogus JSON errors)
-OPENATLAS_MOBILE_TARGET=maincloud ./scripts/mobile-build-apk.sh
-
-# Emulator + Maincloud STDB + host ingest via 10.0.2.2
-OPENATLAS_MOBILE_TARGET=maincloud ./dev.sh run-android
-
-# Physical device on same Wi‑Fi as laptop running ./dev.sh
-OPENATLAS_MOBILE_TARGET=device ./dev.sh run-android
+# Production-like phone APK (STDB only)
+OPENATLAS_MOBILE_TARGET=maincloud OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL=1 ./scripts/mobile-build-apk.sh
 ```
 
-Local stack must listen so the emulator can reach the host (`10.0.2.2` maps to your machine’s loopback). Run `./dev.sh up` before `run-android` for emulator testing.
+**Ingest on emulator:** the WebView calls `http://10.0.2.2:8080`, which maps to your laptop. Ingest must listen on **`0.0.0.0:8080`** — `run-android` warns if `/health` is down. Use `OPENATLAS_INGEST_LAN_BIND=1` or `./dev.sh run:cloud:live` before the mobile build.
 
 Makefile aliases: `make mobile-setup`, `make mobile-build`, `make mobile-android`, etc.
 

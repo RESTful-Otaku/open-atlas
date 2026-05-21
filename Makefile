@@ -114,8 +114,19 @@ mobile-android-release:
 mobile-apk-maincloud:
 	@OPENATLAS_MOBILE_TARGET=maincloud OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL=1 ./scripts/mobile-build-apk.sh
 
+# Physical phone: all deployment modes via Settings → Deployment (flex operator APK)
+mobile-apk-flex:
+	@OPENATLAS_MOBILE_TARGET=flex OPENATLAS_MOBILE_VARIANT=release ./scripts/mobile-build-apk.sh
+	@cp -f dist/mobile/openatlas-flex-release-unsigned.apk dist/mobile/openatlas-release.apk
+
 mobile-dev:
 	@./dev.sh mobile:dev
+
+mobile-run-maincloud:
+	@./dev.sh run-android:maincloud
+
+mobile-run-local:
+	@./dev.sh run-android:local
 
 mobile-ios:
 	@./dev.sh mobile:ios

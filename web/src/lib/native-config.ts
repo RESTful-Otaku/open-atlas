@@ -7,16 +7,30 @@
  * (`10.0.2.2` on Android emulator, LAN IP on physical hardware).
  */
 
+import { buildEnvIngestBase, buildEnvLlmBase, buildEnvStdbUri } from "./mobile-build-env";
 import { isNativeApp } from "./mobile-layout";
 import {
   loadMobileRuntimeConfig,
-  mobileRuntimeConfigEnabled,
+  deploymentConfigEnabled,
   resolveRuntimeIngestBase,
   resolveRuntimeLlmBase,
   resolveRuntimeStdbUri,
 } from "./mobile-runtime-config";
 
 const DEFAULT_LLM_BASE = "/api/llm";
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+/** Web dev: use Vite same-origin proxy instead of absolute loopback URLs. */
+function preferViteProxyOnWebDev(base: string): string {
+  if (!base || !import.meta.env.DEV || isNativeApp()) return base;
+  try {
+    if (LOOPBACK_HOSTS.has(new URL(base).hostname.toLowerCase())) return "";
+  } catch {
+    /* keep base */
+  }
+  return base;
+}
 
 function trimBase(raw: string | undefined): string {
   const t = raw?.trim();
@@ -33,10 +47,11 @@ export function joinServiceUrl(base: string, path: string): string {
 
 /** Ingest HTTP base (`openatlas-ingest` on :8080). Empty = same-origin / Vite proxy. */
 export function ingestBaseUrl(): string {
-  if (mobileRuntimeConfigEnabled()) {
-    return resolveRuntimeIngestBase();
+  const baked = buildEnvIngestBase();
+  if (deploymentConfigEnabled()) {
+    return preferViteProxyOnWebDev(resolveRuntimeIngestBase() || baked);
   }
-  return trimBase(import.meta.env.VITE_INGEST_BASE as string | undefined);
+  return preferViteProxyOnWebDev(baked);
 }
 
 export function ingestUrl(path: string): string {
@@ -45,17 +60,20 @@ export function ingestUrl(path: string): string {
 
 /** LLM bridge base. Defaults to `/api/llm` (Vite proxy in dev). */
 export function llmBaseUrl(): string {
-  if (mobileRuntimeConfigEnabled()) {
-    const runtime = resolveRuntimeLlmBase();
-    return runtime || "";
+  const baked = buildEnvLlmBase();
+  let base: string;
+  if (deploymentConfigEnabled()) {
+    base = resolveRuntimeLlmBase() || baked;
+  } else {
+    base = baked;
   }
-  const fromEnv = trimBase(import.meta.env.VITE_LLM_BASE as string | undefined);
-  return fromEnv || DEFAULT_LLM_BASE;
+  base = preferViteProxyOnWebDev(base);
+  return base || DEFAULT_LLM_BASE;
 }
 
 /** SpacetimeDB module name (build-time or mobile runtime override). */
 export function stdbDatabaseName(): string {
-  if (mobileRuntimeConfigEnabled()) {
+  if (deploymentConfigEnabled()) {
     return loadMobileRuntimeConfig().stdbDb;
   }
   return (import.meta.env.VITE_STDB_DB as string | undefined)?.trim() || "openatlas";
@@ -63,10 +81,11 @@ export function stdbDatabaseName(): string {
 
 /** Raw `VITE_STDB_URI` when set at build time (required for native against cloud/LAN). */
 export function stdbUriFromEnv(): string | undefined {
-  const runtime = resolveRuntimeStdbUri();
-  if (runtime) return runtime;
-  const raw = (import.meta.env.VITE_STDB_URI as string | undefined)?.trim();
-  return raw || undefined;
+  const baked = buildEnvStdbUri();
+  if (deploymentConfigEnabled()) {
+    return resolveRuntimeStdbUri() || baked || undefined;
+  }
+  return baked || undefined;
 }
 
 /** Ingest HTTP base is set (required on native; empty uses Vite proxy on web). */

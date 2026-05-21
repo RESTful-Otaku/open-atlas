@@ -304,6 +304,127 @@ button {
   font-family: inherit;
 }
 
+/* -------------------------------------------------------------------------
+   Buttons — shared (.btn) for Settings, feeds, deployment, banners, etc.
+   Child Svelte components cannot rely on parent scoped styles; define once.
+   ------------------------------------------------------------------------- */
+.btn,
+button.btn,
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  color: var(--text-1);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  box-shadow: var(--shadow-sm);
+  transition:
+    background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease),
+    filter var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-3);
+  border-color: var(--border-2);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn--primary,
+.btn.primary,
+.btn.is-primary {
+  background: linear-gradient(
+    135deg,
+    var(--accent) 0%,
+    var(--accent-violet) 100%
+  );
+  color: #0b0b0f;
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+    var(--shadow-sm);
+}
+
+.btn--primary:hover:not(:disabled),
+.btn.primary:hover:not(:disabled),
+.btn.is-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  background: linear-gradient(
+    135deg,
+    var(--accent) 0%,
+    var(--accent-violet) 100%
+  );
+  border-color: transparent;
+}
+
+.btn-sm,
+.btn.btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+}
+
+.btn-link,
+.btn.btn-link,
+a.btn.btn-link {
+  padding: 8px 12px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--accent);
+}
+
+.btn-link:hover:not(:disabled),
+a.btn.btn-link:hover {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent-strong);
+}
+
+.settings-actions,
+.deploy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-3);
+}
+
 /* Scrollbar. */
 ::-webkit-scrollbar {
   width: 10px;
@@ -913,18 +1034,32 @@ html[data-mobile-layout] :global(.settings .card > :last-child) {
 }
 
 html[data-compact-layout] :global(.settings .btn),
+html[data-compact-layout] :global(.settings-mobile-detail-body .btn),
+html[data-compact-layout] :global(.deploy-panel .btn),
 html[data-compact-layout] :global(.settings .theme-card),
 html[data-compact-layout] :global(.settings label),
 html[data-compact-layout] :global(.settings input[type="text"]),
 html[data-compact-layout] :global(.settings input[type="url"]),
 html[data-compact-layout] :global(.settings select),
 html[data-mobile-layout] :global(.settings .btn),
+html[data-mobile-layout] :global(.settings-mobile-detail-body .btn),
+html[data-mobile-layout] :global(.deploy-panel .btn),
 html[data-mobile-layout] :global(.settings .theme-card),
 html[data-mobile-layout] :global(.settings label),
 html[data-mobile-layout] :global(.settings input[type="text"]),
 html[data-mobile-layout] :global(.settings input[type="url"]),
 html[data-mobile-layout] :global(.settings select) {
   min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.settings .btn),
+html[data-compact-layout] :global(.settings-mobile-detail-body .btn),
+html[data-compact-layout] :global(.deploy-panel .btn),
+html[data-mobile-layout] :global(.settings .btn),
+html[data-mobile-layout] :global(.settings-mobile-detail-body .btn),
+html[data-mobile-layout] :global(.deploy-panel .btn) {
+  padding: 10px 16px;
+  font-size: 14px;
 }
 
 html[data-compact-layout] :global(.settings .theme-grid),

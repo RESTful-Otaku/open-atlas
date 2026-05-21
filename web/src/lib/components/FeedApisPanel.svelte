@@ -204,7 +204,7 @@
         {/each}
       </div>
       <p class="settings-actions">
-        <button type="button" class="btn primary" disabled={saving} onclick={() => void saveKeys()}>
+        <button type="button" class="btn btn--primary" disabled={saving} onclick={() => void saveKeys()}>
           <Save size={14} strokeWidth={1.75} />
           {saving ? "Saving…" : "Save API keys"}
         </button>
@@ -432,21 +432,7 @@
   .feed-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-  }
-  .btn-sm {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    font-size: 11px;
-  }
-  .btn.primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border-color: var(--accent);
-    color: var(--text-1);
+    gap: var(--space-2);
   }
   .warn {
     color: #fbbf24;

@@ -10,7 +10,7 @@ import {
   fetchIngestStatus,
   type IngestServiceStatus,
 } from "./ingest-status";
-import { shouldProbeIngest, shouldProbeLlm } from "./native-config";
+import { ingestUrl, shouldProbeIngest, shouldProbeLlm } from "./native-config";
 import { appendOpsLog } from "./observability/log-stream";
 import { formatLlmProbeLog, formatReadinessLog } from "./observability/ops-log-format";
 import { fetchLlmHealth } from "./ops/ops-console";
@@ -40,9 +40,14 @@ async function fetchIngestOk(): Promise<{
     fetchIngestStatus(),
   ]);
   if (!healthy && !result.ok) {
+    const probe = ingestUrl("/health");
     return {
       ok: false,
-      err: result.err ?? "ingest unreachable (is ./dev.sh up running?)",
+      err:
+        result.err ??
+        (probe
+          ? `ingest unreachable at ${probe} — run OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh start:cloud:live on your PC (emulator: use 10.0.2.2)`
+          : "ingest unreachable (configure ingest URL in Settings → Deployment)"),
       status: null,
     };
   }

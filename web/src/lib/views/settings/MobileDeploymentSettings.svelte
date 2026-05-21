@@ -4,20 +4,27 @@
     enableDemoModeAndReload,
     exitDemoModeAndReload,
   } from "../../demo-mode";
+  import { onMount } from "svelte";
   import {
     configForProfile,
-    DEPLOYMENT_PROFILES,
+    deploymentConfigEnabled,
+    deploymentProfilesForPlatform,
     devIngestCommandForProfile,
+    isAndroidEmulator,
     loadMobileRuntimeConfig,
-    mobileRuntimeConfigEnabled,
+    normalizeMobileRuntimeConfig,
     profileUsesLanIngest,
     resolveIngestBaseFromConfig,
     resolveLlmBaseFromConfig,
     resolveStdbUriFromConfig,
     saveMobileRuntimeConfig,
+    WEB_DEV_HOST,
     type DeploymentProfileId,
     type MobileRuntimeConfig,
   } from "../../mobile-runtime-config";
+  import { EMULATOR_GATEWAY_HOST } from "../../dev-machine-host";
+  import { ingestBaseUrl, llmBaseUrl } from "../../native-config";
+  import { isNativeApp } from "../../mobile-layout";
   import { ingestModeLabel } from "../../ingest-status";
   import { readiness, refreshRemoteReadiness } from "../../readiness.svelte";
   import { dashboard } from "../../state.svelte";
@@ -27,44 +34,79 @@
   let applying = $state(false);
 
   const effectiveStdb = $derived(resolveStdbUriFromConfig(draft) ?? "(demo — no socket)");
-  const effectiveIngest = $derived(resolveIngestBaseFromConfig(draft) || "(not probed)");
-  const effectiveLlm = $derived(resolveLlmBaseFromConfig(draft) || "(Gemini / Settings)");
+  const effectiveIngestResolved = $derived(resolveIngestBaseFromConfig(draft));
+  const effectiveIngest = $derived(
+    effectiveIngestResolved
+      ? import.meta.env.DEV && !isNativeApp() && ingestBaseUrl() === ""
+        ? "(Vite proxy — same origin)"
+        : effectiveIngestResolved
+      : draft.profile === "cloud_live"
+        ? import.meta.env.DEV
+          ? "(Vite proxy when ingest running)"
+          : "(not probed)"
+        : "(not probed)",
+  );
+  const effectiveLlmResolved = $derived(resolveLlmBaseFromConfig(draft));
+  const effectiveLlm = $derived(
+    effectiveLlmResolved
+      ? import.meta.env.DEV && !isNativeApp() && llmBaseUrl() === "/api/llm"
+        ? "/api/llm (Vite proxy)"
+        : effectiveLlmResolved
+      : "(Gemini / Settings)",
+  );
+  const profiles = $derived(deploymentProfilesForPlatform());
+  const onNative = $derived(isNativeApp());
 
   const needsLan = $derived(
     profileUsesLanIngest(draft.profile) ||
       (draft.profile === "custom" && !draft.ingestBaseCustom),
   );
   const devCmd = $derived(devIngestCommandForProfile(draft.profile));
+  const onEmulator = $derived(isAndroidEmulator());
+
+  onMount(() => {
+    if (!onEmulator) return;
+    if (!profileUsesLanIngest(draft.profile) && draft.profile !== "local_emulator") return;
+    if (draft.lanHost.trim()) return;
+    draft = normalizeMobileRuntimeConfig(
+      configForProfile(draft.profile, { ...draft, lanHost: EMULATOR_GATEWAY_HOST }),
+    );
+  });
 
   function pickProfile(id: DeploymentProfileId): void {
-    draft = configForProfile(id, draft);
+    draft = normalizeMobileRuntimeConfig(configForProfile(id, draft));
   }
 
-  function applyDeployment(): void {
+  async function applyDeployment(): Promise<void> {
     applying = true;
-    saveMobileRuntimeConfig(draft);
-    saved = { ...draft };
-
-    if (draft.profile === "demo") {
-      enableDemoModeAndReload();
-      return;
-    }
-
-    const wasDemo = dashboard.dataMode === "demo";
     try {
-      localStorage.removeItem("openatlas-demo-mode");
-    } catch {
-      /* */
-    }
+      const normalized = normalizeMobileRuntimeConfig(draft);
+      draft = normalized;
+      saveMobileRuntimeConfig(normalized);
+      saved = { ...normalized };
 
-    if (wasDemo) {
-      exitDemoModeAndReload();
-      return;
-    }
+      if (draft.profile === "demo") {
+        enableDemoModeAndReload();
+        return;
+      }
 
-    reconnectNow();
-    void refreshRemoteReadiness();
-    applying = false;
+      const wasDemo = dashboard.dataMode === "demo";
+      try {
+        localStorage.removeItem("openatlas-demo-mode");
+      } catch {
+        /* */
+      }
+
+      if (wasDemo) {
+        exitDemoModeAndReload();
+        return;
+      }
+
+      reconnectNow();
+      await refreshRemoteReadiness();
+    } finally {
+      applying = false;
+    }
   }
 
   function resetDraft(): void {
@@ -72,17 +114,22 @@
   }
 </script>
 
-{#if mobileRuntimeConfigEnabled()}
+{#if deploymentConfigEnabled()}
   <div class="deploy-panel">
     <p class="deploy-lead">
-      Switch <strong>demo</strong>, <strong>Maincloud live</strong>, <strong>LAN ingest</strong>
-      (sim / live / hybrid is whatever your dev machine runs), or <strong>local STDB</strong>
-      without reinstalling the APK.
+      {#if onNative}
+        Switch <strong>demo</strong>, <strong>Maincloud</strong>, <strong>cloud + LAN ingest</strong>
+        (sim / live / hybrid), or <strong>local STDB</strong> without reinstalling the APK.
+      {:else}
+        Switch <strong>demo</strong>, <strong>local</strong> (sim / live / hybrid),
+        <strong>cloud</strong> (live or + LAN ingest), or <strong>custom</strong> URLs.
+        In dev, loopback ingest/LLM use the Vite proxy on this origin.
+      {/if}
     </p>
 
     <fieldset class="deploy-profiles">
       <legend class="deploy-legend">Deployment profile</legend>
-      {#each DEPLOYMENT_PROFILES as p (p.id)}
+      {#each profiles as p (p.id)}
         <label class="deploy-option">
           <input
             type="radio"
@@ -101,16 +148,39 @@
 
     {#if needsLan}
       <p class="deploy-field">
-        <label class="lbl" for="deploy-lan-host">Dev machine LAN IP</label>
+        <label class="lbl" for="deploy-lan-host">
+          {#if onEmulator}
+            Dev machine (Android emulator)
+          {:else if onNative}
+            Dev machine LAN IP
+          {:else}
+            Dev machine host
+          {/if}
+        </label>
         <input
           id="deploy-lan-host"
           class="deploy-input mono"
           type="text"
           inputmode="decimal"
           autocomplete="off"
-          placeholder="192.168.1.97"
+          placeholder={onEmulator ? EMULATOR_GATEWAY_HOST : onNative ? "192.168.1.97" : WEB_DEV_HOST}
           bind:value={draft.lanHost}
         />
+        {#if onEmulator}
+          <span class="deploy-field-hint">
+            Emulator reaches your PC via <code>{EMULATOR_GATEWAY_HOST}</code> (not your Wi‑Fi IP).
+            Start ingest on the host: <code>{devCmd ?? "OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh start:cloud:live"}</code>
+          </span>
+        {:else if onNative}
+          <span class="deploy-field-hint">
+            Phone and PC must be on the same Wi‑Fi. Find IP: <code>ip -4 route get 1.1.1.1</code> on Linux.
+          </span>
+        {:else}
+          <span class="deploy-field-hint">
+            Browser on this PC: use <code>{WEB_DEV_HOST}</code> (Vite proxies :8080 / :3847).
+            Remote device: your LAN IP from <code>ip -4 route get 1.1.1.1</code>.
+          </span>
+        {/if}
       </p>
     {/if}
 
@@ -228,10 +298,13 @@
     gap: var(--space-3);
     align-items: flex-start;
     padding: var(--space-3);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius);
     border: 1px solid var(--border-1);
     background: var(--bg-2);
     cursor: pointer;
+    transition:
+      border-color var(--motion-fast) var(--ease),
+      background var(--motion-fast) var(--ease);
   }
 
   .deploy-option:has(input:checked) {
@@ -273,12 +346,21 @@
   .deploy-input {
     width: 100%;
     box-sizing: border-box;
-    padding: 8px 10px;
-    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    border-radius: var(--radius);
     border: 1px solid var(--border-1);
     background: var(--bg-1);
     color: var(--text-1);
     font-size: 0.85rem;
+    transition:
+      border-color var(--motion-fast) var(--ease),
+      box-shadow var(--motion-fast) var(--ease);
+  }
+
+  .deploy-input:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-1));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
   .deploy-effective {
@@ -299,18 +381,17 @@
     word-break: break-all;
   }
 
-  .deploy-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    margin: 0;
-  }
-
-  .btn--primary {
-    border-color: color-mix(in srgb, var(--accent, #38bdf8) 50%, var(--border-1));
-  }
-
   .deploy-hint {
     margin: 0;
+  }
+
+  .deploy-field-hint {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--text-3);
+  }
+
+  .deploy-field-hint code {
+    font-size: 0.75rem;
   }
 </style>

@@ -85,10 +85,12 @@ export async function fetchIngestStatus(): Promise<{
     };
     return { ok: true, status, err: null };
   } catch (e) {
+    const base = ingestUrl("");
+    const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: false,
       status: null,
-      err: e instanceof Error ? e.message : String(e),
+      err: base ? `${msg} (tried ${ingestUrl("/status")})` : msg,
     };
   }
 }

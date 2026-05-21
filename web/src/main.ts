@@ -8,10 +8,12 @@ import { installRouter } from "./lib/router.svelte";
 import { connectDb, disconnectDb } from "./lib/connection.svelte";
 import { installDemoData } from "./lib/demo-install.svelte";
 import { isDemoModeRequested } from "./lib/demo-mode";
+import { bakedEnvSummary } from "./lib/mobile-build-env";
 import {
+  deploymentConfigEnabled,
   loadMobileRuntimeConfig,
-  mobileRuntimeConfigEnabled,
   profileWantsDemo,
+  seedRuntimeConfigFromBuildEnv,
 } from "./lib/mobile-runtime-config";
 import { initTheme } from "./lib/theme.svelte";
 import { installDashboardFlushVisibilityHook } from "./lib/dashboard-flush";
@@ -46,10 +48,14 @@ async function hideNativeSplashWhenReady(): Promise<void> {
   }
 }
 
+if (deploymentConfigEnabled()) {
+  seedRuntimeConfigFromBuildEnv();
+}
+
 appendOpsLog(
   "info",
   "app",
-  `OpenAtlas UI started · ${isNativeApp() ? "native" : "web"} · demo=${isDemoModeRequested() ? "yes" : "no"} · ${import.meta.env.MODE}`,
+  `OpenAtlas UI started · ${isNativeApp() ? "native" : "web"} · demo=${isDemoModeRequested() ? "yes" : "no"} · ${import.meta.env.MODE}${isNativeApp() ? ` · ${bakedEnvSummary()}` : ""}`,
 );
 
 void initMobileShell().then(() => {
@@ -59,7 +65,7 @@ void initMobileShell().then(() => {
 
 function shouldBootDemo(): boolean {
   if (isDemoModeRequested()) return true;
-  if (mobileRuntimeConfigEnabled() && profileWantsDemo(loadMobileRuntimeConfig())) {
+  if (deploymentConfigEnabled() && profileWantsDemo(loadMobileRuntimeConfig())) {
     return true;
   }
   return false;
@@ -68,7 +74,7 @@ function shouldBootDemo(): boolean {
 if (shouldBootDemo()) {
   if (
     new URLSearchParams(window.location.search).get("demo") === "1" ||
-    (mobileRuntimeConfigEnabled() && profileWantsDemo())
+    (deploymentConfigEnabled() && profileWantsDemo())
   ) {
     try {
       localStorage.setItem("openatlas-demo-mode", "1");
