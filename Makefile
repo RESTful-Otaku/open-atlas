@@ -119,3 +119,9 @@ mobile-dev:
 
 mobile-ios:
 	@./dev.sh mobile:ios
+
+mobile-ios-maincloud:
+	@OPENATLAS_MOBILE_TARGET=maincloud OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL=1 ./scripts/mobile-build-ios.sh
+
+mobile-ios-release:
+	@OPENATLAS_MOBILE_TARGET=maincloud OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL=1 OPENATLAS_MOBILE_VARIANT=release ./scripts/mobile-build-ios.sh

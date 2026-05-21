@@ -44,9 +44,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: oven-sh/setup-bun@v2
       - name: Install SpacetimeDB CLI
-        run: |
-          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: ./scripts/ci/install-spacetimedb-cli.sh
       - name: Materialize feed secrets
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
@@ -76,25 +74,28 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-      - name: Build Android APK (Maincloud, debug)
+      - name: Verify Android JDK 21
+        run: ./scripts/ci/install-android-build-prereqs.sh
+      - name: Build Android APK (Maincloud, release)
         env:
           OPENATLAS_MOBILE_TARGET: maincloud
           OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL: "1"
-          OPENATLAS_MOBILE_VARIANT: debug
+          OPENATLAS_MOBILE_VARIANT: release
         run: |
-          chmod +x scripts/mobile-build-apk.sh
+          chmod +x scripts/mobile-build-apk.sh scripts/ci/*.sh
           ./scripts/mobile-build-apk.sh
       - name: Package artifacts
         run: |
           mkdir -p dist-artifacts
           cp target/release/openatlas-ingest dist-artifacts/
           cp -r web/dist dist-artifacts/web-dist
-          if [[ -f dist/mobile/openatlas-maincloud-debug.apk ]]; then
-            cp dist/mobile/openatlas-maincloud-debug.apk dist-artifacts/
-          fi
+          for apk in dist/mobile/openatlas-maincloud-release-unsigned.apk \
+                     dist/mobile/openatlas-maincloud-debug.apk; do
+            [[ -f "$apk" ]] && cp "$apk" dist-artifacts/
+          done
           tar -czf openatlas-production-${{ github.sha }}.tar.gz -C dist-artifacts .
       - uses: actions/upload-artifact@v4
         with:

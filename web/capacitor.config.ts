@@ -29,6 +29,10 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: true,
   },
+  ios: {
+    contentInset: "automatic",
+    scheme: "openatlas",
+  },
   server: liveReloadUrl
     ? {
         url: liveReloadUrl,

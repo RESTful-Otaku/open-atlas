@@ -63,9 +63,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: oven-sh/setup-bun@v2
       - name: Install SpacetimeDB CLI
-        run: |
-          curl -fsSL https://install.spacetimedb.com | bash -s -- --yes
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: ./scripts/ci/install-spacetimedb-cli.sh
       - name: Materialize feed secrets for deploy
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}

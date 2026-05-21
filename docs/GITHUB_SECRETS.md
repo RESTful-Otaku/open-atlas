@@ -75,6 +75,26 @@ Cloud hosts often use a **public** `https://` / `wss://` URL without a separate 
 | `GITHUB_TOKEN` | Default `permissions:` in workflows — artifacts, summaries |
 | `CI` | Set by Actions — Playwright retries, etc. |
 
+### iOS CI signing (optional)
+
+Required only for **device IPA** export in [`mobile-ios.yml`](../.github/workflows/mobile-ios.yml) (`release-ipa` or `v*` tags). Simulator builds do not need these.
+
+| Secret | Purpose |
+|--------|---------|
+| `IOS_BUILD_CERTIFICATE_BASE64` | `.p12` distribution or development cert, base64 |
+| `IOS_BUILD_PROVISION_PROFILE_BASE64` | `.mobileprovision` for `com.openatlas.app`, base64 |
+| `IOS_KEYCHAIN_PASSWORD` | Ephemeral CI keychain password |
+| `IOS_TEAM_ID` | Apple Developer Team ID |
+
+Optional **variables** for mobile web build:
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENATLAS_PUBLIC_INGEST_URL` | Baked `VITE_INGEST_BASE` on phone (public ingest health) |
+| `OPENATLAS_PUBLIC_LLM_URL` | Baked `VITE_LLM_BASE` (cloud LLM bridge) |
+
+**Not in GitHub:** Gemini API keys — users enter them in **Settings** on the device (never baked into `VITE_*`).
+
 ---
 
 ## What CI needs today

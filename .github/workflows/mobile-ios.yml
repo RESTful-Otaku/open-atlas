@@ -1,32 +1,35 @@
-name: Mobile iOS (sync)
+name: Mobile iOS
 
-# Full App Store IPA requires signing secrets + Xcode archive on macOS.
-# This workflow validates cap sync and web build on Apple runners.
-# Simulator / device: open web/ios/App.xcworkspace on a Mac → Product → Run (⌘R).
+# Maincloud Capacitor iOS: test → build → simulator compile → optional signed IPA.
+# LLM on device: Settings → Google Gemini (API key). Data via wss://maincloud.spacetimedb.com.
+# Siri / ChatGPT apps are not invoked from the WebView — use Gemini or OpenAI-compatible APIs.
 
 on:
   workflow_dispatch:
     inputs:
+      variant:
+        description: Build variant
+        type: choice
+        options:
+          - simulator
+          - release-ipa
+        default: simulator
+      target:
+        description: Mobile env target
+        type: choice
+        options:
+          - maincloud
+          - maincloud-lan
+        default: maincloud
       note:
-        description: "Optional label for this run (logged only)"
+        description: Optional label for this run
         required: false
         default: ""
-  push:
-    tags:
-      - "v*"
-    paths:
-      - "web/**"
-      - "media/**"
-      - "scripts/mobile-*.sh"
-      - "scripts/sync-brand-assets.sh"
-      - ".github/workflows/mobile-ios.yml"
+  # Release artifacts: .github/workflows/release.yml (semver tags on main)
 
 jobs:
-  cap-sync:
+  build:
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: web
     steps:
       - uses: actions/checkout@v4
 
@@ -34,47 +37,93 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Write production env (Maincloud)
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Resolve mobile variant
+        id: vars
         run: |
-          cat > .env.local <<'EOF'
-          # CI — Maincloud production bundle (physical device / App Store)
-          VITE_STDB_URI=wss://maincloud.spacetimedb.com
-          VITE_STDB_DB=openatlas
-          EOF
+          target="maincloud"
+          variant="debug"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            target="${{ inputs.target }}"
+            [[ "${{ inputs.variant }}" == "release-ipa" ]] && variant="release"
+          fi
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            variant="release"
+          fi
+          echo "target=${target}" >> "$GITHUB_OUTPUT"
+          echo "variant=${variant}" >> "$GITHUB_OUTPUT"
 
-      - name: Sync brand assets
-        run: bash ../scripts/sync-brand-assets.sh
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile || bun install
-
-      - name: Add Capacitor iOS (if missing)
+      - name: Check iOS signing secrets
+        if: steps.vars.outputs.variant == 'release'
+        id: signing
         run: |
-          if [[ ! -d ios ]]; then
-            bunx cap add ios
+          if [[ -n "${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "No IOS_* secrets — simulator artifact only"
           fi
 
-      - name: Build web bundle
-        run: bun run build
+      - name: Install iOS codesigning
+        if: steps.vars.outputs.variant == 'release' && steps.signing.outputs.ready == 'true'
+        env:
+          IOS_BUILD_CERTIFICATE_BASE64: ${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}
+          IOS_BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_BUILD_PROVISION_PROFILE_BASE64 }}
+          IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          chmod +x scripts/ci/install-ios-codesign.sh
+          ./scripts/ci/install-ios-codesign.sh
 
-      - name: Capacitor sync iOS
-        run: bunx cap sync ios
+      - name: Build iOS (Maincloud)
+        env:
+          OPENATLAS_MOBILE_TARGET: ${{ steps.vars.outputs.target }}
+          OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL: "1"
+          OPENATLAS_MOBILE_VARIANT: ${{ steps.vars.outputs.variant }}
+          OPENATLAS_PUBLIC_INGEST_URL: ${{ vars.OPENATLAS_PUBLIC_INGEST_URL }}
+          OPENATLAS_PUBLIC_LLM_URL: ${{ vars.OPENATLAS_PUBLIC_LLM_URL }}
+          IOS_BUILD_CERTIFICATE_BASE64: ${{ secrets.IOS_BUILD_CERTIFICATE_BASE64 }}
+          IOS_BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_BUILD_PROVISION_PROFILE_BASE64 }}
+          IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          chmod +x scripts/mobile-build-ios.sh scripts/ci/*.sh scripts/sync-brand-assets.sh
+          ./scripts/mobile-build-ios.sh
+
+      - name: Upload simulator build
+        uses: actions/upload-artifact@v4
+        with:
+          name: openatlas-ios-simulator
+          path: dist/mobile/openatlas-maincloud-ios-simulator.zip
+          if-no-files-found: ignore
+
+      - name: Upload release IPA
+        if: steps.vars.outputs.variant == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openatlas-ios-maincloud
+          path: dist/mobile/openatlas-maincloud-ios.ipa
+          if-no-files-found: ignore
 
       - name: Workflow summary
         run: |
           {
-            echo "## OpenAtlas iOS (Capacitor sync)"
+            echo "## OpenAtlas iOS (Maincloud)"
             echo ""
-            echo "Synced \`web/dist\` → \`web/ios/\` with Maincloud \`VITE_STDB_*\`."
+            echo "| Setting | Value |"
+            echo "|---------|-------|"
+            echo "| Target | \`${{ steps.vars.outputs.target }}\` |"
+            echo "| Variant | \`${{ steps.vars.outputs.variant }}\` |"
+            echo "| STDB | \`wss://maincloud.spacetimedb.com\` · db \`openatlas\` |"
+            echo "| LLM on device | **Settings → Google Gemini** (API key in app storage) |"
+            echo "| Ingest / feeds | Server ingest → Maincloud STDB; optional \`OPENATLAS_PUBLIC_INGEST_URL\` |"
+            echo "| Siri / ChatGPT app | Not invoked from WebView — use Gemini or OpenAI-compatible API |"
             echo ""
-            echo "### Simulator or device (Mac)"
-            echo "1. \`cd web && bunx cap open ios\`"
-            echo "2. Signing & Capabilities → your team"
-            echo "3. Select iPhone → **Product → Run (⌘R)**"
+            echo "**Artifacts:** \`openatlas-ios-simulator\`; \`openatlas-ios-maincloud\` IPA when signing secrets are configured."
             echo ""
-            echo "IPA / TestFlight: Archive in Xcode with distribution cert (not produced in CI)."
-            echo ""
-            echo "Dispatch: \`${{ github.event.inputs.note || '(none)' }}\`"
-            echo ""
-            echo "Docs: [docs/MOBILE.md](https://github.com/${{ github.repository }}/blob/main/docs/MOBILE.md)"
+            echo "Secrets: \`IOS_BUILD_CERTIFICATE_BASE64\`, \`IOS_BUILD_PROVISION_PROFILE_BASE64\`, \`IOS_KEYCHAIN_PASSWORD\`, \`IOS_TEAM_ID\`."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -17,15 +17,7 @@ on:
           - maincloud
           - emulator
         default: maincloud
-  push:
-    tags:
-      - "v*"
-    paths:
-      - "web/**"
-      - "media/**"
-      - "scripts/mobile-*.sh"
-      - "scripts/sync-brand-assets.sh"
-      - ".github/workflows/mobile-android.yml"
+  # Release artifacts: .github/workflows/release.yml (semver tags on main)
 
 jobs:
   assemble:
@@ -40,18 +32,22 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Verify Android JDK 21
+        run: ./scripts/ci/install-android-build-prereqs.sh
 
       - name: Build APK (shared script)
         env:
           OPENATLAS_MOBILE_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'maincloud' }}
           OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL: "1"
-          OPENATLAS_MOBILE_VARIANT: ${{ github.event_name == 'workflow_dispatch' && inputs.variant || 'debug' }}
+          # Tags build release; workflow_dispatch uses input; default debug.
+          OPENATLAS_MOBILE_VARIANT: ${{ github.event_name == 'workflow_dispatch' && inputs.variant || (startsWith(github.ref, 'refs/tags/') && 'release' || 'debug') }}
         run: |
-          chmod +x scripts/mobile-build-apk.sh scripts/sync-brand-assets.sh
+          chmod +x scripts/mobile-build-apk.sh scripts/sync-brand-assets.sh scripts/ci/*.sh
           ./scripts/mobile-build-apk.sh
 
       - name: Upload debug APK

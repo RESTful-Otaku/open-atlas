@@ -190,10 +190,37 @@ Starts the first AVD, waits for boot, installs the debug APK if present.
 ## iOS notes
 
 - `npx cap add ios` on Linux may create a partial `web/ios/` tree; **archives and App Store uploads require a Mac**.
-- `./dev.sh run-ios` / `./dev.sh mobile:ios`:
-  - **macOS:** production build → `cap sync ios` → opens Xcode — select simulator or device, then **Product → Run (⌘R)**. Set **Signing & Capabilities** team on first run.
-  - **Linux:** prints a skip message; if `web/ios/` already exists, runs **`cap sync ios` only** (safe to refresh assets before opening on a Mac).
-- Signing: Apple Developer team, provisioning profiles, and `ios` scheme secrets in CI (see `.github/workflows/mobile-ios.yml`).
+- **Maincloud build script** (same env baking as Android):
+
+```bash
+OPENATLAS_MOBILE_TARGET=maincloud ./scripts/mobile-build-ios.sh
+# Device IPA (macOS + Apple signing secrets):
+OPENATLAS_MOBILE_VARIANT=release ./scripts/mobile-build-ios.sh
+# → dist/mobile/openatlas-maincloud-ios.ipa
+```
+
+- `./dev.sh mobile:ios` / `make mobile-ios-maincloud` — runs the script above; on macOS opens Xcode afterward.
+- **Linux:** syncs `web/dist` → `web/ios/` (no `xcodebuild`); finish on a Mac.
+
+### Maincloud, ingest, and LLM on iPhone
+
+| Concern | Behavior |
+|---------|----------|
+| **SpacetimeDB** | Baked `wss://maincloud.spacetimedb.com` · db `openatlas` |
+| **Feeds / ingest** | Live rows come from **Maincloud** (ingest runs on a server). Optional `OPENATLAS_PUBLIC_INGEST_URL` at build for health UI. |
+| **LLM / “ChatGPT”** | **Settings → Google Gemini** (API key) or OpenAI-compatible URL — keys stay on device. Default provider: `VITE_NATIVE_DEFAULT_LLM=gemini`. |
+| **Siri / ChatGPT app** | iOS does not let the WebView invoke Siri or the ChatGPT app; use **Gemini** or an HTTP API in Settings (same as Android). |
+
+### CI ([`mobile-ios.yml`](../.github/workflows/mobile-ios.yml))
+
+| Artifact | When |
+|----------|------|
+| `openatlas-ios-simulator` | Every successful run (`.app` zip, compile gate) |
+| `openatlas-ios-maincloud` | Signed `.ipa` when `IOS_*` GitHub secrets are set |
+
+Workflow dispatch: **simulator** or **release-ipa**. Tags `v*` attempt release IPA if secrets exist.
+
+Signing secrets: see [`docs/GITHUB_SECRETS.md`](./GITHUB_SECRETS.md#ios-ci-signing-optional).
 
 ## Production / CI builds
 
@@ -215,7 +242,7 @@ OPENATLAS_MOBILE_VARIANT=release ./scripts/mobile-build-apk.sh
 | Workflow | Trigger | Output |
 |----------|---------|--------|
 | [`mobile-android.yml`](../.github/workflows/mobile-android.yml) | `workflow_dispatch`, tags `v*` | **`openatlas-android-debug`** — Maincloud `VITE_STDB_*`; optional **release-unsigned** on tags |
-| [`mobile-ios.yml`](../.github/workflows/mobile-ios.yml) | `workflow_dispatch`, tags `v*` | **No IPA** — `bun run build` + `cap sync ios` on `macos-latest` (Archive on Mac for `.ipa`) |
+| [`mobile-ios.yml`](../.github/workflows/mobile-ios.yml) | `workflow_dispatch`, tags `v*` | Simulator zip + optional **Maincloud IPA** (`IOS_*` secrets) |
 | [`deploy-production.yml`](../.github/workflows/deploy-production.yml) | Manual promote | Web dist + ingest binary + **APK** in production tarball |
 
 Download Android APK from Actions → **Artifacts**, or use `dist/mobile/` after `./scripts/mobile-build-apk.sh`.

@@ -98,18 +98,19 @@ _mtc_java_major() {
 }
 
 _mtc_find_java_home() {
-  # Capacitor 7 compiles with --release 21; Java 26 breaks Gradle. Prefer 21, then 17.
-  local candidate ver_line major=""
+  # Capacitor 7 compiles with --release 21; Java 26 breaks Gradle jlink. JDK 17 is too old.
+  local candidate major=""
+  if [[ -n "${JAVA_HOME:-}" && -x "${JAVA_HOME}/bin/java" ]]; then
+    major="$(_mtc_java_major "${JAVA_HOME}/bin/java")"
+    if [[ "$major" == "21" ]]; then
+      printf '%s' "$JAVA_HOME"
+      return 0
+    fi
+  fi
   for candidate in \
     /usr/lib/jvm/java-21-openjdk \
     /usr/lib/jvm/zulu-21 \
-    /usr/lib/jvm/jdk-21 \
-    /usr/lib/jvm/java-17-openjdk \
-    /usr/lib/jvm/java-17-openjdk-amd64 \
-    /usr/lib/jvm/java-17 \
-    /usr/lib/jvm/zulu-17 \
-    /usr/lib/jvm/jdk-17 \
-    /usr/lib/jvm/jdk17-openjdk; do
+    /usr/lib/jvm/jdk-21; do
     [[ -n "$candidate" && -x "${candidate}/bin/java" ]] || continue
     major="$(_mtc_java_major "${candidate}/bin/java")"
     [[ "$major" == "21" ]] && printf '%s' "$candidate" && return 0
@@ -118,14 +119,6 @@ _mtc_find_java_home() {
     [[ -d "$candidate" && -x "${candidate}/bin/java" ]] || continue
     major="$(_mtc_java_major "${candidate}/bin/java")"
     [[ "$major" == "21" ]] && printf '%s' "$candidate" && return 0
-  done
-  for candidate in \
-    /usr/lib/jvm/java-17-openjdk \
-    /usr/lib/jvm/zulu-17 \
-    /usr/lib/jvm/jdk-17; do
-    [[ -x "${candidate}/bin/java" ]] || continue
-    major="$(_mtc_java_major "${candidate}/bin/java")"
-    [[ "$major" == "17" ]] && printf '%s' "$candidate" && return 0
   done
   return 1
 }
@@ -202,7 +195,7 @@ mobile_tc_ensure_java17() {
     home="$(_mtc_find_java_home || true)"
   fi
   if [[ -z "$home" ]]; then
-    _mtc_err "JDK 21 or 17 required for Gradle (Java 26 breaks Android builds)"
+    _mtc_err "JDK 21 required for Capacitor/Android (Java 17 too old; Java 26 breaks Gradle)"
     _mtc_log "Arch:   sudo pacman -S jdk21-openjdk"
     _mtc_log "Debian: sudo apt install openjdk-21-jdk"
     _mtc_log "Then:   export JAVA_HOME=/usr/lib/jvm/java-21-openjdk"
