@@ -22,6 +22,8 @@
   import SettingsMobileDetail from "../components/SettingsMobileDetail.svelte";
   import SettingsSectionRow from "../components/SettingsSectionRow.svelte";
   import LlmProvidersSettings from "./settings/LlmProvidersSettings.svelte";
+  import MobileDeploymentSettings from "./settings/MobileDeploymentSettings.svelte";
+  import { mobileRuntimeConfigEnabled } from "../mobile-runtime-config";
   import {
     SETTINGS_SECTIONS,
     type SettingsSectionId,
@@ -56,9 +58,17 @@
   let detailTrackOpen = $state(false);
   let trackEl: HTMLDivElement | undefined = $state();
 
+  const visibleSections = $derived(
+    SETTINGS_SECTIONS.filter(
+      (s) => s.id !== "deployment" || mobileRuntimeConfigEnabled(),
+    ),
+  );
+
   const activeMeta = $derived(
     activeSection
-      ? SETTINGS_SECTIONS.find((s) => s.id === activeSection) ?? null
+      ? visibleSections.find((s) => s.id === activeSection) ??
+          SETTINGS_SECTIONS.find((s) => s.id === activeSection) ??
+          null
       : null,
   );
 
@@ -145,6 +155,10 @@
     setTheme(next);
   }
 </script>
+
+{#snippet deploymentBody()}
+  <MobileDeploymentSettings />
+{/snippet}
 
 {#snippet stdbBody()}
   <p>
@@ -392,7 +406,7 @@
             </p>
           </header>
           <nav class="settings-mobile-nav" aria-label="Settings sections">
-            {#each SETTINGS_SECTIONS as section (section.id)}
+            {#each visibleSections as section (section.id)}
               <SettingsSectionRow
                 title={section.title}
                 icon={section.icon}
@@ -414,7 +428,9 @@
               icon={activeMeta.icon}
               onBack={closeSection}
             >
-              {#if activeSection === "stdb"}
+              {#if activeSection === "deployment"}
+                {@render deploymentBody()}
+              {:else if activeSection === "stdb"}
                 {@render stdbBody()}
               {:else if activeSection === "ops"}
                 {@render opsBody()}
@@ -448,9 +464,19 @@
         </p>
       </header>
 
+      {#if mobileRuntimeConfigEnabled()}
+        <SettingsCollapsibleSection
+          title="Deployment (cloud / live / demo)"
+          icon={SETTINGS_SECTIONS[0].icon}
+          class="settings-group"
+        >
+          {@render deploymentBody()}
+        </SettingsCollapsibleSection>
+      {/if}
+
       <SettingsCollapsibleSection
         title="SpacetimeDB stream"
-        icon={SETTINGS_SECTIONS[0].icon}
+        icon={SETTINGS_SECTIONS.find((s) => s.id === "stdb")!.icon}
         id="stdb"
         class="settings-group"
       >
@@ -459,7 +485,7 @@
 
       <SettingsCollapsibleSection
         title="Operations console"
-        icon={SETTINGS_SECTIONS[1].icon}
+        icon={SETTINGS_SECTIONS.find((s) => s.id === "ops")!.icon}
         id="ops-console"
         class="card--wide card--ops settings-group"
       >
@@ -468,29 +494,38 @@
 
       <SettingsCollapsibleSection
         title="Appearance"
-        icon={SETTINGS_SECTIONS[2].icon}
+        icon={SETTINGS_SECTIONS.find((s) => s.id === "appearance")!.icon}
         class="settings-group"
       >
         {@render appearanceBody()}
       </SettingsCollapsibleSection>
 
-      <SettingsCollapsibleSection title="Demo / test data (no backend)" icon={SETTINGS_SECTIONS[3].icon}>
+      <SettingsCollapsibleSection
+        title="Demo / test data (no backend)"
+        icon={SETTINGS_SECTIONS.find((s) => s.id === "demo")!.icon}
+      >
         {@render demoBody()}
       </SettingsCollapsibleSection>
 
-      <SettingsCollapsibleSection title="Ingest service" icon={SETTINGS_SECTIONS[4].icon}>
+      <SettingsCollapsibleSection
+        title="Ingest service"
+        icon={SETTINGS_SECTIONS.find((s) => s.id === "ingest")!.icon}
+      >
         {@render ingestBody()}
       </SettingsCollapsibleSection>
 
       <SettingsCollapsibleSection
         title="LLM providers"
-        icon={SETTINGS_SECTIONS[5].icon}
+        icon={SETTINGS_SECTIONS.find((s) => s.id === "llm")!.icon}
         class="settings-group"
       >
         {@render llmBody()}
       </SettingsCollapsibleSection>
 
-      <SettingsCollapsibleSection title="Public APIs & live feeds" icon={SETTINGS_SECTIONS[6].icon}>
+      <SettingsCollapsibleSection
+        title="Public APIs & live feeds"
+        icon={SETTINGS_SECTIONS.find((s) => s.id === "feeds")!.icon}
+      >
         {@render feedsBody()}
       </SettingsCollapsibleSection>
     </section>

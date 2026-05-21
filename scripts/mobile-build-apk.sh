@@ -8,7 +8,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEB="${ROOT}/web"
 VARIANT="${OPENATLAS_MOBILE_VARIANT:-debug}"
-TARGET="${OPENATLAS_MOBILE_TARGET:-maincloud}"
+TARGET="${OPENATLAS_MOBILE_TARGET:-flex}"
 
 export OPENATLAS_MOBILE_TARGET="$TARGET"
 export MOBILE_ENV_REPO_ROOT="$ROOT"
@@ -76,7 +76,7 @@ case "$VARIANT" in
   release)
     GRADLE_TASK="assembleRelease"
     APK_GLOB="${WEB}/android/app/build/outputs/apk/release/app-release-unsigned.apk"
-    OUT_NAME="openatlas-maincloud-release-unsigned.apk"
+    OUT_NAME="openatlas-${TARGET//+/-}-release-unsigned.apk"
     ;;
   debug|*)
     GRADLE_TASK="assembleDebug"

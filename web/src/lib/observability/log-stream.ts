@@ -61,9 +61,21 @@ export function getOpsLogLines(): readonly LogLine[] {
 
 /** Clear all lines (operator action in Settings). */
 export function clearOpsLog(): void {
+  const had = buffer.length;
   buffer.length = 0;
   seq = 0;
   notify();
+  if (had > 0) {
+    const line: LogLine = {
+      ts: new Date().toISOString(),
+      level: "info",
+      source: "ops",
+      message: `Cleared ${had} log line(s)`,
+    };
+    buffer.push(line);
+    seq += 1;
+    notify();
+  }
 }
 
 /** Test helper — reset buffer. */

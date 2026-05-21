@@ -8,14 +8,20 @@ import { installRouter } from "./lib/router.svelte";
 import { connectDb, disconnectDb } from "./lib/connection.svelte";
 import { installDemoData } from "./lib/demo-install.svelte";
 import { isDemoModeRequested } from "./lib/demo-mode";
+import {
+  loadMobileRuntimeConfig,
+  mobileRuntimeConfigEnabled,
+  profileWantsDemo,
+} from "./lib/mobile-runtime-config";
 import { initTheme } from "./lib/theme.svelte";
 import { installDashboardFlushVisibilityHook } from "./lib/dashboard-flush";
 import {
   applyStoredUpdateCadence,
   installDashboardFlushCadence,
 } from "./lib/update-interval.svelte";
+import { appendOpsLog } from "./lib/observability/log-stream";
 import { refreshRemoteReadiness } from "./lib/readiness.svelte";
-import { bootstrapMobileLayout, initMobileShell } from "./lib/mobile-layout";
+import { bootstrapMobileLayout, initMobileShell, isNativeApp } from "./lib/mobile-layout";
 
 const target = document.getElementById("app");
 if (!target) {
@@ -40,17 +46,34 @@ async function hideNativeSplashWhenReady(): Promise<void> {
   }
 }
 
+appendOpsLog(
+  "info",
+  "app",
+  `OpenAtlas UI started · ${isNativeApp() ? "native" : "web"} · demo=${isDemoModeRequested() ? "yes" : "no"} · ${import.meta.env.MODE}`,
+);
+
 void initMobileShell().then(() => {
   void refreshRemoteReadiness();
   return hideNativeSplashWhenReady();
 });
 
-if (isDemoModeRequested()) {
-  if (new URLSearchParams(window.location.search).get("demo") === "1") {
+function shouldBootDemo(): boolean {
+  if (isDemoModeRequested()) return true;
+  if (mobileRuntimeConfigEnabled() && profileWantsDemo(loadMobileRuntimeConfig())) {
+    return true;
+  }
+  return false;
+}
+
+if (shouldBootDemo()) {
+  if (
+    new URLSearchParams(window.location.search).get("demo") === "1" ||
+    (mobileRuntimeConfigEnabled() && profileWantsDemo())
+  ) {
     try {
       localStorage.setItem("openatlas-demo-mode", "1");
     } catch {
-      /* private mode */
+      /* */
     }
   }
   installDemoData();

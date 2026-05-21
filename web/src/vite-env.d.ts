@@ -22,6 +22,9 @@ interface ImportMetaEnv {
    */
   readonly VITE_LLM_BASE?: string;
   readonly VITE_LLM_INSIGHT_TIMEOUT_MS?: string;
+  /** When `1`, Settings exposes Deployment profiles (native operator APK). */
+  readonly VITE_MOBILE_RUNTIME_CONFIG?: string;
+  readonly VITE_NATIVE_DEFAULT_LLM?: string;
 }
 
 interface ImportMeta {

@@ -3,13 +3,24 @@
  */
 
 import { appendOpsLog } from "./log-stream";
+import { stdbDatabaseName } from "../native-config";
+import { resolveStdbWebSocketUri } from "../stdb-endpoint";
+import { dashboard } from "../state.svelte";
 
 export function logStdbConnected(): void {
-  appendOpsLog("ok", "stdb", "SpacetimeDB connected — subscriptions active");
+  const uri = resolveStdbWebSocketUri();
+  const db = stdbDatabaseName();
+  appendOpsLog(
+    "ok",
+    "stdb",
+    `Connected — db=${db} · ${uri} · dashboard: ${dashboard.events.length} events, ${dashboard.recentSignals.length} signals, ${dashboard.recentCausalEdges.length} causal edges`,
+  );
 }
 
 export function logStdbConnecting(): void {
-  appendOpsLog("info", "stdb", "Connecting to SpacetimeDB…");
+  const uri = resolveStdbWebSocketUri();
+  const db = stdbDatabaseName();
+  appendOpsLog("info", "stdb", `Connecting… db=${db} · ${uri} · dataMode=${dashboard.dataMode}`);
 }
 
 export function logStdbDisconnected(reason?: string): void {
@@ -25,5 +36,9 @@ export function logStdbError(message: string): void {
 }
 
 export function logStdbReconnectAttempt(attempt: number): void {
-  appendOpsLog("info", "stdb", `Auto-reconnect attempt ${attempt}`);
+  appendOpsLog(
+    "info",
+    "stdb",
+    `Auto-reconnect attempt ${attempt} of 8 (exponential backoff) · last error: ${dashboard.connectionLastError ?? "none"}`,
+  );
 }

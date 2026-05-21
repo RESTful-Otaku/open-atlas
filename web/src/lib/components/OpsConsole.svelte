@@ -18,6 +18,7 @@
   import type { FeedRow } from "../feed-config";
   import {
     acquireOpsPolling,
+    appendOpsLog,
     clearOpsLog,
     fetchLlmHealth,
     getOpsLogLines,
@@ -45,7 +46,9 @@
 
   type OpsTab = "overview" | "feeds" | "metrics" | "logs";
 
-  const DISPLAY_LOG_MAX = 200;
+  const DISPLAY_LOG_MAX = 400;
+  type LogFilter = "all" | LogLine["level"];
+  let logFilter = $state<LogFilter>("all");
   const tabs: { id: OpsTab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "feeds", label: "Feeds" },
@@ -82,11 +85,27 @@
   } | null>(null);
 
   const snap = $derived(opsObservability.snapshot);
-  const logLines = $derived.by(() => {
+  const allLogLines = $derived.by(() => {
     logRev;
-    const lines = getOpsLogLines();
-    if (lines.length <= DISPLAY_LOG_MAX) return lines;
-    return lines.slice(lines.length - DISPLAY_LOG_MAX);
+    return getOpsLogLines();
+  });
+
+  const logLines = $derived.by(() => {
+    const filtered =
+      logFilter === "all"
+        ? allLogLines
+        : allLogLines.filter((l) => l.level === logFilter);
+    if (filtered.length <= DISPLAY_LOG_MAX) return filtered;
+    return filtered.slice(filtered.length - DISPLAY_LOG_MAX);
+  });
+
+  const logStats = $derived.by(() => {
+    const lines = allLogLines;
+    return {
+      total: lines.length,
+      error: lines.filter((l) => l.level === "error").length,
+      warn: lines.filter((l) => l.level === "warn").length,
+    };
   });
 
   const feedRows = $derived(snap?.feeds?.feeds ?? []);
@@ -140,7 +159,15 @@
   }
 
   async function manualRefresh(): Promise<void> {
+    appendOpsLog("info", "ops", "Manual refresh requested (ingest + LLM probes)");
     await Promise.all([refreshOpsObservability(true), probeLlm()]);
+    if (llmProbe) {
+      appendOpsLog(
+        llmProbe.ready ? "ok" : llmProbe.configured ? "warn" : "info",
+        "llm",
+        `Manual LLM check: ${llmProbe.ready ? "ready" : "down"} @ ${llmProbe.base}${llmProbe.err ? ` — ${llmProbe.err}` : ""}`,
+      );
+    }
   }
 
   function formatTs(iso: string): string {
@@ -223,6 +250,17 @@
           Refresh
         </button>
         {#if activeTab === "logs"}
+          <select
+            class="ops-filter"
+            aria-label="Filter log level"
+            bind:value={logFilter}
+          >
+            <option value="all">All</option>
+            <option value="info">Info</option>
+            <option value="ok">OK</option>
+            <option value="warn">Warn</option>
+            <option value="error">Error</option>
+          </select>
           <button type="button" class="ops-btn" title="Copy log" onclick={() => void copyLogs()}>
             <ClipboardCopy size={12} aria-hidden="true" />
             Copy
@@ -412,6 +450,18 @@
         <p class="ops-foot">Also mirrored in <code>/status</code> JSON.</p>
       {/if}
     {:else}
+      <p class="ops-log-meta">
+        {logStats.total} line(s) in buffer
+        {#if logStats.error > 0}
+          · <span class="err">{logStats.error} error</span>
+        {/if}
+        {#if logStats.warn > 0}
+          · <span class="warn">{logStats.warn} warn</span>
+        {/if}
+        {#if logLines.length < logStats.total}
+          · showing newest {logLines.length} ({logFilter})
+        {/if}
+      </p>
       <div
         class="ops-log"
         role="log"
@@ -420,9 +470,11 @@
         aria-label="Client diagnostics log"
       >
         {#if logLines.length === 0}
-          <p class="ops-log__empty">No log lines yet — connect STDB or expand to poll ingest.</p>
+          <p class="ops-log__empty">
+            No log lines yet — expand console to poll ingest, connect SpacetimeDB, or tap Refresh.
+          </p>
         {:else}
-          {#each logLines as line (line.ts + line.message + line.source)}
+          {#each logLines as line (line.ts + line.message + line.source + line.level)}
             <div class="ops-log__line" data-level={line.level}>
               <time datetime={line.ts}>{formatTs(line.ts)}</time>
               <span class="ops-log__src">{line.source}</span>
@@ -749,8 +801,26 @@
     color: var(--text-1);
     font-variant-numeric: tabular-nums;
   }
+  .ops-filter {
+    font: inherit;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-1);
+    background: var(--bg-2);
+    color: var(--text-2);
+  }
+  .ops-log-meta {
+    margin: 0 0 var(--space-2);
+    font-size: 10px;
+    color: var(--text-3);
+    font-family: var(--font-mono);
+  }
+  .ops-log-meta .warn {
+    color: var(--status-warn);
+  }
   .ops-log {
-    max-height: 240px;
+    max-height: min(420px, 50vh);
     overflow-y: auto;
     padding: var(--space-2);
     border-radius: var(--radius);
@@ -766,10 +836,15 @@
   }
   .ops-log__line {
     display: grid;
-    grid-template-columns: 4.5rem 3.5rem 1fr;
+    grid-template-columns: 4.5rem 4.25rem 1fr;
     gap: 8px;
-    padding: 2px 0;
+    padding: 3px 0;
     color: var(--text-2);
+    border-bottom: 1px solid color-mix(in srgb, var(--border-1) 40%, transparent);
+  }
+  .ops-log__msg {
+    word-break: break-word;
+    white-space: pre-wrap;
   }
   .ops-log__line time {
     color: var(--text-3);
