@@ -690,7 +690,7 @@ fn rebuild_domain_insight(
         .iter()
         .filter(|e| e.domain == domain)
         .collect();
-    domain_events.sort_by(|a, b| b.ordinal.cmp(&a.ordinal));
+    domain_events.sort_by_key(|e| std::cmp::Reverse(e.ordinal));
     domain_events.truncate(INSIGHT_EVENT_WINDOW);
 
     let trend = compute_trend_label(&domain_events);
