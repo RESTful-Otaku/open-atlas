@@ -125,12 +125,6 @@
     margin-top: var(--space-3) !important;
   }
 
-  .settings-mobile-detail-body :global(.btn) {
-    min-height: var(--mobile-tap-min, 44px);
-    padding: 10px 16px;
-    font-size: 14px;
-  }
-
   .settings-mobile-detail-body :global(.theme-grid) {
     grid-template-columns: 1fr;
     gap: var(--space-3);

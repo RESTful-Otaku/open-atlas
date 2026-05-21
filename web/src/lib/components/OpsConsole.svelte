@@ -46,7 +46,8 @@
 
   type OpsTab = "overview" | "feeds" | "metrics" | "logs";
 
-  const DISPLAY_LOG_MAX = 400;
+  const displayLogMax = $derived(mobilePanel ? 80 : 400);
+  const feedRowsMax = $derived(mobilePanel ? 32 : 10_000);
   type LogFilter = "all" | LogLine["level"];
   let logFilter = $state<LogFilter>("all");
   const tabs: { id: OpsTab; label: string }[] = [
@@ -67,8 +68,6 @@
   }
 
   let expanded = $state(mobilePanel ? true : readExpandedDefault());
-  /** Avoid polling + network burst during the settings slide animation on mobile. */
-  let pollActive = $state(!mobilePanel);
 
   $effect(() => {
     if (mobilePanel || typeof localStorage === "undefined") return;
@@ -95,20 +94,22 @@
       logFilter === "all"
         ? allLogLines
         : allLogLines.filter((l) => l.level === logFilter);
-    if (filtered.length <= DISPLAY_LOG_MAX) return filtered;
-    return filtered.slice(filtered.length - DISPLAY_LOG_MAX);
+    if (filtered.length <= displayLogMax) return filtered;
+    return filtered.slice(filtered.length - displayLogMax);
   });
 
   const logStats = $derived.by(() => {
     const lines = allLogLines;
-    return {
-      total: lines.length,
-      error: lines.filter((l) => l.level === "error").length,
-      warn: lines.filter((l) => l.level === "warn").length,
-    };
+    let error = 0;
+    let warn = 0;
+    for (const l of lines) {
+      if (l.level === "error") error += 1;
+      else if (l.level === "warn") warn += 1;
+    }
+    return { total: lines.length, error, warn };
   });
 
-  const feedRows = $derived(snap?.feeds?.feeds ?? []);
+  const feedRows = $derived((snap?.feeds?.feeds ?? []).slice(0, feedRowsMax));
   const metricCards = $derived.by(() => {
     const counters = snap?.prometheus ?? {};
     return INGEST_METRIC_NAMES.map((name) => ({
@@ -125,7 +126,9 @@
       : null,
   );
 
-  onMount(() => {
+  $effect(() => {
+    const wantLogs = !mobilePanel || activeTab === "logs";
+    if (!wantLogs) return;
     const unsubLog = subscribeOpsLog(() => {
       if (logNotifyRaf) return;
       logNotifyRaf = requestAnimationFrame(() => {
@@ -133,23 +136,30 @@
         logRev = opsLogRevision();
       });
     });
-    let deferPoll: ReturnType<typeof setTimeout> | undefined;
-    if (mobilePanel) {
-      deferPoll = setTimeout(() => {
-        pollActive = true;
-      }, 400);
-    }
     return () => {
       unsubLog();
-      if (deferPoll) clearTimeout(deferPoll);
       if (logNotifyRaf) cancelAnimationFrame(logNotifyRaf);
+      logNotifyRaf = 0;
+    };
+  });
+
+  onMount(() => {
+    if (!mobilePanel) return;
+    let release: (() => void) | undefined;
+    const deferPoll = setTimeout(() => {
+      release = acquireOpsPolling({ verboseLogs: false });
+      void probeLlm();
+    }, 500);
+    return () => {
+      clearTimeout(deferPoll);
+      release?.();
     };
   });
 
   $effect(() => {
-    const shouldPoll = mobilePanel ? pollActive : expanded;
-    if (!shouldPoll) return;
-    const release = acquireOpsPolling();
+    if (mobilePanel) return;
+    if (!expanded) return;
+    const release = acquireOpsPolling({ verboseLogs: true });
     void probeLlm();
     return release;
   });
@@ -465,8 +475,8 @@
       <div
         class="ops-log"
         role="log"
-        aria-live="polite"
-        aria-relevant="additions"
+        aria-live={mobilePanel ? undefined : "polite"}
+        aria-relevant={mobilePanel ? undefined : "additions"}
         aria-label="Client diagnostics log"
       >
         {#if logLines.length === 0}
@@ -549,6 +559,15 @@
   }
   .ops-console--panel .ops-console__body {
     border-top: 0;
+  }
+  .ops-console--panel .ops-grid {
+    grid-template-columns: 1fr;
+  }
+  .ops-console--panel .ops-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ops-console--panel .ops-table-wrap {
+    max-height: 200px;
   }
   .ops-console__summary {
     display: flex;

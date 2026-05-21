@@ -58,17 +58,23 @@ export async function refreshOpsObservability(logPoll = true): Promise<void> {
   }
 }
 
+export type OpsPollingOptions = {
+  /** Append detailed lines to the ops log each poll (off on mobile — avoids WebView jank). */
+  verboseLogs?: boolean;
+};
+
 /** Start interval polling while Settings console is open/expanded. */
-export function acquireOpsPolling(): () => void {
+export function acquireOpsPolling(options: OpsPollingOptions = {}): () => void {
+  const verboseLogs = options.verboseLogs ?? true;
   pollConsumers += 1;
   if (pollConsumers === 1) {
-    if (!pollingStarted) {
+    if (!pollingStarted && verboseLogs) {
       pollingStarted = true;
       appendOpsLog("info", "ops", `Diagnostics polling started (interval ${OPS_POLL_MS / 1000}s)`);
     }
-    void refreshOpsObservability(true);
+    void refreshOpsObservability(verboseLogs);
     pollTimer = setInterval(() => {
-      void refreshOpsObservability(true);
+      void refreshOpsObservability(verboseLogs);
     }, OPS_POLL_MS);
   }
   return () => {

@@ -195,12 +195,21 @@
     margin-top: var(--space-3);
   }
   .inp {
-    padding: 8px 10px;
+    padding: 8px 12px;
     font-size: 13px;
     border: 1px solid var(--border-1);
     border-radius: var(--radius);
     background: var(--bg-2);
     color: var(--text-1);
+    transition:
+      border-color var(--motion-fast) var(--ease),
+      box-shadow var(--motion-fast) var(--ease);
+  }
+
+  .inp:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-1));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
   }
   .row {
     display: flex;

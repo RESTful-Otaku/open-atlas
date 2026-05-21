@@ -200,9 +200,9 @@ ensure_ingest_binary() {
 maybe_enable_ingest_lan_bind() {
     local cap="${FRONTEND_DIR}/.env.capacitor.local"
     [[ -f "$cap" ]] || return 0
-    if grep -qE 'VITE_INGEST_BASE=http://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:8080' "$cap" 2>/dev/null; then
+    if grep -qE 'VITE_INGEST_BASE=http://(10\.0\.2\.2|[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):8080' "$cap" 2>/dev/null; then
         export OPENATLAS_INGEST_LAN_BIND=1
-        style_muted "LAN ingest bind enabled (Capacitor .env.capacitor.local)"
+        style_muted "Ingest LAN/emulator bind enabled (0.0.0.0:8080 — see .env.capacitor.local)"
     fi
 }
 
@@ -344,20 +344,68 @@ do_mobile_setup() {
     mobile_android_bootstrap
     mobile_ensure_android_project
     mobile_generate_icons
-    if [[ -f "${FRONTEND_DIR}/.env.mobile.example" ]] && [[ ! -f "${FRONTEND_DIR}/.env.local" ]]; then
-        cp "${FRONTEND_DIR}/.env.mobile.example" "${FRONTEND_DIR}/.env.local"
-        style_muted "created ${FRONTEND_DIR}/.env.local from .env.mobile.example — edit before production builds"
+    if [[ -f "${FRONTEND_DIR}/.env.mobile.example" ]] && [[ ! -f "${FRONTEND_DIR}/.env.capacitor.example" ]]; then
+        cp "${FRONTEND_DIR}/.env.mobile.example" "${FRONTEND_DIR}/.env.capacitor.example"
+        style_muted "created ${FRONTEND_DIR}/.env.capacitor.example — run-android writes .env.capacitor.local automatically"
     fi
     do_mobile_build
     style_ok "mobile setup complete — see docs/MOBILE.md"
 }
 
+mobile_cap_build() {
+    require_cmd bun "install from https://bun.sh"
+    sync_brand_assets
+    if ! frontend_deps_ok; then
+        install_frontend_deps
+    fi
+    spin "bun run build:cap (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun run build:cap"
+    style_ok "Capacitor bundle written to ${FRONTEND_DIST_DIR}/ (mode=capacitor, .env.capacitor.local)"
+}
+
 do_mobile_build() {
     mobile_ensure_deps
     mobile_ensure_android_project
-    do_build_frontend
+    mobile_ensure_env_file
+    mobile_cap_build
     spin "cap sync" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync"
     style_ok "Capacitor sync complete (web/dist → native projects)"
+}
+
+mobile_print_cap_env_summary() {
+    local cap="${FRONTEND_DIR}/.env.capacitor.local"
+    [[ -f "$cap" ]] || return 0
+    style_muted "Baked into APK (web/.env.capacitor.local):"
+    grep -E '^VITE_' "$cap" 2>/dev/null | while IFS= read -r line; do
+        style_muted "  ${line}"
+    done
+}
+
+mobile_ensure_cloud_ingest_running() {
+    if curl -sf --max-time 2 "http://127.0.0.1:8080/health" >/dev/null 2>&1; then
+        style_ok "Host ingest already running on :8080 (emulator → 10.0.2.2:8080)"
+        return 0
+    fi
+    style_header "Starting Maincloud live ingest (LAN bind for emulator/APK)"
+    export OPENATLAS_INGEST_LAN_BIND=1
+    export OPENATLAS_STDB_TARGET=cloud
+    start_server live cloud || {
+        style_err "Could not start ingest — live feeds and ingest probes will fail in the app"
+        style_muted "Manual: OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh start:cloud:live"
+        return 1
+    }
+}
+
+mobile_preflight_emulator_ingest() {
+    local cap="${FRONTEND_DIR}/.env.capacitor.local"
+    [[ -f "$cap" ]] || return 0
+    grep -q 'VITE_INGEST_BASE=http://10.0.2.2:8080' "$cap" 2>/dev/null || return 0
+    if curl -sf --max-time 2 "http://127.0.0.1:8080/health" >/dev/null 2>&1; then
+        style_ok "Host ingest reachable on :8080 (emulator will use 10.0.2.2:8080)"
+        return 0
+    fi
+    style_warn "Host ingest not reachable on :8080 — start Maincloud ingest in another terminal:"
+    style_muted "  OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh start:cloud:live"
+    style_muted "  (or full stack: ./dev.sh run:cloud:live then re-run this mobile build)"
 }
 
 do_mobile_android() {
@@ -394,20 +442,22 @@ do_mobile_android_release() {
 
 do_mobile_dev() {
     mobile_ensure_deps
-    local cap_url="${CAPACITOR_SERVER_URL:-http://127.0.0.1:5173}"
+    export OPENATLAS_MOBILE_TARGET="${OPENATLAS_MOBILE_TARGET:-maincloud-emulator}"
+    mobile_ensure_env_file
+    local cap_url="${CAPACITOR_SERVER_URL:-http://10.0.2.2:5173}"
     style_header "📱 Capacitor live reload → ${cap_url}"
-    style_muted "Emulator: CAPACITOR_SERVER_URL=http://10.0.2.2:5173 ./dev.sh mobile:dev"
+    style_muted "Vite --mode capacitor (reads .env.capacitor.local). Physical USB device: CAPACITOR_SERVER_URL=http://$(mobile_lan_ip 2>/dev/null || echo LAN_IP):5173"
+    mobile_preflight_emulator_ingest
     (
         cd "${FRONTEND_DIR}"
         export CAPACITOR_SERVER_URL="$cap_url"
-        bunx cap sync
-        VITE_STDB_URI="${VITE_STDB_URI:-ws://127.0.0.1:3000}" \
-        VITE_STDB_DB="${VITE_STDB_DB:-${STDB_DB_NAME}}" \
-        bun run dev
+        bunx cap sync android
+        bun run dev -- --mode capacitor --host
     ) &
     local vite_pid=$!
-    sleep 2
-    bunx cap run android || style_warn "cap run android failed — open Android Studio via ./dev.sh mobile:android after build"
+    sleep 3
+    (cd "${FRONTEND_DIR}" && bunx cap run android) \
+        || style_warn "cap run android failed — open Android Studio via ./dev.sh mobile:android after build"
     wait "$vite_pid" 2>/dev/null || true
 }
 
@@ -432,17 +482,21 @@ mobile_ensure_env_file() {
     MOBILE_ENV_WEB="$FRONTEND_DIR"
     local target
     target="$(mobile_resolve_target)"
-    style_muted "mobile build target: ${target} (override: OPENATLAS_MOBILE_TARGET=emulator|device|maincloud)"
+    style_muted "mobile build target: ${target} (override: OPENATLAS_MOBILE_TARGET=maincloud-emulator|emulator|maincloud|device)"
     mobile_write_env_local
+    maybe_enable_ingest_lan_bind
     style_ok "wrote ${FRONTEND_DIR}/.env.capacitor.local for Capacitor bundle"
+    mobile_print_cap_env_summary
 }
 
 do_mobile_run() {
-    style_header "📱 Run Android (bootstrap → test → build → install → launch)"
+    local forced_target="${1:-${OPENATLAS_MOBILE_TARGET:-maincloud-emulator}}"
+    export OPENATLAS_MOBILE_TARGET="$forced_target"
+    style_header "📱 Run Android — target=${forced_target} (bootstrap → test → emulator → env → build → install)"
     mobile_ensure_deps
     mobile_ensure_android_project
 
-    style_header "0/9 Toolchain bootstrap (JDK 17, SDK, Pixel 9 Pro AVD)"
+    style_header "0/9 Toolchain bootstrap (JDK, SDK, Pixel 9 Pro AVD)"
     mobile_android_bootstrap
     mobile_generate_icons
     if [[ -f "${SCRIPT_DIR}/.dev/android.env" ]]; then
@@ -459,27 +513,29 @@ do_mobile_run() {
         style_muted "Skipping unit tests (OPENATLAS_MOBILE_SKIP_TESTS=1)"
     fi
 
-    mobile_ensure_env_file
-
-    style_header "${step}/9 Vite production build"
-    spin "bun run build" bash -c "cd '${FRONTEND_DIR}' && bun run build"
-    step=$((step + 1))
-
-    style_header "${step}/9 Capacitor sync"
-    spin "cap sync android" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync android"
-    step=$((step + 1))
-
     style_header "${step}/9 Device / emulator (${OPENATLAS_AVD_NAME})"
     require_cmd adb "install platform-tools (Android SDK)"
     if ! mobile_adb_device_ready; then
         style_muted "No adb device — starting ${OPENATLAS_AVD_NAME}"
         bash "${SCRIPT_DIR}/scripts/mobile-android-emulator.sh" --no-install
     else
-        style_ok "adb device connected"
+        style_ok "adb device connected ($(adb devices 2>/dev/null | awk 'NR>1 && $2=="device" { print $1; exit }'))"
     fi
     step=$((step + 1))
 
+    mobile_ensure_env_file
+    mobile_preflight_emulator_ingest
+
+    style_header "${step}/9 Vite Capacitor build (bun run build:cap)"
+    mobile_cap_build
+    step=$((step + 1))
+
+    style_header "${step}/9 Capacitor sync"
+    spin "cap sync android" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync android"
+    step=$((step + 1))
+
     style_header "${step}/9 Gradle assembleDebug"
+    mobile_ensure_java17
     (
         cd "${FRONTEND_DIR}/android"
         chmod +x gradlew 2>/dev/null || true
@@ -501,18 +557,30 @@ do_mobile_run() {
     adb shell am start -n com.openatlas.app/.MainActivity
 
     style_ok "OpenAtlas running on device — ${apk}"
-    style_muted "AVD: ${OPENATLAS_AVD_NAME} · env: ${FRONTEND_DIR}/.env.local"
-    local mob_target
-    mob_target="$(mobile_resolve_target 2>/dev/null || echo emulator)"
-    if [[ "$mob_target" == emulator ]]; then
-        style_muted "Emulator + local stack: ./dev.sh up then OPENATLAS_MOBILE_TARGET=emulator ./dev.sh run-android"
-    elif [[ "$mob_target" == maincloud ]] && mobile_detect_adb_target 2>/dev/null | grep -q emulator; then
-        style_muted "Maincloud+emulator: publish module (./dev.sh spacetime:publish:cloud); ingest on host:"
-        style_muted "  OPENATLAS_STDB_URI=${STDB_CLOUD_SERVER} OPENATLAS_STDB_DB=${STDB_CLOUD_DB} ./dev.sh ingest:start"
-    fi
-    style_muted "Physical device + Maincloud STDB only: OPENATLAS_MOBILE_TARGET=maincloud ./dev.sh run-android"
-    style_muted "LAN device: OPENATLAS_MOBILE_TARGET=device ./dev.sh run-android"
+    style_muted "Env file: ${FRONTEND_DIR}/.env.capacitor.local"
+    case "$forced_target" in
+        maincloud-emulator|maincloud|maincloud+emulator|qa-emulator)
+            style_muted "Maincloud QA: STDB on cloud; ingest/LLM on host :8080/:3847 via 10.0.2.2 (Gemini in Settings)"
+            style_muted "Start ingest: OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh start:cloud:live"
+            ;;
+        emulator)
+            style_muted "Local stack: ./dev.sh up then re-run, or OPENATLAS_MOBILE_TARGET=emulator ./dev.sh run-android"
+            ;;
+        device|lan|physical)
+            style_muted "LAN device: laptop must run ./dev.sh up on Wi‑Fi IP baked into .env.capacitor.local"
+            ;;
+    esac
+    style_muted "Production-like phone APK: OPENATLAS_MOBILE_TARGET=maincloud OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL=1 ./scripts/mobile-build-apk.sh"
     style_muted "Doctor: ./dev.sh mobile:doctor"
+}
+
+do_mobile_run_maincloud() {
+    mobile_ensure_cloud_ingest_running || style_warn "Continuing without host ingest — start manually if feeds fail"
+    do_mobile_run maincloud-emulator
+}
+
+do_mobile_run_local() {
+    do_mobile_run emulator
 }
 
 do_mobile_ios() {
@@ -1556,6 +1624,9 @@ stack_up() {
     fi
 
     start_server "$ingest_mode" "$stdb_target"
+    if [[ "$stdb_target" == "cloud" ]]; then
+        style_muted "Android emulator QA (Maincloud STDB + host ingest via 10.0.2.2): ./dev.sh run-android"
+    fi
 }
 
 ensure_stack_for_run() {
@@ -1746,8 +1817,10 @@ Test & build
   test | build | verify [--full] | e2e | e2e:quick | status | logs
 
 Mobile (Capacitor — see docs/MOBILE.md)
-  run-android | mobile:run   One-click Android: bootstrap → test → build → Pixel 9 Pro → APK → launch
-  run-ios | mobile:ios       macOS only: build → cap sync ios → open Xcode (signing manual)
+  run-android | mobile:run        Maincloud QA on emulator (default; matches phone STDB + host ingest)
+  run-android:local               Local ./dev.sh stack via 10.0.2.2 (STDB :3000, ingest :8080)
+  run-android:maincloud           Same as run-android (Maincloud + emulator gateway)
+  run-ios | mobile:ios            macOS only: build → cap sync ios → open Xcode (signing manual)
   mobile:doctor              Check/install JDK 17, SDK, adb, Pixel 9 Pro AVD
   mobile:setup | mobile:build | mobile:android | mobile:android:release
   mobile:dev                 Live reload against Vite (Android)
@@ -1852,20 +1925,22 @@ menu_mobile() {
         ios_label="iOS — requires macOS + Xcode (skipped here)"
     fi
     m="$(choose \
-        "Run Android (Pixel / emulator)" \
+        "Run Android — Maincloud QA (emulator, like phone)" \
+        "Run Android — local dev stack (emulator)" \
         "$ios_label" \
-        "Build + sync only" \
+        "Build + sync only (current target)" \
         "Assemble debug APK" \
         "Live reload (mobile:dev)" \
         "Setup (first time)" \
         "Back")" || return
     case "$m" in
-        "Run Android (Pixel / emulator)") do_mobile_run ;;
+        "Run Android — Maincloud QA (emulator, like phone)") do_mobile_run_maincloud ;;
+        "Run Android — local dev stack (emulator)") do_mobile_run_local ;;
         "Open iOS in Xcode (macOS only)") do_mobile_ios ;;
         "iOS — requires macOS + Xcode (skipped here)")
             style_warn "iOS builds need macOS — see docs/MOBILE.md"
             ;;
-        "Build + sync only")            do_mobile_build ;;
+        "Build + sync only (current target)") do_mobile_build ;;
         "Assemble debug APK")           do_mobile_android ;;
         "Live reload (mobile:dev)")     do_mobile_dev ;;
         "Setup (first time)")           do_mobile_setup ;;
@@ -2097,7 +2172,8 @@ main() {
         e2e:quick)          "$SCRIPT_DIR/scripts/e2e-qa.sh" --quick ;;
         e2e:feeds)          "$SCRIPT_DIR/scripts/e2e-qa.sh" --verify-feeds ;;
         clean)               do_clean ;;
-        run-android|mobile:run) do_mobile_run ;;
+        run-android|mobile:run|run-android:maincloud) do_mobile_run_maincloud ;;
+        run-android:local)   do_mobile_run_local ;;
         mobile:doctor)       do_mobile_doctor ;;
         mobile:setup)        do_mobile_setup ;;
         mobile:build)        do_mobile_build ;;

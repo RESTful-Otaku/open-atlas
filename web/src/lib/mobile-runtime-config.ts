@@ -4,13 +4,41 @@
  * without rebuilding.
  */
 
+import { buildEnvIngestBase, buildEnvLlmBase, buildEnvStdbUri } from "./mobile-build-env";
+import {
+  EMULATOR_GATEWAY_HOST,
+  httpHostBase,
+  isAndroidEmulator,
+  resolveDevMachineHost,
+} from "./dev-machine-host";
 import { isNativeApp } from "./mobile-layout";
 
 const LS_KEY = "openatlas-mobile-runtime-v1";
 
 export const MAINCLOUD_STDB_WS = "wss://maincloud.spacetimedb.com";
+
+/** Infer deployment profile from baked capacitor env (emulator vs LAN vs cloud-only). */
+export function inferProfileFromBakedEnv(
+  ingestBase = buildEnvIngestBase(),
+  stdbUri = buildEnvStdbUri(),
+): DeploymentProfileId {
+  if (!ingestBase) {
+    return "cloud_live";
+  }
+  try {
+    const host = new URL(ingestBase).hostname;
+    if (stdbUri.includes("maincloud") || stdbUri.includes("spacetimedb.com")) {
+      return host === EMULATOR_GATEWAY_HOST ? "cloud_ingest_hybrid" : "cloud_ingest_live";
+    }
+    if (host === EMULATOR_GATEWAY_HOST) return "local_emulator";
+    return "local_lan";
+  } catch {
+    return "cloud_ingest_hybrid";
+  }
+}
 export const DEFAULT_STDB_DB = "openatlas";
-export const EMULATOR_HOST = "10.0.2.2";
+/** @deprecated use EMULATOR_GATEWAY_HOST */
+export const EMULATOR_HOST = EMULATOR_GATEWAY_HOST;
 export const DEFAULT_INGEST_PORT = 8080;
 export const DEFAULT_LLM_PORT = 3847;
 export const DEFAULT_STDB_PORT = 3000;
@@ -23,9 +51,15 @@ export type DeploymentProfileId =
   | "cloud_ingest_sim"
   | "cloud_ingest_live"
   | "cloud_ingest_hybrid"
+  | "local_sim"
+  | "local_live"
+  | "local_hybrid"
   | "local_lan"
   | "local_emulator"
   | "custom";
+
+/** Loopback host for web dev (Vite proxies ingest/LLM on same origin). */
+export const WEB_DEV_HOST = "127.0.0.1";
 
 const CLOUD_INGEST_PROFILES = new Set<DeploymentProfileId>([
   "cloud_lan_ingest",
@@ -34,8 +68,16 @@ const CLOUD_INGEST_PROFILES = new Set<DeploymentProfileId>([
   "cloud_ingest_hybrid",
 ]);
 
+const LOCAL_INGEST_PROFILES = new Set<DeploymentProfileId>([
+  "local_sim",
+  "local_live",
+  "local_hybrid",
+  "local_lan",
+  "local_emulator",
+]);
+
 export function profileUsesLanIngest(profile: DeploymentProfileId): boolean {
-  return CLOUD_INGEST_PROFILES.has(profile) || profile === "local_lan";
+  return CLOUD_INGEST_PROFILES.has(profile) || LOCAL_INGEST_PROFILES.has(profile);
 }
 
 /** `./dev.sh` ingest mode the operator should run on the dev machine for this profile. */
@@ -49,8 +91,14 @@ export function devIngestCommandForProfile(profile: DeploymentProfileId): string
       return "OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh start:cloud:hybrid";
     case "cloud_lan_ingest":
       return "OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh start:cloud:hybrid";
+    case "local_sim":
+      return "./dev.sh start:sim";
+    case "local_live":
+      return "./dev.sh start:live";
+    case "local_hybrid":
+      return "./dev.sh start:hybrid";
     case "local_lan":
-      return "OPENATLAS_INGEST_LAN_BIND=1 ./dev.sh start:live";
+      return "./dev.sh start:live";
     case "local_emulator":
       return "./dev.sh start:hybrid";
     default:
@@ -108,9 +156,24 @@ export const DEPLOYMENT_PROFILES: ReadonlyArray<{
     description: "Maincloud STDB + ingest/LLM on your PC. Run start:cloud:hybrid on the host.",
   },
   {
+    id: "local_sim",
+    label: "Local STDB (sim)",
+    description: "SpacetimeDB on this machine :3000 + ingest :8080 in sim mode.",
+  },
+  {
+    id: "local_live",
+    label: "Local STDB (live)",
+    description: "SpacetimeDB on this machine :3000 + ingest :8080 with live feeds.",
+  },
+  {
+    id: "local_hybrid",
+    label: "Local STDB (hybrid)",
+    description: "SpacetimeDB on this machine :3000 + ingest :8080 in hybrid mode.",
+  },
+  {
     id: "local_lan",
     label: "Local STDB (LAN)",
-    description: "SpacetimeDB on dev machine at LAN IP :3000 + optional ingest :8080.",
+    description: "SpacetimeDB on dev machine at LAN IP :3000 + ingest :8080 (physical device / remote browser).",
   },
   {
     id: "local_emulator",
@@ -124,21 +187,99 @@ export const DEPLOYMENT_PROFILES: ReadonlyArray<{
   },
 ] as const;
 
-/** True when Settings should expose deployment profiles (native app or explicit build flag). */
-export function mobileRuntimeConfigEnabled(): boolean {
+/** True when Settings should expose deployment profiles (web + native). */
+export function deploymentConfigEnabled(): boolean {
   if (import.meta.env.VITE_MOBILE_RUNTIME_CONFIG === "1") return true;
-  return isNativeApp();
+  if (isNativeApp()) return true;
+  return typeof window !== "undefined";
+}
+
+/** @deprecated use {@link deploymentConfigEnabled} */
+export function mobileRuntimeConfigEnabled(): boolean {
+  return deploymentConfigEnabled();
+}
+
+/** Profiles shown in Settings for the current platform (hide emulator-only on web). */
+export function deploymentProfilesForPlatform(): typeof DEPLOYMENT_PROFILES {
+  if (isNativeApp()) return DEPLOYMENT_PROFILES;
+  return DEPLOYMENT_PROFILES.filter((p) => p.id !== "local_emulator");
+}
+
+function defaultLanHostForPlatform(): string {
+  if (isAndroidEmulator()) return EMULATOR_GATEWAY_HOST;
+  if (!isNativeApp()) return WEB_DEV_HOST;
+  return "";
+}
+
+/** Default deployment when nothing is saved (web → local live + Vite proxy). */
+export function configDefaultForPlatform(): MobileRuntimeConfig {
+  if (isNativeApp()) return configFromBuildEnv();
+  return normalizeMobileRuntimeConfig(
+    configForProfile("local_live", {
+      ...DEFAULT_MOBILE_RUNTIME,
+      lanHost: WEB_DEV_HOST,
+    }),
+  );
 }
 
 function trimUrl(raw: string): string {
   return raw.trim().replace(/\/$/, "");
 }
 
-export function loadMobileRuntimeConfig(): MobileRuntimeConfig {
-  if (typeof localStorage === "undefined") return { ...DEFAULT_MOBILE_RUNTIME };
+function hostForLanProfiles(cfg: MobileRuntimeConfig): string {
+  const resolved = resolveDevMachineHost({
+    lanHost: cfg.lanHost,
+    ingestBaseCustom: cfg.ingestBaseCustom,
+    preferEmulatorGateway: isAndroidEmulator(),
+  });
+  if (resolved) return resolved;
+  if (!isNativeApp()) return defaultLanHostForPlatform();
+  return "";
+}
+
+/** Build a deployment config matching the APK's baked Vite env. */
+export function configFromBuildEnv(): MobileRuntimeConfig {
+  const ingest = buildEnvIngestBase();
+  const profile = inferProfileFromBakedEnv(ingest, buildEnvStdbUri());
+  let lanHost = "";
+  if (ingest) {
+    try {
+      lanHost = new URL(ingest).hostname;
+    } catch {
+      /* use profile defaults */
+    }
+  }
+  return normalizeMobileRuntimeConfig(
+    configForProfile(profile, {
+      ...DEFAULT_MOBILE_RUNTIME,
+      lanHost,
+      stdbUriCustom: buildEnvStdbUri() || MAINCLOUD_STDB_WS,
+      ingestBaseCustom: ingest,
+      llmBaseCustom: buildEnvLlmBase(),
+    }),
+  );
+}
+
+/**
+ * When the APK baked ingest/LLM URLs but saved runtime profile is cloud_live (no ingest),
+ * align so probes and feeds use the dev machine.
+ */
+export function alignConfigWithBuildEnv(cfg: MobileRuntimeConfig): MobileRuntimeConfig {
+  const ingestBaked = buildEnvIngestBase();
+  if (!ingestBaked) return normalizeMobileRuntimeConfig(cfg);
+  if (resolveIngestBaseFromConfig(cfg)) return normalizeMobileRuntimeConfig(cfg);
+  return configFromBuildEnv();
+}
+
+/** First launch / APK upgrade: seed or repair localStorage from baked env. */
+export function seedRuntimeConfigFromBuildEnv(): void {
+  if (!deploymentConfigEnabled() || typeof localStorage === "undefined") return;
+  const raw = localStorage.getItem(LS_KEY);
+  if (!raw) {
+    saveMobileRuntimeConfig(configDefaultForPlatform());
+    return;
+  }
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return { ...DEFAULT_MOBILE_RUNTIME };
     const parsed = JSON.parse(raw) as Partial<MobileRuntimeConfig>;
     const rawProfile = parsed.profile as DeploymentProfileId;
     const profile =
@@ -147,7 +288,7 @@ export function loadMobileRuntimeConfig(): MobileRuntimeConfig {
         : DEPLOYMENT_PROFILES.some((p) => p.id === rawProfile)
           ? rawProfile
           : DEFAULT_MOBILE_RUNTIME.profile;
-    return {
+    const loaded: MobileRuntimeConfig = {
       ...DEFAULT_MOBILE_RUNTIME,
       ...parsed,
       profile,
@@ -157,8 +298,47 @@ export function loadMobileRuntimeConfig(): MobileRuntimeConfig {
       llmBaseCustom: trimUrl(String(parsed.llmBaseCustom ?? "")),
       stdbDb: String(parsed.stdbDb ?? DEFAULT_STDB_DB).trim() || DEFAULT_STDB_DB,
     };
+    const aligned = alignConfigWithBuildEnv(loaded);
+    saveMobileRuntimeConfig(aligned);
   } catch {
-    return { ...DEFAULT_MOBILE_RUNTIME };
+    saveMobileRuntimeConfig(configFromBuildEnv());
+  }
+}
+
+export function loadMobileRuntimeConfig(): MobileRuntimeConfig {
+  if (typeof localStorage === "undefined") return configDefaultForPlatform();
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return configDefaultForPlatform();
+    const parsed = JSON.parse(raw) as Partial<MobileRuntimeConfig>;
+    const rawProfile = parsed.profile as DeploymentProfileId;
+    const profile =
+      rawProfile === "cloud_lan_ingest"
+        ? "cloud_ingest_hybrid"
+        : DEPLOYMENT_PROFILES.some((p) => p.id === rawProfile)
+          ? rawProfile
+          : DEFAULT_MOBILE_RUNTIME.profile;
+    const loaded: MobileRuntimeConfig = {
+      ...DEFAULT_MOBILE_RUNTIME,
+      ...parsed,
+      profile,
+      lanHost: String(parsed.lanHost ?? "").trim(),
+      stdbUriCustom: trimUrl(String(parsed.stdbUriCustom ?? MAINCLOUD_STDB_WS)),
+      ingestBaseCustom: trimUrl(String(parsed.ingestBaseCustom ?? "")),
+      llmBaseCustom: trimUrl(String(parsed.llmBaseCustom ?? "")),
+      stdbDb: String(parsed.stdbDb ?? DEFAULT_STDB_DB).trim() || DEFAULT_STDB_DB,
+    };
+    if (
+      loaded.ingestBaseCustom.includes("192.168.1.1") &&
+      profileUsesLanIngest(profile)
+    ) {
+      loaded.lanHost = "";
+      loaded.ingestBaseCustom = "";
+      loaded.llmBaseCustom = "";
+    }
+    return alignConfigWithBuildEnv(normalizeMobileRuntimeConfig(loaded));
+  } catch {
+    return configDefaultForPlatform();
   }
 }
 
@@ -168,15 +348,6 @@ export function saveMobileRuntimeConfig(cfg: MobileRuntimeConfig): void {
   } catch {
     /* private mode */
   }
-}
-
-function lanHostOrDefault(host: string): string {
-  const h = host.trim();
-  return h || "192.168.1.1";
-}
-
-function httpBase(host: string, port: number): string {
-  return `http://${lanHostOrDefault(host)}:${port}`;
 }
 
 /** Resolve STDB URI from a config object (testable without native shell). */
@@ -189,10 +360,15 @@ export function resolveStdbUriFromConfig(cfg: MobileRuntimeConfig): string | und
     case "cloud_ingest_live":
     case "cloud_ingest_hybrid":
       return MAINCLOUD_STDB_WS;
+    case "local_sim":
+    case "local_live":
+    case "local_hybrid":
     case "local_emulator":
-      return `ws://${EMULATOR_HOST}:${DEFAULT_STDB_PORT}`;
-    case "local_lan":
-      return `ws://${lanHostOrDefault(cfg.lanHost)}:${DEFAULT_STDB_PORT}`;
+      return `ws://${hostForLanProfiles(cfg) || WEB_DEV_HOST}:${DEFAULT_STDB_PORT}`;
+    case "local_lan": {
+      const host = hostForLanProfiles(cfg);
+      return host ? `ws://${host}:${DEFAULT_STDB_PORT}` : undefined;
+    }
     case "custom":
       return cfg.stdbUriCustom || MAINCLOUD_STDB_WS;
     default:
@@ -202,12 +378,14 @@ export function resolveStdbUriFromConfig(cfg: MobileRuntimeConfig): string | und
 
 /** Resolved STDB WebSocket URI when runtime config is active on native builds. */
 export function resolveRuntimeStdbUri(cfg = loadMobileRuntimeConfig()): string | undefined {
-  if (!mobileRuntimeConfigEnabled()) return undefined;
+  if (!deploymentConfigEnabled()) return undefined;
   return resolveStdbUriFromConfig(cfg);
 }
 
 export function resolveIngestBaseFromConfig(cfg: MobileRuntimeConfig): string {
   if (cfg.profile === "demo") return "";
+  const custom = trimUrl(cfg.ingestBaseCustom);
+  if (custom) return custom;
   switch (cfg.profile) {
     case "cloud_live":
       return "";
@@ -215,12 +393,16 @@ export function resolveIngestBaseFromConfig(cfg: MobileRuntimeConfig): string {
     case "cloud_ingest_sim":
     case "cloud_ingest_live":
     case "cloud_ingest_hybrid":
+    case "local_sim":
+    case "local_live":
+    case "local_hybrid":
     case "local_lan":
-      return cfg.ingestBaseCustom || httpBase(cfg.lanHost, DEFAULT_INGEST_PORT);
-    case "local_emulator":
-      return cfg.ingestBaseCustom || httpBase(EMULATOR_HOST, DEFAULT_INGEST_PORT);
+    case "local_emulator": {
+      const host = hostForLanProfiles(cfg);
+      return httpHostBase(host, DEFAULT_INGEST_PORT);
+    }
     case "custom":
-      return cfg.ingestBaseCustom;
+      return "";
     default:
       return "";
   }
@@ -228,27 +410,31 @@ export function resolveIngestBaseFromConfig(cfg: MobileRuntimeConfig): string {
 
 /** Ingest HTTP base when runtime config is active. */
 export function resolveRuntimeIngestBase(cfg = loadMobileRuntimeConfig()): string {
-  if (!mobileRuntimeConfigEnabled()) return "";
+  if (!deploymentConfigEnabled()) return "";
   return resolveIngestBaseFromConfig(cfg);
 }
 
 export function resolveLlmBaseFromConfig(cfg: MobileRuntimeConfig): string {
   if (cfg.profile === "demo") return "";
-  const ing = resolveIngestBaseFromConfig(cfg);
-  if (!ing && cfg.profile !== "custom") return "";
+  const llmCustom = trimUrl(cfg.llmBaseCustom);
+  if (llmCustom) return llmCustom;
   switch (cfg.profile) {
     case "cloud_lan_ingest":
     case "cloud_ingest_sim":
     case "cloud_ingest_live":
     case "cloud_ingest_hybrid":
+    case "local_sim":
+    case "local_live":
+    case "local_hybrid":
     case "local_lan":
-      return cfg.llmBaseCustom || httpBase(cfg.lanHost, DEFAULT_LLM_PORT);
-    case "local_emulator":
-      return cfg.llmBaseCustom || httpBase(EMULATOR_HOST, DEFAULT_LLM_PORT);
+    case "local_emulator": {
+      const host = hostForLanProfiles(cfg);
+      return httpHostBase(host, DEFAULT_LLM_PORT);
+    }
     case "custom":
-      return cfg.llmBaseCustom;
+      return "";
     default:
-      return cfg.llmBaseCustom;
+      return "";
   }
 }
 
@@ -261,6 +447,23 @@ export function resolveRuntimeLlmBase(cfg = loadMobileRuntimeConfig()): string {
 export function profileWantsDemo(cfg = loadMobileRuntimeConfig()): boolean {
   return cfg.profile === "demo";
 }
+
+/** Fill lanHost + ingest/LLM URLs before save (emulator → 10.0.2.2). */
+export function normalizeMobileRuntimeConfig(cfg: MobileRuntimeConfig): MobileRuntimeConfig {
+  if (cfg.profile === "demo" || cfg.profile === "cloud_live") return cfg;
+  if (cfg.profile === "custom") return cfg;
+  const host = hostForLanProfiles(cfg);
+  if (!host) return cfg;
+  return {
+    ...cfg,
+    lanHost: host,
+    ingestBaseCustom:
+      trimUrl(cfg.ingestBaseCustom) || httpHostBase(host, DEFAULT_INGEST_PORT),
+    llmBaseCustom: trimUrl(cfg.llmBaseCustom) || httpHostBase(host, DEFAULT_LLM_PORT),
+  };
+}
+
+export { isAndroidEmulator } from "./dev-machine-host";
 
 /** Apply profile fields when user picks a preset (keeps custom URLs when switching to custom). */
 export function configForProfile(
@@ -281,32 +484,49 @@ export function configForProfile(
     case "cloud_lan_ingest":
     case "cloud_ingest_sim":
     case "cloud_ingest_live":
-    case "cloud_ingest_hybrid":
+    case "cloud_ingest_hybrid": {
+      const host =
+        prev.lanHost.trim() ||
+        (isAndroidEmulator() ? EMULATOR_GATEWAY_HOST : "");
       return {
         ...base,
         stdbUriCustom: MAINCLOUD_STDB_WS,
-        ingestBaseCustom: prev.lanHost
-          ? httpBase(prev.lanHost, DEFAULT_INGEST_PORT)
-          : "",
-        llmBaseCustom: prev.lanHost ? httpBase(prev.lanHost, DEFAULT_LLM_PORT) : "",
+        lanHost: host,
+        ingestBaseCustom: host ? httpHostBase(host, DEFAULT_INGEST_PORT) : "",
+        llmBaseCustom: host ? httpHostBase(host, DEFAULT_LLM_PORT) : "",
       };
-    case "local_lan":
+    }
+    case "local_lan": {
+      const host =
+        prev.lanHost.trim() ||
+        (isAndroidEmulator() ? EMULATOR_GATEWAY_HOST : "");
       return {
         ...base,
-        stdbUriCustom: prev.lanHost
-          ? `ws://${lanHostOrDefault(prev.lanHost)}:${DEFAULT_STDB_PORT}`
-          : base.stdbUriCustom,
-        ingestBaseCustom: prev.lanHost
-          ? httpBase(prev.lanHost, DEFAULT_INGEST_PORT)
-          : "",
-        llmBaseCustom: prev.lanHost ? httpBase(prev.lanHost, DEFAULT_LLM_PORT) : "",
+        lanHost: host,
+        stdbUriCustom: host ? `ws://${host}:${DEFAULT_STDB_PORT}` : base.stdbUriCustom,
+        ingestBaseCustom: host ? httpHostBase(host, DEFAULT_INGEST_PORT) : "",
+        llmBaseCustom: host ? httpHostBase(host, DEFAULT_LLM_PORT) : "",
       };
+    }
+    case "local_sim":
+    case "local_live":
+    case "local_hybrid": {
+      const host = prev.lanHost.trim() || defaultLanHostForPlatform();
+      return {
+        ...base,
+        lanHost: host,
+        stdbUriCustom: `ws://${host}:${DEFAULT_STDB_PORT}`,
+        ingestBaseCustom: httpHostBase(host, DEFAULT_INGEST_PORT),
+        llmBaseCustom: httpHostBase(host, DEFAULT_LLM_PORT),
+      };
+    }
     case "local_emulator":
       return {
         ...base,
-        stdbUriCustom: `ws://${EMULATOR_HOST}:${DEFAULT_STDB_PORT}`,
-        ingestBaseCustom: httpBase(EMULATOR_HOST, DEFAULT_INGEST_PORT),
-        llmBaseCustom: httpBase(EMULATOR_HOST, DEFAULT_LLM_PORT),
+        lanHost: EMULATOR_GATEWAY_HOST,
+        stdbUriCustom: `ws://${EMULATOR_GATEWAY_HOST}:${DEFAULT_STDB_PORT}`,
+        ingestBaseCustom: httpHostBase(EMULATOR_GATEWAY_HOST, DEFAULT_INGEST_PORT),
+        llmBaseCustom: httpHostBase(EMULATOR_GATEWAY_HOST, DEFAULT_LLM_PORT),
       };
     case "custom":
       return base;

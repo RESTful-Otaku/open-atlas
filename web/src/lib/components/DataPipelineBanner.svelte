@@ -93,19 +93,4 @@
     flex-wrap: wrap;
     gap: var(--space-2);
   }
-  .btn {
-    font: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 6px 12px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border-1);
-    background: var(--bg-2);
-    color: var(--text-1);
-    cursor: pointer;
-  }
-  .btn:hover {
-    background: var(--bg-3);
-    border-color: var(--border-2);
-  }
 </style>

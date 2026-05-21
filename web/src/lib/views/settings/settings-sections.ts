@@ -30,7 +30,7 @@ export type SettingsSectionMeta = {
 export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
   {
     id: "deployment",
-    title: "Deployment (cloud / live / demo)",
+    title: "Deployment (local / cloud / demo)",
     icon: Smartphone,
     class: "settings-group",
   },

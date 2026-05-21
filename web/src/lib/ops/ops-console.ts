@@ -33,6 +33,7 @@ export {
   OPS_POLL_MS,
   opsObservability,
   refreshOpsObservability,
+  type OpsPollingOptions,
 } from "../observability/observability.svelte";
 
 import { ingestUrl, llmBaseUrl, shouldProbeIngest } from "../native-config";

@@ -23,7 +23,7 @@
   import SettingsSectionRow from "../components/SettingsSectionRow.svelte";
   import LlmProvidersSettings from "./settings/LlmProvidersSettings.svelte";
   import MobileDeploymentSettings from "./settings/MobileDeploymentSettings.svelte";
-  import { mobileRuntimeConfigEnabled } from "../mobile-runtime-config";
+  import { deploymentConfigEnabled } from "../mobile-runtime-config";
   import {
     SETTINGS_SECTIONS,
     type SettingsSectionId,
@@ -56,11 +56,13 @@
   let activeSection = $state<SettingsSectionId | null>(null);
   /** Drives track slide; kept true until exit transition ends so detail content stays mounted. */
   let detailTrackOpen = $state(false);
-  let trackEl: HTMLDivElement | undefined = $state();
+  let detailPaneEl: HTMLDivElement | undefined = $state();
+  /** Defer heavy OpsConsole until after the mobile slide (avoids WebView crash). */
+  let opsConsoleReady = $state(false);
 
   const visibleSections = $derived(
     SETTINGS_SECTIONS.filter(
-      (s) => s.id !== "deployment" || mobileRuntimeConfigEnabled(),
+      (s) => s.id !== "deployment" || deploymentConfigEnabled(),
     ),
   );
 
@@ -91,11 +93,21 @@
 
   function openSection(id: SettingsSectionId): void {
     activeSection = id;
-    detailTrackOpen = true;
+    opsConsoleReady = id !== "ops";
+    detailTrackOpen = false;
+    requestAnimationFrame(() => {
+      detailTrackOpen = true;
+      if (id === "ops") {
+        window.setTimeout(() => {
+          opsConsoleReady = true;
+        }, 480);
+      }
+    });
   }
 
   function closeSection(): void {
     if (!detailTrackOpen) return;
+    opsConsoleReady = false;
     detailTrackOpen = false;
     if (typeof window === "undefined") {
       activeSection = null;
@@ -105,13 +117,13 @@
       activeSection = null;
       return;
     }
-    const el = trackEl;
+    const el = detailPaneEl;
     if (!el) {
       activeSection = null;
       return;
     }
     const onEnd = (e: TransitionEvent): void => {
-      if (e.propertyName !== "transform") return;
+      if (e.target !== el || e.propertyName !== "transform") return;
       el.removeEventListener("transitionend", onEnd);
       if (!detailTrackOpen) activeSection = null;
     };
@@ -217,7 +229,11 @@
     <code>/metrics</code> every ~8s while expanded (Vite dev proxies to
     <code>127.0.0.1:8080</code>).
   </p>
-  <OpsConsole mobilePanel={useMobileDrilldown} />
+  {#if !useMobileDrilldown || opsConsoleReady}
+    <OpsConsole mobilePanel={useMobileDrilldown} />
+  {:else}
+    <p class="settings-sub" role="status">Loading live diagnostics…</p>
+  {/if}
 {/snippet}
 
 {#snippet appearanceBody()}
@@ -388,39 +404,42 @@
       class="settings-mobile-stack"
       class:is-detail={detailTrackOpen}
     >
-      <div class="settings-mobile-track" bind:this={trackEl}>
-        <div
-          class="settings-mobile-pane settings-mobile-pane--list"
-          data-settings-menu
-          ontouchstart={swipe.ontouchstart}
-          ontouchend={swipe.ontouchend}
-          ontouchcancel={swipe.ontouchcancel}
-        >
-          <header class="settings-mobile-list-head">
-            <div class="settings-title">
-              <SettingsIcon size={18} strokeWidth={1.75} />
-              <span>Settings</span>
-            </div>
-            <p class="settings-mobile-lead">
-              SpacetimeDB, appearance, ingest, and API keys for operators.
-            </p>
-          </header>
-          <nav class="settings-mobile-nav" aria-label="Settings sections">
-            {#each visibleSections as section (section.id)}
-              <SettingsSectionRow
-                title={section.title}
-                icon={section.icon}
-                onSelect={() => openSection(section.id)}
-              />
-            {/each}
-          </nav>
-        </div>
+      <div
+        class="settings-mobile-pane settings-mobile-pane--list"
+        data-settings-menu
+        ontouchstart={swipe.ontouchstart}
+        ontouchend={swipe.ontouchend}
+        ontouchcancel={swipe.ontouchcancel}
+      >
+        <header class="settings-mobile-list-head">
+          <div class="settings-title">
+            <SettingsIcon size={18} strokeWidth={1.75} />
+            <span>Settings</span>
+          </div>
+          <p class="settings-mobile-lead">
+            SpacetimeDB, appearance, ingest, and API keys for operators.
+          </p>
+        </header>
+        <nav class="settings-mobile-nav" aria-label="Settings sections">
+          {#each visibleSections as section (section.id)}
+            <SettingsSectionRow
+              title={section.title}
+              icon={section.icon}
+              onSelect={() => openSection(section.id)}
+            />
+          {/each}
+        </nav>
+      </div>
 
+      {#if activeSection || detailTrackOpen}
         <div
           class="settings-mobile-pane settings-mobile-pane--detail"
+          class:is-open={detailTrackOpen}
+          bind:this={detailPaneEl}
           ontouchstart={swipe.ontouchstart}
           ontouchend={swipe.ontouchend}
           ontouchcancel={swipe.ontouchcancel}
+          aria-hidden={!detailTrackOpen}
         >
           {#if activeSection && activeMeta}
             <SettingsMobileDetail
@@ -448,7 +467,7 @@
             </SettingsMobileDetail>
           {/if}
         </div>
-      </div>
+      {/if}
     </div>
   {:else}
     <section class="settings">
@@ -464,7 +483,7 @@
         </p>
       </header>
 
-      {#if mobileRuntimeConfigEnabled()}
+      {#if deploymentConfigEnabled()}
         <SettingsCollapsibleSection
           title="Deployment (cloud / live / demo)"
           icon={SETTINGS_SECTIONS[0].icon}
@@ -559,38 +578,18 @@
   }
 
   .settings-mobile-stack {
+    position: relative;
     flex: 1 1 auto;
     min-height: 0;
     height: 100%;
     overflow: hidden;
     background: var(--bg-0);
-    touch-action: pan-y;
-  }
-
-  .settings-mobile-track {
-    display: flex;
-    width: 200%;
-    height: 100%;
-    transform: translate3d(0, 0, 0);
-    transition: transform 320ms cubic-bezier(0.34, 1.28, 0.64, 1);
-    will-change: transform;
-  }
-
-  .settings-mobile-stack.is-detail .settings-mobile-track {
-    transform: translate3d(-50%, 0, 0);
-  }
-
-  /* Off-screen list pane: skip layout/paint while detail is open (large ops console). */
-  .settings-mobile-stack.is-detail .settings-mobile-pane--list {
-    visibility: hidden;
-    pointer-events: none;
+    touch-action: manipulation;
   }
 
   .settings-mobile-pane {
     display: flex;
     flex-direction: column;
-    width: 50%;
-    flex-shrink: 0;
     min-height: 0;
     height: 100%;
     overflow: hidden;
@@ -599,10 +598,26 @@
 
   .settings-mobile-pane--list {
     flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .settings-mobile-stack.is-detail .settings-mobile-pane--list {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .settings-mobile-pane--detail {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    transform: translate3d(100%, 0, 0);
+    transition: transform 320ms cubic-bezier(0.34, 1.28, 0.64, 1);
     touch-action: pan-y;
+  }
+
+  .settings-mobile-pane--detail.is-open {
+    transform: translate3d(0, 0, 0);
   }
 
   .settings-mobile-list-head {
@@ -643,13 +658,6 @@
 
   .settings {
     max-width: 880px;
-  }
-
-  .btn-link {
-    display: inline-flex;
-    align-items: center;
-    text-decoration: none;
-    margin-left: 8px;
   }
 
   .settings-title {
@@ -694,23 +702,6 @@
 
   .settings-actions {
     margin-top: var(--space-3) !important;
-  }
-
-  .btn {
-    font: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 6px 12px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border-1);
-    background: var(--bg-2);
-    color: var(--text-1);
-    cursor: pointer;
-  }
-
-  .btn:hover {
-    background: var(--bg-3);
-    border-color: var(--border-2);
   }
 
   .err-raw {
@@ -818,12 +809,6 @@
     background: var(--bg-1);
   }
 
-  :global(html[data-mobile-layout]) .settings .btn {
-    min-height: var(--mobile-tap-min, 44px);
-    padding: 10px 16px;
-    font-size: 14px;
-  }
-
   :global(html[data-mobile-layout]) .settings .theme-card {
     min-height: var(--mobile-tap-min, 44px);
     padding: var(--space-4);
@@ -834,7 +819,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .settings-mobile-track {
+    .settings-mobile-pane--detail {
       transition: none;
     }
   }
