@@ -37,6 +37,7 @@ export {
 
 import { ingestUrl, llmBaseUrl, shouldProbeIngest } from "../native-config";
 import { checkLlmBridgePing } from "../llm";
+import { probeFetch } from "../probe-fetch";
 
 /** `GET /health` — ingest process liveness (body `ok`). */
 export async function fetchIngestHealth(): Promise<{
@@ -47,7 +48,7 @@ export async function fetchIngestHealth(): Promise<{
     return { ok: false, err: null };
   }
   try {
-    const r = await fetch(ingestUrl("/health"), { method: "GET" });
+    const r = await probeFetch(ingestUrl("/health"), { method: "GET" });
     if (!r.ok) {
       return { ok: false, err: `${r.status} ${r.statusText}` };
     }

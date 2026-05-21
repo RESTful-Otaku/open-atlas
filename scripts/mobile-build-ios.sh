@@ -41,7 +41,7 @@ require_cmd() {
 require_cmd bun "https://bun.sh"
 
 mobile_write_env_local
-log "wrote ${WEB}/.env.local (target=${TARGET}, variant=${VARIANT})"
+log "wrote ${WEB}/.env.capacitor.local (target=${TARGET}, variant=${VARIANT})"
 log "LLM on device: Settings → Gemini API key (VITE_NATIVE_DEFAULT_LLM); ingest via Maincloud STDB rows"
 
 if [[ -f "${ROOT}/scripts/sync-brand-assets.sh" ]]; then
@@ -66,7 +66,7 @@ log "==> Web unit tests"
 (cd "$WEB" && bun test src/lib)
 
 log "==> Vite production build"
-(cd "$WEB" && bun run build)
+(cd "$WEB" && bun run build:cap)
 
 log "==> Capacitor sync ios"
 (cd "$WEB" && bunx cap sync ios)

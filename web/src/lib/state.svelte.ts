@@ -42,6 +42,11 @@ import {
   MAX_SEVERITY_HISTORY,
   MAX_SIGNALS,
 } from "./data-limits";
+import { DOMAIN_CATALOG } from "./colors";
+import {
+  loadSelectedHubDomain,
+  saveSelectedHubDomain,
+} from "./hub-filter-persist";
 import type {
   ConnectionState,
   UiCausalEdge,
@@ -52,6 +57,14 @@ import type {
   UiSignal,
   UiWorldState,
 } from "./types";
+
+const VALID_HUB_DOMAINS = new Set(DOMAIN_CATALOG.map((d) => d.id));
+
+function initialSelectedHubDomain(): string | null {
+  const raw = loadSelectedHubDomain();
+  if (raw && VALID_HUB_DOMAINS.has(raw)) return raw;
+  return null;
+}
 
 export {
   MAX_CAUSAL_EDGES,
@@ -80,7 +93,7 @@ export const dashboard = $state({
    * entry. Consumers should always default to "no narrative available".
    */
   eventNarratives: {} as Record<string, UiEventNarrative>,
-  selectedDomain: null as string | null,
+  selectedDomain: initialSelectedHubDomain(),
   connection: "connecting" as ConnectionState,
   /**
    * Last SpacetimeDB error (connect, subscription, or manual reconnect
@@ -108,7 +121,10 @@ export function setConnectionLastError(
 }
 
 export function setSelectedDomain(next: string | null): void {
-  dashboard.selectedDomain = next;
+  const normalized =
+    next !== null && VALID_HUB_DOMAINS.has(next) ? next : null;
+  dashboard.selectedDomain = normalized;
+  saveSelectedHubDomain(normalized);
 }
 
 export function matchesSelectedDomain(candidate: string): boolean {

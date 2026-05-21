@@ -20,10 +20,11 @@
   import { buildDemoMapCollection } from "../map/map-demo-geojson";
   import {
     allDomainIds,
-    loadMapDomainSet,
+    loadMapViewState,
     mapDomainsActiveLabel as formatMapDomainsLabel,
-    saveMapDomainSet,
-  } from "../map/map-domains-persist";
+    saveMapViewState,
+    type MapDisplayMode,
+  } from "../map/map-view-persist";
   import {
     LAYER_ADMIN_FILL,
     LAYER_ADMIN_LINE,
@@ -130,8 +131,10 @@
   /** Pointer over the hover card — do not dismiss while true. */
   let hoverCardPointerInside = $state(false);
   let stickyHoverClearTimer: ReturnType<typeof setTimeout> | undefined;
+  const mapViewPersisted = loadMapViewState();
+
   /** Pinned inspectors — up to 3 on desktop, 1 docked on compact. */
-  let pinnedInspectors = $state<PinnedMapInspector[]>([]);
+  let pinnedInspectors = $state<PinnedMapInspector[]>(mapViewPersisted.pins);
 
   const shownMapPointHover = $derived(
     mapPointHover ?? stickyMapPointHover,
@@ -264,8 +267,6 @@
     }
   });
 
-  type Mode = "heat" | "points" | "both";
-
   let container: HTMLDivElement | undefined = $state();
   /** Layers panel (domains, overlays, solar) — floats over map without resizing it. */
   let mapLayersOpen = $state(false);
@@ -273,7 +274,7 @@
   let mapEmptyDismissed = $state(isMapEmptyHintDismissed());
   let map = $state<MapLibreMap | null>(null);
   let loaded = $state(false);
-  let mode = $state<Mode>("points");
+  let mode = $state<MapDisplayMode>(mapViewPersisted.mode);
   function utcDayStart(t: number): number {
     const d = new Date(t);
     return Date.UTC(
@@ -282,54 +283,84 @@
       d.getUTCDate(),
     );
   }
-  let simDayStart = $state(utcDayStart(Date.now()));
-  let simMinOfDay = $state(
-    (() => {
-      const d = new Date();
-      return d.getUTCHours() * 60 + d.getUTCMinutes();
-    })(),
-  );
+  let simDayStart = $state(mapViewPersisted.simDayStart);
+  let simMinOfDay = $state(mapViewPersisted.simMinOfDay);
   const simUtcMs = $derived(simDayStart + simMinOfDay * 60_000);
-  let showTerminator = $state(false);
+  let showTerminator = $state(mapViewPersisted.showTerminator);
   /** 2D night-side fill tracks solar scrub on full-page mercator (no extra terminator line). */
   const map2DNightVisible = $derived(
     !useWebGlGlobe && !embedded && projection === "mercator",
   );
-  let showSubsun = $state(false);
-  let showMoon = $state(false);
-  let showCausal = $state(false);
+  let showSubsun = $state(mapViewPersisted.showSubsun);
+  let showMoon = $state(mapViewPersisted.showMoon);
+  let showCausal = $state(mapViewPersisted.showCausal);
   /** Colored NASA day/night textures (3D globe only; off = CARTO + solar shade). */
-  let showPhotorealEarth = $state(false);
+  let showPhotorealEarth = $state(mapViewPersisted.showPhotorealEarth);
   /** Optional transport glyphs (separate from wind + pressure lines). */
-  let showDemoLayers = $state(false);
+  let showDemoLayers = $state(mapViewPersisted.showDemoLayers);
   /** Wind segments + isobar-style contours (2D and 3D globe). */
-  let showWeatherOverlays = $state(false);
+  let showWeatherOverlays = $state(mapViewPersisted.showWeatherOverlays);
   /** NORAD (TLE) + STDB aircraft + bundled maritime — see `/public/tracking/`. */
-  let showPublicTracking = $state(false);
+  let showPublicTracking = $state(mapViewPersisted.showPublicTracking);
   let tleCacheReady = $state(false);
   /** Demo-only OpenSky poll; live mode uses SpacetimeDB transport events. */
   let airTrackingRowsDemo = $state<PublicTrackRow[]>([]);
   let shipTrackingRows = $state<PublicTrackRow[]>([]);
   /** Which of the 13 catalog domains to plot on the map (session-persisted). */
-  let mapDomainSet = $state<Set<string>>(loadMapDomainSet());
+  let mapDomainSet = $state<Set<string>>(mapViewPersisted.domains);
   const domainPickOrder = $derived(
     [...DOMAIN_CATALOG].sort((a, b) => a.label.localeCompare(b.label)),
   );
+  function persistMapViewState(): void {
+    saveMapViewState({
+      domains: mapDomainSet,
+      mode,
+      showTerminator,
+      showSubsun,
+      showMoon,
+      showCausal,
+      showPhotorealEarth,
+      showDemoLayers,
+      showWeatherOverlays,
+      showPublicTracking,
+      simDayStart,
+      simMinOfDay,
+      pins: pinnedInspectors,
+    });
+  }
+
   function setMapDomain(id: string, on: boolean): void {
     const n = new Set(mapDomainSet);
     if (on) n.add(id);
     else n.delete(id);
     mapDomainSet = n;
-    saveMapDomainSet(n);
+    persistMapViewState();
   }
   function selectAllMapDomains(): void {
     mapDomainSet = new Set(allDomainIds());
-    saveMapDomainSet(mapDomainSet);
+    persistMapViewState();
   }
   function clearMapDomains(): void {
     mapDomainSet = new Set();
-    saveMapDomainSet(mapDomainSet);
+    persistMapViewState();
   }
+
+  $effect(() => {
+    void mapDomainSet;
+    void mode;
+    void showTerminator;
+    void showSubsun;
+    void showMoon;
+    void showCausal;
+    void showPhotorealEarth;
+    void showDemoLayers;
+    void showWeatherOverlays;
+    void showPublicTracking;
+    void simDayStart;
+    void simMinOfDay;
+    void pinnedInspectors;
+    persistMapViewState();
+  });
 
   function toFeatureCollection(
     events: readonly UiEvent[],
@@ -752,9 +783,9 @@
             ["linear"],
             ["get", "influence"],
             0,
-            1.8,
+            0.9,
             1,
-            5.2,
+            2.6,
           ],
           "line-opacity": [
             "interpolate",
@@ -1096,7 +1127,7 @@
     };
   });
 
-  function applyMode(m: MapLibreMap, next: Mode): void {
+  function applyMode(m: MapLibreMap, next: MapDisplayMode): void {
     const heatVisible = next === "heat" || next === "both";
     const pointVisible = next === "points" || next === "both";
     for (const dom of DOMAIN_CATALOG) {
@@ -1268,7 +1299,7 @@
     flushTrackingLayers();
   });
 
-  function selectMode(next: Mode): void {
+  function selectMode(next: MapDisplayMode): void {
     mode = next;
   }
 

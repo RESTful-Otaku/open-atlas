@@ -119,12 +119,21 @@ of truth for event detail.
 
 | Step | Command / service |
 |------|-------------------|
-| 1 | `ollama serve` (or `./dev.sh ollama:cpu` on incompatible GPUs) |
-| 2 | `ollama pull llama3.2` (recommended; `qwen2.5:7b` / `mistral:7b` also work) |
-| 3 | `./dev.sh llm:start` — runs `openatlas-llm-bridge` on `127.0.0.1:3847` |
-| 4 | `./dev.sh up` or `bun run dev` — Vite proxies `/api/llm` → bridge |
+| 1 | **Ollama** on `:11434` — auto-started by `./dev.sh up` when `OPENATLAS_START_OLLAMA=1` |
+| 2 | Model `llama3.2` — auto-pulled on first run when `OPENATLAS_OLLAMA_AUTO_PULL=1` |
+| 3 | **`openatlas-llm-bridge`** on `:3847` — auto-started when `OPENATLAS_START_LLM=1` |
+| 4 | Vite proxies `/api/llm` → bridge |
 
-Set `OPENATLAS_START_LLM=1` in `.env` to auto-start the bridge with `./dev.sh up`.
+Manual: `./dev.sh ollama:start`, `./dev.sh llm:start`, or `./dev.sh ollama:cpu` (GTX 10xx CUDA errors).
+
+Set `OPENATLAS_START_LLM=0` or `OPENATLAS_START_OLLAMA=0` in `.env` to skip either service.
+
+### Map / globe UI (browser)
+
+Layer checkboxes, overlay toggles, heat/points mode, solar scrub time, pinned
+event cards, and the hub domain filter are stored in **sessionStorage** while
+you navigate between routes (globe ↔ map ↔ hub, etc.). Data is per browser tab
+and clears when the tab session ends.
 
 ### Environment
 
@@ -134,6 +143,9 @@ Set `OPENATLAS_START_LLM=1` in `.env` to auto-start the bridge with `./dev.sh up
 | `OPENATLAS_OLLAMA_BASE` | `http://127.0.0.1:11434` | Ollama API |
 | `OPENATLAS_OLLAMA_MODEL` | `llama3.2` | Model name (`ollama pull` first) |
 | `OPENATLAS_OLLAMA_TIMEOUT_SECS` | `120` | Upstream chat timeout |
+| `OPENATLAS_START_OLLAMA` | `1` | `0` skips auto-starting Ollama in `./dev.sh up` |
+| `OPENATLAS_OLLAMA_AUTO_PULL` | `1` | `0` skips `ollama pull` when the model is missing |
+| `OPENATLAS_OLLAMA_CPU` | `0` | `1` starts Ollama with `CUDA_VISIBLE_DEVICES=""` (GTX 10xx) |
 | `OPENATLAS_OLLAMA_NUM_GPU` | unset | Pass `0` to request CPU layers (restart Ollama for GTX 10xx CUDA errors) |
 | `VITE_LLM_BASE` | unset (`/api/llm` in dev) | Production build: public bridge URL |
 | `VITE_LLM_INSIGHT_TIMEOUT_MS` | `120000` | Browser abort for `POST /v1/insight` |

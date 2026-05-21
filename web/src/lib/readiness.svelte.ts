@@ -5,11 +5,13 @@
 import { checkLlmBridgeCapable } from "./llm";
 import { checkLlmProviderReady, usesClientSideLlm } from "./llm/llm-providers";
 import {
+  fetchIngestHealth,
   fetchIngestReady,
   fetchIngestStatus,
   type IngestServiceStatus,
 } from "./ingest-status";
 import { shouldProbeIngest, shouldProbeLlm } from "./native-config";
+import { dashboard } from "./state.svelte";
 
 export const readiness = $state({
   llmReady: null as boolean | null,
@@ -27,22 +29,49 @@ async function fetchIngestOk(): Promise<{
   if (!shouldProbeIngest()) {
     return { ok: null, err: null, status: null };
   }
-  const [ready, result] = await Promise.all([fetchIngestReady(), fetchIngestStatus()]);
+  const [healthy, ready, result] = await Promise.all([
+    fetchIngestHealth(),
+    fetchIngestReady(),
+    fetchIngestStatus(),
+  ]);
+  if (!healthy && !result.ok) {
+    return {
+      ok: false,
+      err: result.err ?? "ingest unreachable (is ./dev.sh up running?)",
+      status: null,
+    };
+  }
   if (!result.ok) {
     return { ok: false, err: result.err, status: null };
   }
   const stdbOk = result.status?.stdb_reachable === true;
-  if (!ready) {
+  const browserStdbLive =
+    dashboard.dataMode !== "demo" && dashboard.connection === "live";
+  if (!healthy && !ready) {
+    return {
+      ok: false,
+      err: "ingest not responding on /health or /ready",
+      status: result.status,
+    };
+  }
+  if (!ready && !stdbOk && !browserStdbLive) {
     return {
       ok: false,
       err: "ingest /ready failed (cannot reach SpacetimeDB)",
       status: result.status,
     };
   }
-  if (!stdbOk) {
+  if (!stdbOk && !browserStdbLive) {
     return {
       ok: false,
       err: "ingest reports SpacetimeDB unreachable",
+      status: result.status,
+    };
+  }
+  if (!stdbOk && browserStdbLive) {
+    return {
+      ok: true,
+      err: "ingest up; STDB reachable in browser (ingest ping lagging)",
       status: result.status,
     };
   }
