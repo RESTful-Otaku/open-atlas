@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="web/public/logo.png" alt="OpenAtlas logo" width="720" />
+  <img src="media/logo.png" alt="OpenAtlas logo" width="720" />
 </div>
 
 # OpenAtlas
@@ -308,7 +308,7 @@ make test            # fmt + clippy + unit tests
 make verify          # test + subscription SQL + runtime health (if stack up)
 make verify-full     # + prove-live (+ prove-llm when bridge/Ollama up)
 
-Principal-engineering review: [docs/REVIEW_REPORT.md](docs/REVIEW_REPORT.md) · **Roadmap:** [docs/roadmap/README.md](docs/roadmap/README.md)
+Principal-engineering review: [docs/REVIEW_REPORT.md](docs/REVIEW_REPORT.md) · **Roadmap:** [docs/roadmap/README.md](docs/roadmap/README.md) · **Mobile app:** [docs/MOBILE.md](docs/MOBILE.md)
 
 # Ingest modes
 ./dev.sh up:sim      # simulators only
@@ -316,6 +316,10 @@ Principal-engineering review: [docs/REVIEW_REPORT.md](docs/REVIEW_REPORT.md) · 
 ./dev.sh web:demo    # UI only, no SpacetimeDB
 
 ./dev.sh help        # full command list
+
+# Android/iOS (Capacitor — same web/ codebase)
+./dev.sh mobile:setup
+./dev.sh mobile:android   # debug APK → adb install
 ```
 
 Local config and API keys stay **out of git**. Run `./scripts/init-local-config.sh`

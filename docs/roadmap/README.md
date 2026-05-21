@@ -19,6 +19,7 @@ Living checklists split by execution phase. Use this folder for day-to-day itera
 | **UI** | [PHASE_UI_OVERHAUL.md](./PHASE_UI_OVERHAUL.md) | P1 | Visual system — glass shell, map chrome, hub reference |
 | **C** | [PHASE_C_SHIP.md](./PHASE_C_SHIP.md) | P1 | Deploy, observability, CI/CD, bundle budget |
 | **D** | [PHASE_D_DEPTH.md](./PHASE_D_DEPTH.md) | P2/P3 | Causal depth, server replay, scale, new feeds |
+| **Mobile** | [MOBILE_NATIVE_PLAN.md](./MOBILE_NATIVE_PLAN.md) | P1 | Capacitor shell, safe areas, mobile UX, one-click Android |
 
 ## How to use
 
@@ -48,6 +49,7 @@ make replay-test   # alias for replay harness test
 
 ## Recent slice (2026-05)
 
+- **Mobile (Capacitor):** Android/iOS shell reusing `web/` — bottom nav, `VITE_*` service URLs, `./dev.sh mobile:*`, CI APK — [../MOBILE.md](../MOBILE.md); UX plan — [../MOBILE_UX_PLAN.md](../MOBILE_UX_PLAN.md).
 - **UI overhaul (slice 1):** Tokens, map command bar, layers/hover chrome, route fade — [PHASE_UI_OVERHAUL.md](./PHASE_UI_OVERHAUL.md).
 - **Phase C:** Playwright map demo (`map-demo.spec.ts`), ingest `/metrics`, `post-deploy-smoke.sh`, vendor chunks in Vite — see [PHASE_C_SHIP.md](./PHASE_C_SHIP.md).
 - **Phase D (light):** Matrix → domain desk link; causal neighbors on event detail + map hover — see [PHASE_D_DEPTH.md](./PHASE_D_DEPTH.md).

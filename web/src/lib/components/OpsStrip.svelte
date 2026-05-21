@@ -9,7 +9,7 @@
   import { dashboard } from "../state.svelte";
   import { autoReconnectStatusLine } from "../connection.svelte";
   import { connectionErrorHint } from "../connection-errors";
-  import { nlFilter } from "../nl-filter-intent";
+  import { nlFilter } from "../nl-filter-intent.svelte";
   import {
     connectionOpsLabel,
     connectionOpsTier,

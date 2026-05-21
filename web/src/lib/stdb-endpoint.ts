@@ -1,3 +1,5 @@
+import { stdbUriFromEnv } from "./native-config";
+
 /**
  * Resolves the SpacetimeDB WebSocket URL in the *browser*.
  *
@@ -43,7 +45,7 @@ export function normalizeWebSocketUri(uri: string): string {
 }
 
 export function resolveStdbWebSocketUri(pageHost?: string): string {
-  const fromEnv = (import.meta.env.VITE_STDB_URI as string | undefined)?.trim();
+  const fromEnv = stdbUriFromEnv();
   if (fromEnv) return normalizeWebSocketUri(fromEnv);
 
   const host =

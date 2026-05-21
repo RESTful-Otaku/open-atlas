@@ -186,7 +186,17 @@
             <input
               type="password"
               class="key-input"
-              placeholder={field.configured ? "Replace key…" : "Paste API key…"}
+              placeholder={field.env_key === "OPENSKY_CLIENT_ID"
+                ? field.configured
+                  ? "Replace client ID…"
+                  : "Paste OpenSky client ID…"
+                : field.env_key === "OPENSKY_CLIENT_SECRET"
+                  ? field.configured
+                    ? "Replace client secret…"
+                    : "Paste OpenSky client secret…"
+                  : field.configured
+                    ? "Replace key…"
+                    : "Paste API key…"}
               autocomplete="off"
               bind:value={keyDrafts[field.env_key]}
             />

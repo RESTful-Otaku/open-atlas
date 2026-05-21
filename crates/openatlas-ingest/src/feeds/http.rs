@@ -1,6 +1,8 @@
 //! Shared HTTP + JSON helpers for feed adapters.
 
-use crate::rate_limit::{global as rate_limiter, host_from_url};
+use crate::rate_limit::{
+    default_rate_limit_cooldown, global as rate_limiter, host_from_url, retry_after_duration,
+};
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use reqwest::StatusCode;
@@ -49,13 +51,26 @@ pub async fn fetch_json<T: DeserializeOwned>(client: &Client, feed: &str, url: &
 
 /// GET + status check; returns raw body text. Applies per-host throttling when the
 /// global [`rate_limit::FeedRateLimiter`] is installed (normal ingest process).
-pub async fn fetch_text(client: &Client, _feed: &str, url: &str) -> Result<String> {
+pub async fn fetch_text(client: &Client, feed: &str, url: &str) -> Result<String> {
+    fetch_text_with_request(client, feed, url, client.get(url)).await
+}
+
+/// Same as [`fetch_text`] but uses a pre-built request (e.g. basic auth).
+pub async fn fetch_text_with_request(
+    client: &Client,
+    _feed: &str,
+    url: &str,
+    request: reqwest::RequestBuilder,
+) -> Result<String> {
     if let Some(host) = host_from_url(url) {
         if let Some(limiter) = rate_limiter() {
             limiter.wait_host_request(&host).await;
         }
 
-        let response = client.get(url).send().await.map_err(|err| transport_error(url, err))?;
+        let response = request
+            .send()
+            .await
+            .map_err(|err| transport_error(url, err))?;
 
         let status = response.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
@@ -64,8 +79,12 @@ pub async fn fetch_text(client: &Client, _feed: &str, url: &str) -> Result<Strin
                 .get(reqwest::header::RETRY_AFTER)
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_owned());
+            let cooldown = retry_after
+                .as_deref()
+                .and_then(retry_after_duration)
+                .unwrap_or_else(|| default_rate_limit_cooldown(&host));
             if let Some(limiter) = rate_limiter() {
-                limiter.record_host_request(&host).await;
+                limiter.penalize_host(&host, cooldown).await;
             }
             bail!(
                 "GET {url} rate limited (HTTP 429){}",
@@ -82,10 +101,7 @@ pub async fn fetch_text(client: &Client, _feed: &str, url: &str) -> Result<Strin
                 .await
                 .with_context(|| format!("GET {url} body read failed"))?
         } else {
-            let body = response
-                .text()
-                .await
-                .unwrap_or_default();
+            let body = response.text().await.unwrap_or_default();
             bail!(
                 "GET {url} returned {status}{}",
                 upstream_error_detail(&body)
@@ -100,7 +116,11 @@ pub async fn fetch_text(client: &Client, _feed: &str, url: &str) -> Result<Strin
     }
 
     // Fallback without host-based throttle (should not happen for https URLs).
-    let response = client.get(url).send().await.map_err(|err| transport_error(url, err))?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|err| transport_error(url, err))?;
     let status = response.status();
     if status.is_success() {
         return response

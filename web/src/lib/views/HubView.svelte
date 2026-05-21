@@ -380,15 +380,6 @@
   .hub-btn.is-primary:hover {
     filter: brightness(1.05);
   }
-  .hub-btn.is-accent {
-    background: var(--bg-2);
-    border-color: var(--accent-violet);
-    color: var(--accent-violet);
-  }
-  .hub-btn.is-accent:hover {
-    background: color-mix(in srgb, var(--accent-violet) 12%, var(--bg-2));
-  }
-
   .hub-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));

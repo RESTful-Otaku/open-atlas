@@ -33,7 +33,7 @@ export const updateInterval = $state<{ id: UpdateIntervalId }>({
   id: loadStored(),
 });
 
-let cadenceInterval: ReturnType<typeof setInterval> | undefined;
+let cadenceInterval: number | undefined;
 
 /** Periodic flush so chart cadence applies even between sparse STDB ticks. */
 export function restartDashboardFlushCadence(): void {

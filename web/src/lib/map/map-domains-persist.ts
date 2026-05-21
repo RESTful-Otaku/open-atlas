@@ -15,6 +15,21 @@ export function defaultMapDomainSet(): Set<string> {
   return new Set();
 }
 
+/** True when a domain checkbox is on (empty set = none). */
+export function isMapDomainEnabled(
+  mapDomains: ReadonlySet<string>,
+  domainId: string,
+): boolean {
+  return mapDomains.has(domainId);
+}
+
+export function mapDomainsActiveLabel(mapDomains: ReadonlySet<string>): string {
+  const total = ALL_IDS.length;
+  if (mapDomains.size === 0) return "None";
+  if (mapDomains.size >= total) return "All";
+  return `${mapDomains.size} of ${total}`;
+}
+
 /** Restore last session selection, or none if missing/invalid. */
 export function loadMapDomainSet(): Set<string> {
   if (typeof sessionStorage === "undefined") {

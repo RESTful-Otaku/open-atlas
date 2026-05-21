@@ -3,6 +3,11 @@
   import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
   import { debounce, rafCoalesce } from "../debounce-raf";
   import { releaseWebGlCanvases } from "../webgl-teardown";
+  import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
+  import {
+    dismissMapEmptyHint,
+    isMapEmptyHintDismissed,
+  } from "../map/map-empty-dismiss";
   import { useNarrativeSubscription } from "../narrative-subscription";
 
   useNarrativeSubscription();
@@ -16,6 +21,7 @@
   import {
     allDomainIds,
     loadMapDomainSet,
+    mapDomainsActiveLabel as formatMapDomainsLabel,
     saveMapDomainSet,
   } from "../map/map-domains-persist";
   import {
@@ -83,6 +89,7 @@
   import CompactNumber from "./CompactNumber.svelte";
   import EventMapHoverCard from "./EventMapHoverCard.svelte";
   import MapLayersPanel from "./MapLayersPanel.svelte";
+  import MapMobileSheet from "./MapMobileSheet.svelte";
   import OpsStrip from "./OpsStrip.svelte";
   import Panel from "./Panel.svelte";
 
@@ -205,6 +212,17 @@
     dismissMapPointHover();
   }
 
+  /** Mobile / compact: tap a point → pinned popup; detail link navigates. */
+  function openEventInspectorAt(x: number, y: number, id: string): void {
+    cancelStickyHoverClear();
+    const hover = { x, y, id };
+    mapPointHover = hover;
+    stickyMapPointHover = hover;
+    stickyInspectorPos = { x, y };
+    inspectorPinned = true;
+    pinnedEventId = id;
+  }
+
   $effect(() => {
     if (inspectorPinned && pinnedEventId && !pinnedInspectorEvent) {
       inspectorPinned = false;
@@ -217,6 +235,8 @@
   let container: HTMLDivElement | undefined = $state();
   /** Layers panel (domains, overlays, solar) — floats over map without resizing it. */
   let mapLayersOpen = $state(false);
+  let compactLayout = $state(isCompactLayout());
+  let mapEmptyDismissed = $state(isMapEmptyHintDismissed());
   let map = $state<MapLibreMap | null>(null);
   let loaded = $state(false);
   let mode = $state<Mode>("points");
@@ -262,19 +282,9 @@
     [...DOMAIN_CATALOG].sort((a, b) => a.label.localeCompare(b.label)),
   );
   function setMapDomain(id: string, on: boolean): void {
-    let n: Set<string>;
-    if (mapDomainSet.size === 0) {
-      const all = allDomainIds();
-      if (on) {
-        n = new Set(all);
-      } else {
-        n = new Set(all.filter((d) => d !== id));
-      }
-    } else {
-      n = new Set(mapDomainSet);
-      if (on) n.add(id);
-      else n.delete(id);
-    }
+    const n = new Set(mapDomainSet);
+    if (on) n.add(id);
+    else n.delete(id);
     mapDomainSet = n;
     saveMapDomainSet(n);
   }
@@ -293,7 +303,7 @@
     const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
     for (const event of events) {
       if (!matchesSelectedDomain(event.domain)) continue;
-      if (mapDomainSet.size > 0 && !mapDomainSet.has(event.domain)) continue;
+      if (!mapDomainSet.has(event.domain)) continue;
       if (!isGeoEvent(event)) continue;
       const sev = event.severity_score;
       const w = Number.isFinite(sev) ? Math.max(0.12, sev) : 0.25;
@@ -373,13 +383,7 @@
     return toFeatureCollection(mapDisplayEvents).features.length;
   });
   const locatedCount = $derived(mapGeoPointCount);
-  const mapDomainsActiveLabel = $derived(
-    mapDomainSet.size === 0
-      ? "all"
-      : mapDomainSet.size === allDomainIds().length
-        ? "all"
-        : `${mapDomainSet.size} of ${allDomainIds().length}`,
-  );
+  const mapDomainsActiveLabel = $derived(formatMapDomainsLabel(mapDomainSet));
 
   function heatColorRampForDomain(domainId: string): unknown[] {
     const c = domainColor(domainId);
@@ -446,9 +450,13 @@
         minZoom: 0.5,
         maxZoom: 12,
         attributionControl: { compact: true },
-        /** Wheel zoom only with Ctrl (⌃) or, on macOS, ⌘ — so plain scroll can move the page. */
-        cooperativeGestures: true,
+        /**
+         * Desktop: wheel zoom needs Ctrl/⌘ so the page can scroll.
+         * Mobile: pinch-zoom without a modifier.
+         */
+        cooperativeGestures: !isCompactLayout(),
         dragRotate: !emb,
+        touchPitch: !emb,
         pitchWithRotate: false,
       });
       const inst = m;
@@ -970,7 +978,12 @@
         if (!feature) return;
         const props = feature.properties as { id?: string };
         const id = props?.id != null ? String(props.id) : null;
-        if (id) navigate(`/events/${encodeURIComponent(id)}`);
+        if (!id) return;
+        if (isCompactLayout()) {
+          openEventInspectorAt(e.point.x, e.point.y, id);
+          return;
+        }
+        navigate(`/events/${encodeURIComponent(id)}`);
       });
       inst.on("click", LAYER_TRACKING, (e) => {
         const feature = e.features?.[0];
@@ -1232,14 +1245,45 @@
     simMinOfDay = d.getUTCHours() * 60 + d.getUTCMinutes();
   }
 
-  function toggleMapLayers(): void {
+  function toggleMapLayers(e?: Event): void {
+    e?.stopPropagation();
     mapLayersOpen = !mapLayersOpen;
   }
   function closeMapLayers(): void {
     mapLayersOpen = false;
   }
 
+  function dismissMapEmpty(): void {
+    dismissMapEmptyHint();
+    mapEmptyDismissed = true;
+  }
+
+  function onMapSurfacePointerDown(e: PointerEvent): void {
+    const el = e.target;
+    if (!(el instanceof Element)) return;
+    if (
+      el.closest(".emhc-wrap") ||
+      el.closest("#map-layers-panel") ||
+      el.closest(".map-float-bar") ||
+      el.closest(".map-mobile-controls")
+    ) {
+      return;
+    }
+
+    if (compactLayout) {
+      if (mapLayersOpen) closeMapLayers();
+      return;
+    }
+
+    if (!mapLayersOpen) return;
+    closeMapLayers();
+  }
+
   onMount(() => {
+    const unsubLayout = subscribeMobileLayout(() => {
+      compactLayout = isCompactLayout();
+      if (compactLayout) mapLayersOpen = false;
+    });
     void (async () => {
       try {
         await ensureTleCache();
@@ -1256,11 +1300,12 @@
         }
       }
     })();
+    return unsubLayout;
   });
 </script>
 
-{#snippet modeButtons()}
-  <div class="map-mode">
+{#snippet modeButtons(vertical = false)}
+  <div class="map-mode" class:map-mode--vertical={vertical}>
     <button
       type="button"
       class:is-active={mode === "heat"}
@@ -1268,8 +1313,8 @@
       aria-pressed={mode === "heat"}
       title="Heatmap only"
     >
-      <Flame size={14} strokeWidth={1.75} />
-      Heat
+      <Flame size={vertical ? 16 : 14} strokeWidth={1.75} aria-hidden="true" />
+      {#if vertical}<span class="map-rail-lbl">Heat</span>{:else}Heat{/if}
     </button>
     <button
       type="button"
@@ -1278,8 +1323,8 @@
       aria-pressed={mode === "points"}
       title="Points only"
     >
-      <MapPin size={14} strokeWidth={1.75} />
-      Points
+      <MapPin size={vertical ? 16 : 14} strokeWidth={1.75} aria-hidden="true" />
+      {#if vertical}<span class="map-rail-lbl">Points</span>{:else}Points{/if}
     </button>
     <button
       type="button"
@@ -1288,70 +1333,115 @@
       aria-pressed={mode === "both"}
       title="Overlay both"
     >
-      <Grid3x3 size={14} strokeWidth={1.75} />
-      Both
+      <Grid3x3 size={vertical ? 16 : 14} strokeWidth={1.75} aria-hidden="true" />
+      {#if vertical}<span class="map-rail-lbl">Both</span>{:else}Both{/if}
     </button>
   </div>
 {/snippet}
 
 {#snippet mapFloatControls()}
-  <div class="map-float-ui" aria-live="polite">
-    {#if mapLayersOpen}
-      <button
-        type="button"
-        class="map-layers-backdrop"
-        aria-label="Close map layers"
-        onclick={closeMapLayers}
-      ></button>
-    {/if}
-    <div class="map-float-anchor">
-      <div class="map-float-bar">
-        {@render modeButtons()}
-        <div class="map-mode">
-          <button
-            type="button"
-            class:is-active={mapLayersOpen}
-            aria-expanded={mapLayersOpen}
-            aria-controls="map-layers-panel"
-            onclick={toggleMapLayers}
-            title="Domains, overlays, and solar time"
-          >
-            <Layers size={14} strokeWidth={1.75} aria-hidden="true" />
-            Layers
-            <span class="map-layers-chev" class:map-layers-chev-open={mapLayersOpen} aria-hidden="true">
-              <ChevronDown size={14} strokeWidth={2} />
-            </span>
-          </button>
-        </div>
-      </div>
-      <MapLayersPanel
-        open={mapLayersOpen}
-        {useWebGlGlobe}
-        {mapDomainsActiveLabel}
-        {simUtcLabel}
-        bind:minOfDay={simMinOfDay}
-        bind:showTerminator
-        bind:showSubsun
-        bind:showMoon
-        bind:showPhotorealEarth
-        bind:showCausal
-        bind:showWeatherOverlays
-        bind:showDemoLayers
-        bind:showPublicTracking
-        {mapDomainSet}
-        {domainPickOrder}
-        onDomainToggle={setMapDomain}
-        onSelectAllDomains={selectAllMapDomains}
-        onClearDomains={clearMapDomains}
-        onSnapSimToNow={snapSimToNow}
-      />
+  {#if compactLayout}
+    <div class="map-mobile-controls" aria-live="polite">
+      <MapMobileSheet open={mapLayersOpen} title="Map layers" onclose={closeMapLayers}>
+        <MapLayersPanel
+          open={true}
+          sheet={true}
+          onDismiss={closeMapLayers}
+          {useWebGlGlobe}
+          {mapDomainsActiveLabel}
+          {simUtcLabel}
+          bind:minOfDay={simMinOfDay}
+          bind:showTerminator
+          bind:showSubsun
+          bind:showMoon
+          bind:showPhotorealEarth
+          bind:showCausal
+          bind:showWeatherOverlays
+          bind:showDemoLayers
+          bind:showPublicTracking
+          {mapDomainSet}
+          {domainPickOrder}
+          onDomainToggle={setMapDomain}
+          onSelectAllDomains={selectAllMapDomains}
+          onClearDomains={clearMapDomains}
+          onSnapSimToNow={snapSimToNow}
+        />
+      </MapMobileSheet>
+      <nav class="map-mobile-rail" aria-label="Map display controls">
+        {@render modeButtons(true)}
+        <button
+          type="button"
+          class="map-mobile-rail-btn"
+          class:is-active={mapLayersOpen}
+          aria-expanded={mapLayersOpen}
+          aria-controls="map-layers-panel"
+          onclick={toggleMapLayers}
+          title="Domains, overlays, and solar time"
+        >
+          <Layers size={18} strokeWidth={1.75} aria-hidden="true" />
+          <span class="map-rail-lbl">Layers</span>
+        </button>
+      </nav>
     </div>
-  </div>
+  {:else}
+    <div class="map-float-ui" aria-live="polite">
+      {#if mapLayersOpen}
+        <div class="map-layers-backdrop" aria-hidden="true"></div>
+      {/if}
+      <div class="map-float-anchor">
+        <div class="map-float-bar">
+          {@render modeButtons()}
+          <div class="map-mode">
+            <button
+              type="button"
+              class:is-active={mapLayersOpen}
+              aria-expanded={mapLayersOpen}
+              aria-controls="map-layers-panel"
+              onclick={toggleMapLayers}
+              title="Domains, overlays, and solar time"
+            >
+              <Layers size={14} strokeWidth={1.75} aria-hidden="true" />
+              Layers
+              <span class="map-layers-chev" class:map-layers-chev-open={mapLayersOpen} aria-hidden="true">
+                <ChevronDown size={14} strokeWidth={2} />
+              </span>
+            </button>
+          </div>
+        </div>
+        <MapLayersPanel
+          open={mapLayersOpen}
+          onDismiss={closeMapLayers}
+          {useWebGlGlobe}
+          {mapDomainsActiveLabel}
+          {simUtcLabel}
+          bind:minOfDay={simMinOfDay}
+          bind:showTerminator
+          bind:showSubsun
+          bind:showMoon
+          bind:showPhotorealEarth
+          bind:showCausal
+          bind:showWeatherOverlays
+          bind:showDemoLayers
+          bind:showPublicTracking
+          {mapDomainSet}
+          {domainPickOrder}
+          onDomainToggle={setMapDomain}
+          onSelectAllDomains={selectAllMapDomains}
+          onClearDomains={clearMapDomains}
+          onSnapSimToNow={snapSimToNow}
+        />
+      </div>
+    </div>
+  {/if}
 {/snippet}
 
 {#if embedded}
   <Panel title="Global event map" span={panelSpan}>
-    <div class="map-wrap" bind:this={mapSurfaceEl}>
+    <div
+      class="map-wrap"
+      bind:this={mapSurfaceEl}
+      onpointerdowncapture={onMapSurfacePointerDown}
+    >
       {@render mapFloatControls()}
       <div bind:this={container} class="map"></div>
       <EventMapHoverCard
@@ -1403,7 +1493,11 @@
       </div>
       <OpsStrip simUtcLabel={simUtcLabel} simMinOfDay={simMinOfDay} embeddedInCommandBar />
     </header>
-    <div class="map-wrap map-wrap-globe" bind:this={mapSurfaceEl}>
+    <div
+      class="map-wrap map-wrap-globe"
+      bind:this={mapSurfaceEl}
+      onpointerdowncapture={onMapSurfacePointerDown}
+    >
       {@render mapFloatControls()}
       {#if useWebGlGlobe}
         {#await import("./ThreeGlobe.svelte")}
@@ -1429,6 +1523,14 @@
               if (d) setMapPointHover(d);
               else clearMapPointHover();
             }}
+            onEventPointTap={compactLayout
+              ? (d) => openEventInspectorAt(d.x, d.y, d.id)
+              : undefined}
+            onMapBackgroundTap={compactLayout
+              ? () => {
+                  if (inspectorPinned || shownMapPointHover) dismissInspector();
+                }
+              : undefined}
           />
         {:catch}
           <div class="map-globe-loading" role="alert">
@@ -1438,8 +1540,16 @@
       {:else}
         <div bind:this={container} class="map"></div>
       {/if}
-      {#if mapGeoPointCount === 0}
+      {#if mapGeoPointCount === 0 && !mapEmptyDismissed}
         <div class="map-empty" role="status">
+          <button
+            type="button"
+            class="map-empty-dismiss"
+            aria-label="Dismiss"
+            onclick={dismissMapEmpty}
+          >
+            ×
+          </button>
           <p class="map-empty-kicker">Instrument room</p>
           <p class="map-empty-title">No geo-located events in this view</p>
           <p class="map-empty-body">
@@ -1451,13 +1561,12 @@
             Scrub solar time,
             {#if dashboard.selectedDomain}
               clear the hub domain filter ({dashboard.selectedDomain}), or
-            {:else if mapDomainSet.size > 0}
-              enable more domains in
+            {:else if mapDomainSet.size === 0}
+              turn on domains in
             {:else}
-              pick domains in
+              enable more domains in
             {/if}
-            <button type="button" class="map-empty-link" onclick={toggleMapLayers}>Layers</button>
-            (empty selection = all domains).
+            <button type="button" class="map-empty-link" onclick={toggleMapLayers}>Layers</button>.
             Check feed health in
             <a class="map-empty-link" href="#/settings">Settings</a>.
           </p>
@@ -1500,15 +1609,39 @@
     z-index: 14;
     pointer-events: none;
   }
+  .map-float-anchor {
+    pointer-events: none;
+  }
+  .map-float-anchor:has(:global(.map-layers-panel.is-open)) {
+    pointer-events: auto;
+  }
+  .map-float-bar,
+  .map-mode {
+    pointer-events: auto;
+  }
+  /* Child MapLayersPanel — must be :global or backdrop steals clicks (z-index 10 vs 12). */
+  :global(.map-layers-panel.is-open) {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+  }
+  :global(.map-layers-panel.is-open .map-layers-panel-inner),
+  :global(.map-layers-panel.is-open .map-layers-pill),
+  :global(.map-layers-panel.is-open .map-mode-compact button),
+  :global(.map-layers-panel.is-open .solar-scrub),
+  :global(.map-layers-panel.is-open .solar-scrub *) {
+    pointer-events: auto;
+  }
   .map-layers-backdrop {
     position: absolute;
     inset: 0;
-    z-index: 10;
+    z-index: 1;
     margin: 0;
     padding: 0;
     border: none;
     cursor: default;
-    pointer-events: auto;
+    /* Visual dim only — map-wrap capture closes; avoids blocking panel hits. */
+    pointer-events: none;
     background: color-mix(in srgb, var(--bg-0) 12%, transparent);
   }
   .map-float-anchor {
@@ -1517,7 +1650,7 @@
     bottom: 10px;
     /* Clear MapLibre NavigationControl (top-right, ~36px + margin). */
     right: 54px;
-    z-index: 12;
+    z-index: 2;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -1525,7 +1658,6 @@
     width: min(100% - 16px, 22rem);
     max-width: 22rem;
     max-height: calc(100% - 20px);
-    pointer-events: auto;
   }
   .map-float-bar {
     display: flex;
@@ -1566,10 +1698,88 @@
     }
   }
 
+  /* Right rail centered inside .map-wrap; biased up so flyout clears bottom nav overlap. */
+  .map-mobile-controls {
+    position: absolute;
+    top: 40%;
+    right: max(6px, env(safe-area-inset-right, 0px));
+    bottom: auto;
+    left: auto;
+    transform: translateY(-50%);
+    z-index: 12;
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: 8px;
+    max-height: calc(100% - 88px);
+    max-width: calc(100% - 12px);
+    padding-bottom: 12px;
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+  .map-mobile-controls:has(:global(.map-mobile-flyout)) {
+    top: 34%;
+    transform: translateY(calc(-50% - 28px));
+  }
+  .map-mobile-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    flex-shrink: 0;
+    pointer-events: auto;
+  }
+  .map-mobile-rail :global(.map-mode--vertical) {
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+  }
+  .map-mobile-rail :global(.map-mode--vertical button) {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: var(--mobile-tap-min, 44px);
+    min-height: var(--mobile-tap-min, 44px);
+    padding: 6px 4px;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.1;
+  }
+  .map-rail-lbl {
+    display: block;
+    max-width: 44px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .map-mobile-rail-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: var(--mobile-tap-min, 44px);
+    min-height: var(--mobile-tap-min, 44px);
+    padding: 6px 4px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-1);
+    background: var(--glass-surface, var(--bg-glass));
+    color: var(--text-2);
+    font-size: 9px;
+    font-weight: 600;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(10px);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .map-mobile-rail-btn.is-active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
   .map-empty {
     position: absolute;
     left: 50%;
-    top: 50%;
+    top: 42%;
     transform: translate(-50%, -50%);
     z-index: 4;
     max-width: min(400px, calc(100% - 32px));
@@ -1581,6 +1791,28 @@
     backdrop-filter: blur(14px);
     text-align: center;
     pointer-events: auto;
+  }
+  .map-empty-dismiss {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-3);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .map-empty-dismiss:hover {
+    color: var(--text-1);
+    background: color-mix(in srgb, var(--bg-2) 80%, transparent);
   }
   .map-empty-kicker {
     margin: 0 0 var(--space-2);
@@ -1626,6 +1858,8 @@
     container-type: size;
     container-name: map-surface;
     width: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
     border-radius: var(--radius);
     overflow: visible;
     border: 1px solid var(--border-1);
@@ -1647,6 +1881,14 @@
   :global(.map-wrap-globe .oa-three-globe) {
     border-radius: var(--radius);
     overflow: hidden;
+  }
+
+  /* Globe canvas is full-bleed; while layers are open, do not steal panel hits. */
+  .map-wrap:has(:global(.map-layers-panel.is-open)) :global(.oa-three-globe-wrap),
+  .map-wrap:has(:global(.map-layers-panel.is-open)) :global(.oa-three-globe),
+  .map-wrap:has(:global(.map-layers-panel.is-open)) :global(.oa-three-globe canvas),
+  .map-wrap:has(:global(.map-layers-panel.is-open)) .map {
+    pointer-events: none;
   }
 
   .map-mode {

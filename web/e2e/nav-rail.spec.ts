@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-const demoHome = "/?demo=1";
+import { gotoDemo } from "./demo-goto";
 
 test.describe("left rail navigation", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(demoHome);
+    await gotoDemo(page);
     await expect(
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });
@@ -35,7 +35,16 @@ test.describe("left rail navigation", () => {
     await expect(
       page.getByRole("region", { name: /Cross-domain overview charts/i }),
     ).toBeVisible({ timeout: 10_000 });
-    await nav.getByRole("button", { name: "Energy" }).click();
+    const expandRail = nav.getByRole("button", { name: /Expand sidebar/i });
+    if (await expandRail.isVisible()) {
+      await expandRail.click();
+    }
+    const domainsToggle = nav.getByRole("button", { name: "Domains" });
+    await expect(domainsToggle).toBeVisible({ timeout: 5_000 });
+    if ((await domainsToggle.getAttribute("aria-expanded")) !== "true") {
+      await domainsToggle.click();
+    }
+    await nav.getByRole("button", { name: "Energy", exact: true }).click();
     await expect(page.getByTitle("Active view")).toHaveText("Energy", { timeout: 8_000 });
     await expect(page.getByRole("heading", { level: 1, name: "Energy" })).toBeVisible({
       timeout: 10_000,

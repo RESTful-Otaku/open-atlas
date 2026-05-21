@@ -1,7 +1,10 @@
 import type { NotifyLevel } from "./notify-types";
+import { isCompactLayout } from "../mobile-layout";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
+const COMPACT_TIMEOUT_MS = 3_500;
 const MAX_VISIBLE = 6;
+const MAX_VISIBLE_COMPACT = 2;
 
 export type ToastItem = {
   id: string;
@@ -50,7 +53,10 @@ export function pushToast(
     }
   }
 
-  const timeoutMs = t.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const compact = isCompactLayout();
+  const timeoutMs =
+    t.timeoutMs ?? (compact ? COMPACT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+  const maxVisible = compact ? MAX_VISIBLE_COMPACT : MAX_VISIBLE;
   const item: ToastItem = {
     id,
     level: t.level,
@@ -60,7 +66,7 @@ export function pushToast(
     detail: t.detail,
     action: t.action,
   };
-  toasts.items = [...toasts.items, item].slice(-MAX_VISIBLE);
+  toasts.items = [...toasts.items, item].slice(-maxVisible);
 
   if (timeoutMs > 0) {
     const tmr = setTimeout(() => {

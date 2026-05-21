@@ -41,8 +41,7 @@ mod narrative;
 use spacetimedb::{reducer, ReducerContext, SpacetimeType, Table, Timestamp};
 
 use narrative::{
-    build_domain_insight_narrative, build_narrative, NarrativeContext,
-    NARRATIVE_SEVERITY_THRESHOLD,
+    build_domain_insight_narrative, build_narrative, NarrativeContext, NARRATIVE_SEVERITY_THRESHOLD,
 };
 
 /// Maximum number of signals retained across all domains. The newest

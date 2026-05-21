@@ -11,11 +11,17 @@ interface ImportMetaEnv {
   readonly VITE_STDB_URI?: string;
   readonly VITE_STDB_DB?: string;
   /**
+   * Ingest HTTP base (no trailing `/`). Empty = same-origin paths proxied
+   * by Vite. Required for Capacitor against LAN/cloud hosts.
+   */
+  readonly VITE_INGEST_BASE?: string;
+  /**
    * Base URL for `openatlas-llm-bridge` (no trailing `/`). In dev, the
    * Vite default proxy serves `/api/llm` on :3847. Override for
    * production (e.g. `https://ops.example/llm`).
    */
   readonly VITE_LLM_BASE?: string;
+  readonly VITE_LLM_INSIGHT_TIMEOUT_MS?: string;
 }
 
 interface ImportMeta {

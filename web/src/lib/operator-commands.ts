@@ -6,7 +6,7 @@
 
 import { DOMAIN_CATALOG } from "./colors";
 import { navigate } from "./router.svelte";
-import { applyNlFilterIntent, parseNlFilterIntent } from "./nl-filter-intent";
+import { applyNlFilterIntent, parseNlFilterIntent } from "./nl-filter-intent.svelte";
 import { setSelectedDomain } from "./state.svelte";
 import { MATRIX_CATALOG } from "./matrices/catalog";
 

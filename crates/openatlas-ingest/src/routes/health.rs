@@ -21,7 +21,10 @@ pub(crate) async fn health() -> &'static str {
 pub(crate) async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     let body = state.metrics.snapshot().to_prometheus_text();
     (
-        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
         body,
     )
 }

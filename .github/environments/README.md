@@ -12,6 +12,8 @@ Used by **CI — QA (main)** when running **verify_feeds** (live open-data smoke
 |------|------|----------|
 | Secret | `FRED_API_KEY` | For `verify_feeds` only |
 | Secret | `EIA_API_KEY` | For `verify_feeds` only |
+| Secret | `OPENSKY_CLIENT_ID` | Optional — OpenSky OAuth (pair with secret below) |
+| Secret | `OPENSKY_CLIENT_SECRET` | Optional — must match `OPENSKY_CLIENT_ID` |
 | Variable | `OPENATLAS_STDB_URI` | If QA targets remote STDB (optional) |
 | Variable | `OPENATLAS_STDB_DB` | Default `openatlas` |
 
@@ -25,6 +27,8 @@ Used by **CD — Staging** (artifact build + future deploy steps).
 |------|------|---------|
 | Secret | `FRED_API_KEY` | staging feed key |
 | Secret | `EIA_API_KEY` | staging feed key |
+| Secret | `OPENSKY_CLIENT_ID` | optional |
+| Secret | `OPENSKY_CLIENT_SECRET` | optional |
 | Variable | `STAGING_STDB_URI` | `https://…` |
 | Variable | `STAGING_STDB_DB` | `openatlas-staging` |
 | Variable | `OPENATLAS_INGEST_MODE` | `live` |
@@ -39,6 +43,8 @@ Used by **CD — Production** (manual promotion only).
 |------|------|---------|
 | Secret | `FRED_API_KEY` | production feed key |
 | Secret | `EIA_API_KEY` | production feed key |
+| Secret | `OPENSKY_CLIENT_ID` | optional |
+| Secret | `OPENSKY_CLIENT_SECRET` | optional |
 | Variable | `PRODUCTION_STDB_URI` | `wss://maincloud.spacetimedb.com` |
 | Variable | `PRODUCTION_STDB_DB` | `openatlas` |
 | Variable | `VITE_LLM_BASE` | `https://your-host/api/llm` |
@@ -56,7 +62,7 @@ Repository secrets are appropriate only for org-wide tokens unrelated to OpenAtl
 ## Checklist
 
 - [ ] Created `qa`, `staging`, `production` environments
-- [ ] Added `FRED_API_KEY` + `EIA_API_KEY` to each environment that needs live feeds
+- [ ] Added feed secrets (`FRED_API_KEY`, `EIA_API_KEY`, optional OpenSky pair) per environment
 - [ ] Set `PRODUCTION_STDB_URI` / `PRODUCTION_STDB_DB` as **variables** (not secrets)
 - [ ] Enabled production required reviewers
 - [ ] Branch protection requires **Merge gate** on `main`

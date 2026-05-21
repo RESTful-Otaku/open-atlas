@@ -2,12 +2,14 @@
  * Shared LLM + ingest reachability checks (also shown in Settings).
  * SpacetimeDB status lives on `dashboard.connection` in `state.svelte.ts`.
  */
-import { checkLlmBridgeCapable, checkLlmBridgeReady } from "./llm";
+import { checkLlmBridgeCapable } from "./llm";
+import { checkLlmProviderReady, usesClientSideLlm } from "./llm/llm-providers";
 import {
   fetchIngestReady,
   fetchIngestStatus,
   type IngestServiceStatus,
 } from "./ingest-status";
+import { shouldProbeIngest, shouldProbeLlm } from "./native-config";
 
 export const readiness = $state({
   llmReady: null as boolean | null,
@@ -18,10 +20,13 @@ export const readiness = $state({
 });
 
 async function fetchIngestOk(): Promise<{
-  ok: boolean;
+  ok: boolean | null;
   err: string | null;
   status: IngestServiceStatus | null;
 }> {
+  if (!shouldProbeIngest()) {
+    return { ok: null, err: null, status: null };
+  }
   const [ready, result] = await Promise.all([fetchIngestReady(), fetchIngestStatus()]);
   if (!result.ok) {
     return { ok: false, err: result.err, status: null };
@@ -65,6 +70,10 @@ export async function ensureLlmReady(deep = false): Promise<boolean> {
     readiness.llmReady = capableCached;
     return capableCached === true;
   }
+  if (usesClientSideLlm()) {
+    readiness.llmReady = await checkLlmProviderReady();
+    return readiness.llmReady === true;
+  }
   if (deep || readiness.llmReady === false) {
     capableCached = await checkLlmBridgeCapable();
     capableCachedAt = Date.now();
@@ -80,7 +89,9 @@ export async function refreshRemoteReadiness(): Promise<void> {
   readiness.ingestCheckErr = null;
   try {
     const [llm, ing] = await Promise.all([
-      checkLlmBridgeReady(),
+      usesClientSideLlm() || shouldProbeLlm()
+        ? checkLlmProviderReady()
+        : Promise.resolve(null),
       fetchIngestOk(),
     ]);
     readiness.llmReady = llm;

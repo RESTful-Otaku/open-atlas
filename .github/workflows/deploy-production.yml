@@ -51,6 +51,8 @@ jobs:
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+          OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
+          OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
         run: ./scripts/ci/write-feed-secrets-from-env.sh
 
       - name: Full compile verification
@@ -71,11 +73,28 @@ jobs:
         run: |
           bun install --frozen-lockfile
           bun run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Build Android APK (Maincloud, debug)
+        env:
+          OPENATLAS_MOBILE_TARGET: maincloud
+          OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL: "1"
+          OPENATLAS_MOBILE_VARIANT: debug
+        run: |
+          chmod +x scripts/mobile-build-apk.sh
+          ./scripts/mobile-build-apk.sh
       - name: Package artifacts
         run: |
           mkdir -p dist-artifacts
           cp target/release/openatlas-ingest dist-artifacts/
           cp -r web/dist dist-artifacts/web-dist
+          if [[ -f dist/mobile/openatlas-maincloud-debug.apk ]]; then
+            cp dist/mobile/openatlas-maincloud-debug.apk dist-artifacts/
+          fi
           tar -czf openatlas-production-${{ github.sha }}.tar.gz -C dist-artifacts .
       - uses: actions/upload-artifact@v4
         with:

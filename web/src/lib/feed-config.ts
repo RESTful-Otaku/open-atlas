@@ -2,6 +2,9 @@
  * Ingest feed catalog + API key management (`GET/PUT /feeds`, test/reconnect).
  */
 
+import { readResponseJson } from "./http-json";
+import { ingestUrl, shouldProbeIngest } from "./native-config";
+
 export type FeedConnectionStatus =
   | "ok"
   | "degraded"
@@ -81,15 +84,20 @@ async function parseError(r: Response): Promise<string> {
 }
 
 export async function fetchFeedCatalog(): Promise<FeedCatalog> {
-  const r = await fetch("/feeds", { method: "GET" });
+  if (!shouldProbeIngest()) {
+    throw new Error("Ingest URL not configured (set VITE_INGEST_BASE)");
+  }
+  const r = await fetch(ingestUrl("/feeds"), { method: "GET" });
   if (!r.ok) throw new Error(await parseError(r));
-  return (await r.json()) as FeedCatalog;
+  const parsed = await readResponseJson<FeedCatalog>(r);
+  if (!parsed.ok) throw new Error(parsed.err);
+  return parsed.data;
 }
 
 export async function updateFeedPollIntervals(
   intervals: Record<string, number>,
 ): Promise<FeedCatalog> {
-  const r = await fetch("/feeds/poll-intervals", {
+  const r = await fetch(ingestUrl("/feeds/poll-intervals"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ intervals }),
@@ -101,7 +109,7 @@ export async function updateFeedPollIntervals(
 export async function updateFeedSecrets(
   secrets: Record<string, string>,
 ): Promise<FeedCatalog> {
-  const r = await fetch("/feeds", {
+  const r = await fetch(ingestUrl("/feeds"), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ secrets }),
@@ -111,7 +119,7 @@ export async function updateFeedSecrets(
 }
 
 export async function testFeed(name: string): Promise<FeedTestResult> {
-  const r = await fetch(`/feeds/${encodeURIComponent(name)}/test`, {
+  const r = await fetch(ingestUrl(`/feeds/${encodeURIComponent(name)}/test`), {
     method: "POST",
   });
   if (!r.ok) throw new Error(await parseError(r));
@@ -119,7 +127,7 @@ export async function testFeed(name: string): Promise<FeedTestResult> {
 }
 
 export async function reconnectFeed(name: string): Promise<FeedTestResult> {
-  const r = await fetch(`/feeds/${encodeURIComponent(name)}/reconnect`, {
+  const r = await fetch(ingestUrl(`/feeds/${encodeURIComponent(name)}/reconnect`), {
     method: "POST",
   });
   if (!r.ok) throw new Error(await parseError(r));

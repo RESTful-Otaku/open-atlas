@@ -15,7 +15,7 @@ API keys (FRED, EIA) are not abused. Limits are implemented in
 | GDELT | 180s | Fragile; 30s host gap |
 | FRED | 600s | 4 series per cycle, 2s between calls |
 | EIA | 900s | Single request per cycle |
-| OpenSky | 900s | Anonymous tier |
+| OpenSky | 900s | Anonymous tier; optional `OPENSKY_CLIENT_ID` + `OPENSKY_CLIENT_SECRET` (OAuth2) |
 | World Bank | 3600s | Single batched request |
 
 After failures, exponential backoff applies (5s → 10s → … capped at 5 minutes).
@@ -30,7 +30,7 @@ cycles like FRED and Open-Meteo):
 |------|-----|
 | `api.gdeltproject.org` | 30s |
 | `api.coingecko.com` | 12s |
-| `opensky-network.org` | 10s |
+| `opensky-network.org` | 120s (900s penalty after HTTP 429) |
 | `eonet.gsfc.nasa.gov` | 5s |
 | `api.stlouisfed.org` | 2s |
 | `api.eia.gov` | 2s |

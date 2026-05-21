@@ -23,9 +23,9 @@ export function isGeoEvent(
 
 export type CausalMapOptions = {
   /**
-   * If set and non-empty, only draw edges where **both** endpoints’
-   * domains are in this set (map overlay checkboxes), in addition to
-   * `matchesSelectedDomain` and geo availability.
+   * If set, only draw edges where **both** endpoints’ domains are in this
+   * set (map overlay checkboxes). An empty set hides all domain causal lines.
+   * Also respects `matchesSelectedDomain` and geo availability.
    */
   mapDomains: ReadonlySet<string> | null;
 };
@@ -58,7 +58,7 @@ export function buildCausalLineCollection(
     const a = eventById.get(edge.source_event_id);
     const b = eventById.get(edge.target_event_id);
     if (!a || !b || !isGeoEvent(a) || !isGeoEvent(b)) continue;
-    if (mapDomains !== null && mapDomains.size > 0) {
+    if (mapDomains !== null) {
       if (!mapDomains.has(a.domain) || !mapDomains.has(b.domain)) continue;
     }
     const inf = Math.max(0, Math.min(1, edge.influence_score));

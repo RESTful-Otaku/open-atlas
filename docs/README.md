@@ -8,6 +8,7 @@
 | [ARCHITECTURE.md](../ARCHITECTURE.md) | Crate layout, invariants, extension guides |
 | [CONFIG.md](./CONFIG.md) | Local env, secrets, ingest bind/auth |
 | [DEPLOY.md](./DEPLOY.md) | Production deploy |
+| [MOBILE.md](./MOBILE.md) | Capacitor Android/iOS, env vars, emulator |
 | [TESTING.md](./TESTING.md) | Test matrix and commands |
 | [CICD.md](./CICD.md) | CI tiers and merge gates |
 | [REVIEW_REPORT.md](./REVIEW_REPORT.md) | Principal engineering review (2026-05-19) |

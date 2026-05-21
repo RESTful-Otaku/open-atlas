@@ -94,9 +94,13 @@ export function applyRoute(path: string): RouteMatch {
 export function navigate(path: string): void {
   const normalized = normalizePath(path);
   const prev = router.match;
-  const next = applyRoute(normalized);
+  const next = matchPath(normalized);
   if (currentHashPath() === next.path && sameMatch(prev, next)) return;
-  window.location.hash = normalized;
+  const fragment = normalized === "/" ? "#/" : `#${normalized}`;
+  if (window.location.hash !== fragment) {
+    window.location.hash = fragment;
+  }
+  applyRoute(normalized);
 }
 
 /** Read the path portion of `window.location.hash`, without the `#`. */

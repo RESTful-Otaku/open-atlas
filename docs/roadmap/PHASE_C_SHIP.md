@@ -20,6 +20,8 @@
 | [x] | **CD: STDB publish + ingest rollout** | Post-deploy `curl` + WS subscribe | [`DEPLOY.md`](../DEPLOY.md), [`GITHUB_SECRETS.md`](../GITHUB_SECRETS.md), [`post-deploy-smoke.sh`](../../scripts/post-deploy-smoke.sh) |
 | [x] | **Staging smoke in workflow** | Optional job when `STAGING_INGEST_URL` set | [`deploy-staging.yml`](../../.github/workflows/deploy-staging.yml), [`scripts/`](../../scripts/) |
 | [x] | **Nightly e2e-qa** | Continue-on-error optional job | [`scripts/e2e-qa.sh`](../../scripts/e2e-qa.sh) |
+| [x] | **Mobile Android APK CI** | Capacitor 7 + `assembleDebug` artifact | [`MOBILE.md`](../MOBILE.md), [`.github/workflows/mobile-android.yml`](../../.github/workflows/mobile-android.yml) |
+| [~] | **Mobile iOS archive** | `cap sync` on macOS; App Store needs signing secrets | [`mobile-ios.yml`](../../.github/workflows/mobile-ios.yml) |
 
 ### Observability
 

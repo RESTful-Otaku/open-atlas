@@ -15,6 +15,7 @@ import {
   installDashboardFlushCadence,
 } from "./lib/update-interval.svelte";
 import { refreshRemoteReadiness } from "./lib/readiness.svelte";
+import { bootstrapMobileLayout, initMobileShell } from "./lib/mobile-layout";
 
 const target = document.getElementById("app");
 if (!target) {
@@ -22,13 +23,28 @@ if (!target) {
 }
 
 initTheme();
+bootstrapMobileLayout();
 installRouter();
 installDashboardFlushVisibilityHook();
 installDashboardFlushCadence();
 applyStoredUpdateCadence();
-void refreshRemoteReadiness();
 
 const app = mount(App, { target });
+
+async function hideNativeSplashWhenReady(): Promise<void> {
+  try {
+    const { SplashScreen } = await import("@capacitor/splash-screen");
+    await SplashScreen.hide();
+  } catch {
+    /* web-only or plugin unavailable */
+  }
+}
+
+void initMobileShell().then(() => {
+  void refreshRemoteReadiness();
+  return hideNativeSplashWhenReady();
+});
+
 if (isDemoModeRequested()) {
   if (new URLSearchParams(window.location.search).get("demo") === "1") {
     try {

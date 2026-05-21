@@ -694,12 +694,16 @@
   }
   .table-scroll {
     overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
     margin-top: 0.25rem;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-1);
+    max-width: 100%;
   }
   .data-table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: 0.78rem;
   }

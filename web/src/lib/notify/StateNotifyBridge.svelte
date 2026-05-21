@@ -5,8 +5,10 @@
 <script lang="ts">
   import { dashboard } from "../state.svelte";
   import { readiness } from "../readiness.svelte";
+  import { isCompactLayout } from "../mobile-layout";
   import { notifyError, notifyInfo, notifySuccess, notifyWarning } from "./notify";
   import { NOTIFY_CODES } from "./notify-codes";
+  import { shouldProbeIngest, shouldProbeLlm } from "../native-config";
 
   let previousConn = $state<typeof dashboard.connection | null>(null);
   let everLive = $state(false);
@@ -54,7 +56,7 @@
       });
     }
 
-    if (c === "connecting" && from === "offline") {
+    if (c === "connecting" && from === "offline" && !isCompactLayout()) {
       notifyInfo({
         code: NOTIFY_CODES.STDB_RECONNECTING,
         title: "Reconnecting to SpacetimeDB…",
@@ -82,7 +84,11 @@
       return;
     }
 
-    if (prevIngest === true && ing === false) {
+    const compact = isCompactLayout();
+    const probeIngest = shouldProbeIngest();
+    const probeLlm = shouldProbeLlm();
+
+    if (prevIngest === true && ing === false && (!compact || probeIngest)) {
       const extra = readiness.ingestCheckErr
         ? ` (${readiness.ingestCheckErr})`
         : "";
@@ -96,7 +102,7 @@
       });
     }
 
-    if (prevLlm === true && llm === false) {
+    if (prevLlm === true && llm === false && (!compact || probeLlm)) {
       notifyWarning({
         code: NOTIFY_CODES.LLM_UNREACHABLE,
         title: "LLM bridge is not available",

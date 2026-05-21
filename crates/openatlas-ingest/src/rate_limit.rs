@@ -17,7 +17,8 @@ fn host_min_gap(host: &str) -> Duration {
         "api.stlouisfed.org" => Duration::from_secs(2),
         "api.eia.gov" => Duration::from_secs(2),
         "api.coingecko.com" => Duration::from_secs(12),
-        "opensky-network.org" => Duration::from_secs(10),
+        // Anonymous /states/all is heavily capped; keep well above provider guidance.
+        "opensky-network.org" => Duration::from_secs(120),
         "api.worldbank.org" => Duration::from_secs(2),
         "earthquake.usgs.gov" => Duration::from_secs(1),
         "api.open-meteo.com" => Duration::from_secs(1),
@@ -39,6 +40,8 @@ fn operator_cooldown_from_env() -> Duration {
 struct Inner {
     last_feed_poll: HashMap<String, Instant>,
     last_host_request: HashMap<String, Instant>,
+    /// Earliest time a host may be contacted again after HTTP 429.
+    host_quiet_until: HashMap<String, Instant>,
     last_operator_fetch: HashMap<String, Instant>,
 }
 
@@ -89,17 +92,38 @@ impl FeedRateLimiter {
         loop {
             let wait = {
                 let inner = self.inner.read().await;
-                inner
+                let gap_wait = inner
                     .last_host_request
                     .get(host)
                     .and_then(|last| min_gap.checked_sub(last.elapsed()))
-                    .filter(|d| !d.is_zero())
+                    .filter(|d| !d.is_zero());
+                let penalty_wait = inner.host_quiet_until.get(host).and_then(|until| {
+                    until
+                        .checked_duration_since(Instant::now())
+                        .filter(|d| !d.is_zero())
+                });
+                match (gap_wait, penalty_wait) {
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                    (Some(a), None) => Some(a),
+                    (None, Some(b)) => Some(b),
+                    (None, None) => None,
+                }
             };
             match wait {
                 Some(d) => tokio::time::sleep(d).await,
                 None => break,
             }
         }
+    }
+
+    /// After HTTP 429, block this host until `cooldown` elapses.
+    pub async fn penalize_host(&self, host: &str, cooldown: Duration) {
+        let until = Instant::now() + cooldown;
+        let mut inner = self.inner.write().await;
+        inner.host_quiet_until.insert(host.to_owned(), until);
+        inner
+            .last_host_request
+            .insert(host.to_owned(), Instant::now());
     }
 
     /// Operator test/reconnect: returns remaining cooldown if too soon.
@@ -158,6 +182,26 @@ pub fn host_from_url(url: &str) -> Option<String> {
     }
 }
 
+/// Default host cooldown after HTTP 429 when `Retry-After` is absent.
+pub fn default_rate_limit_cooldown(host: &str) -> Duration {
+    match host {
+        "opensky-network.org" => Duration::from_secs(900),
+        "api.gdeltproject.org" => Duration::from_secs(300),
+        "api.coingecko.com" => Duration::from_secs(120),
+        _ => Duration::from_secs(60),
+    }
+}
+
+/// Parse `Retry-After` (seconds or HTTP-date) into a duration capped at 24h.
+pub fn retry_after_duration(header: &str) -> Option<Duration> {
+    let trimmed = header.trim();
+    if let Ok(secs) = trimmed.parse::<u64>() {
+        return Some(Duration::from_secs(secs.min(86_400)));
+    }
+    // HTTP-date — best-effort; if unparseable, fall back to provider default.
+    None
+}
+
 /// True when upstream likely rate-limited us (HTTP 429 or similar body text).
 pub fn is_rate_limit_error(err: &anyhow::Error) -> bool {
     let msg = err.to_string().to_ascii_lowercase();
@@ -184,6 +228,22 @@ mod tests {
     fn detects_rate_limit_errors() {
         assert!(is_rate_limit_error(&anyhow::anyhow!("GET x returned 429")));
         assert!(!is_rate_limit_error(&anyhow::anyhow!("connection reset")));
+    }
+
+    #[tokio::test]
+    async fn penalize_host_blocks_until_cooldown() {
+        let limiter = FeedRateLimiter::new();
+        limiter
+            .penalize_host("example.com", Duration::from_millis(50))
+            .await;
+        let started = Instant::now();
+        limiter.wait_host_request("example.com").await;
+        assert!(started.elapsed() >= Duration::from_millis(45));
+    }
+
+    #[test]
+    fn parses_retry_after_seconds() {
+        assert_eq!(retry_after_duration("120"), Some(Duration::from_secs(120)));
     }
 
     #[tokio::test]

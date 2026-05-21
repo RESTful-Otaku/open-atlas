@@ -1,0 +1,80 @@
+name: Mobile iOS (sync)
+
+# Full App Store IPA requires signing secrets + Xcode archive on macOS.
+# This workflow validates cap sync and web build on Apple runners.
+# Simulator / device: open web/ios/App.xcworkspace on a Mac → Product → Run (⌘R).
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Optional label for this run (logged only)"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+    paths:
+      - "web/**"
+      - "media/**"
+      - "scripts/mobile-*.sh"
+      - "scripts/sync-brand-assets.sh"
+      - ".github/workflows/mobile-ios.yml"
+
+jobs:
+  cap-sync:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Write production env (Maincloud)
+        run: |
+          cat > .env.local <<'EOF'
+          # CI — Maincloud production bundle (physical device / App Store)
+          VITE_STDB_URI=wss://maincloud.spacetimedb.com
+          VITE_STDB_DB=openatlas
+          EOF
+
+      - name: Sync brand assets
+        run: bash ../scripts/sync-brand-assets.sh
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Add Capacitor iOS (if missing)
+        run: |
+          if [[ ! -d ios ]]; then
+            bunx cap add ios
+          fi
+
+      - name: Build web bundle
+        run: bun run build
+
+      - name: Capacitor sync iOS
+        run: bunx cap sync ios
+
+      - name: Workflow summary
+        run: |
+          {
+            echo "## OpenAtlas iOS (Capacitor sync)"
+            echo ""
+            echo "Synced \`web/dist\` → \`web/ios/\` with Maincloud \`VITE_STDB_*\`."
+            echo ""
+            echo "### Simulator or device (Mac)"
+            echo "1. \`cd web && bunx cap open ios\`"
+            echo "2. Signing & Capabilities → your team"
+            echo "3. Select iPhone → **Product → Run (⌘R)**"
+            echo ""
+            echo "IPA / TestFlight: Archive in Xcode with distribution cert (not produced in CI)."
+            echo ""
+            echo "Dispatch: \`${{ github.event.inputs.note || '(none)' }}\`"
+            echo ""
+            echo "Docs: [docs/MOBILE.md](https://github.com/${{ github.repository }}/blob/main/docs/MOBILE.md)"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -17,10 +17,16 @@
   } from "@lucide/svelte";
 
   import SolarTimeScrub from "./SolarTimeScrub.svelte";
+  import { isCompactLayout } from "../mobile-layout";
   import type { SimMinOfDay } from "../map/solar-time-scrub";
+
+  const SWIPE_DISMISS_PX = 80;
 
   interface Props {
     open: boolean;
+    /** When true, panel is inside MapMobileSheet (no collapse animation). */
+    sheet?: boolean;
+    onDismiss?: () => void;
     useWebGlGlobe: boolean;
     mapDomainsActiveLabel: string;
     simUtcLabel: string;
@@ -43,6 +49,8 @@
 
   let {
     open,
+    sheet = false,
+    onDismiss,
     useWebGlGlobe,
     mapDomainsActiveLabel,
     simUtcLabel,
@@ -62,15 +70,52 @@
     onClearDomains,
     onSnapSimToNow,
   }: Props = $props();
+
+  let swipeStartY = 0;
+  let swipeDragging = false;
+
+  function onSheetPointerDown(e: PointerEvent): void {
+    if (sheet || !open || !isCompactLayout() || !onDismiss) return;
+    swipeStartY = e.clientY;
+    swipeDragging = true;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onSheetPointerUp(e: PointerEvent): void {
+    if (!swipeDragging) return;
+    swipeDragging = false;
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+    const dy = e.clientY - swipeStartY;
+    if (dy >= SWIPE_DISMISS_PX) onDismiss?.();
+  }
+
+  function onSheetPointerCancel(e: PointerEvent): void {
+    swipeDragging = false;
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+  }
 </script>
 
 <div
   id="map-layers-panel"
   class="map-layers-panel"
-  class:is-open={open}
-  aria-hidden={!open}
+  class:is-open={open || sheet}
+  class:map-layers-panel--sheet={sheet}
+  aria-hidden={!(open || sheet)}
 >
   <div class="map-layers-panel-inner">
+    <div
+      class="map-layers-sheet-handle"
+      aria-hidden="true"
+      onpointerdown={onSheetPointerDown}
+      onpointerup={onSheetPointerUp}
+      onpointercancel={onSheetPointerCancel}
+    ></div>
     <section class="map-layers-block" aria-labelledby="map-layers-domains-h">
       <header class="map-layers-block-head">
         <h3 id="map-layers-domains-h" class="map-layers-block-title">
@@ -92,7 +137,7 @@
           <label class="map-layers-pill" title="Toggle {d.label}">
             <input
               type="checkbox"
-              checked={mapDomainSet.size === 0 || mapDomainSet.has(d.id)}
+              checked={mapDomainSet.has(d.id)}
               onchange={(ev) => {
                 const t = ev.currentTarget as HTMLInputElement;
                 onDomainToggle(d.id, t.checked);
@@ -192,8 +237,28 @@
     grid-template-rows: auto;
     opacity: 1;
     max-height: min(calc(100% - 2.75rem), calc(100cqb - 2.75rem));
+    position: relative;
+    z-index: 15;
+    pointer-events: auto;
+  }
+  .map-layers-panel--sheet {
+    display: block;
+    grid-template-rows: none;
+    opacity: 1;
+    max-height: none;
+    overflow: visible;
+  }
+  .map-layers-panel--sheet .map-layers-panel-inner {
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
+  }
+  .map-layers-sheet-handle {
+    display: none;
   }
   .map-layers-panel-inner {
+    pointer-events: auto;
     overflow: visible;
     min-height: 0;
     display: flex;
@@ -326,6 +391,22 @@
   }
   .map-ctl-mono {
     font-family: var(--font-mono);
+  }
+  :global(html[data-mobile-layout]) .map-layers-sheet-handle {
+    display: block;
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 4px;
+    margin: 10px auto 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-3) 55%, transparent);
+    touch-action: none;
+    cursor: grab;
+  }
+  :global(html[data-mobile-layout]) .map-mode-compact button {
+    min-height: var(--mobile-tap-min, 44px);
+    min-width: var(--mobile-tap-min, 44px);
+    padding: 8px 12px;
   }
   @media (prefers-reduced-motion: reduce) {
     .map-layers-panel {

@@ -50,6 +50,7 @@ pub fn mutations_require_auth(bind: &SocketAddr) -> bool {
 }
 
 /// Verify admin key for `PUT /feeds` and related routes.
+#[allow(clippy::result_large_err)]
 pub fn check_admin_auth(headers: &HeaderMap, bind: &SocketAddr) -> Result<(), Response> {
     if !mutations_require_auth(bind) {
         return Ok(());
