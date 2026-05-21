@@ -27,7 +27,7 @@ describe("arcAltitudeForGlobe", () => {
     const short = arcAltitudeForGlobe(0, 0, 1, 1);
     const long = arcAltitudeForGlobe(51, -0.1, 40, -74);
     expect(long).toBeGreaterThan(short);
-    expect(short).toBeGreaterThanOrEqual(0.14);
-    expect(long).toBeLessThanOrEqual(0.58);
+    expect(short).toBeGreaterThanOrEqual(0.08);
+    expect(long).toBeLessThanOrEqual(0.29);
   });
 });

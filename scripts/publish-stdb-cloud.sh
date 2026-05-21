@@ -34,12 +34,19 @@ fi
 echo "==> build wasm module"
 spacetime build --module-path "$MODULE_PATH"
 
-echo "==> publish (creates or updates database on Maincloud)"
-spacetime publish \
+echo "==> publish (updates existing '$STDB_DB' in place — does NOT wipe rows unless schema is breaking)"
+echo "    (uses --yes only; no --delete-data — login data and tables are preserved on compatible migrations)"
+if ! spacetime publish \
   --server "$STDB_SERVER" \
   --module-path "$MODULE_PATH" \
   --yes \
-  "$STDB_DB"
+  "$STDB_DB"; then
+  echo ""
+  echo "Publish failed. If you see 401 InvalidSignature, refresh cloud auth:" >&2
+  echo "  spacetime login" >&2
+  echo "  # or non-interactive: spacetime login --token <token-from-dashboard>" >&2
+  exit 1
+fi
 
 echo ""
 echo "==> done"

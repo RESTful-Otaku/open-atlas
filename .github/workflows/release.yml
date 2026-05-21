@@ -101,7 +101,7 @@ jobs:
           mobile_write_env_local
           cd web
           bun install --frozen-lockfile
-          bun run build
+          bunx vite build --mode capacitor
           mkdir -p ../dist/release
           tar -czf "../dist/release/openatlas-web-${{ needs.bump-and-tag.outputs.version }}.tar.gz" -C dist .
 

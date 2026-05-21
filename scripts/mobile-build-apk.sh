@@ -41,7 +41,7 @@ mobile_tc_load_env_file
 mobile_tc_ensure_java17
 
 mobile_write_env_local
-log "wrote ${WEB}/.env.local (target=${TARGET}, variant=${VARIANT})"
+log "wrote ${WEB}/.env.capacitor.local (target=${TARGET}, variant=${VARIANT})"
 
 if [[ -f "${ROOT}/scripts/sync-brand-assets.sh" ]]; then
   bash "${ROOT}/scripts/sync-brand-assets.sh"
@@ -65,7 +65,7 @@ if [[ -n "${OPENATLAS_APP_VERSION:-}" ]]; then
 fi
 
 log "==> Vite production build"
-(cd "$WEB" && bun run build)
+(cd "$WEB" && bun run build:cap)
 
 log "==> Capacitor sync android"
 (cd "$WEB" && bunx cap sync android)
@@ -115,4 +115,4 @@ cp -f "$APK_SRC" "$APK_DEST"
 log ""
 log "APK ready: ${APK_DEST}"
 log "Install on phone (USB debugging): adb install -r ${APK_DEST}"
-log "Env baked from: ${WEB}/.env.local"
+log "Env baked from: ${WEB}/.env.capacitor.local"

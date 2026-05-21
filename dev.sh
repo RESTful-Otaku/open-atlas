@@ -38,7 +38,8 @@ source "${SCRIPT_DIR}/scripts/load-local-env.sh"
 : "${VITE_READY_URL:=http://127.0.0.1:5173/}"
 : "${VITE_READY_TIMEOUT_SECS:=90}"
 : "${CARGO_HOME_LOCAL:=${SCRIPT_DIR}/.cargo-local}"
-: "${READY_TIMEOUT_SECS:=45}"
+: "${READY_TIMEOUT_SECS:=90}"
+: "${INGEST_BIN:=${SCRIPT_DIR}/target/debug/openatlas-ingest}"
 
 # SpacetimeDB local-instance configuration. Matches the defaults the
 # `spacetime` CLI ships with so `spacetime call` / `spacetime sql` against
@@ -59,11 +60,19 @@ source "${SCRIPT_DIR}/scripts/load-local-env.sh"
 # `openatlas-llm-bridge` (→ Ollama). Must match Vite's proxy in `web/vite.config.ts`.
 # Set OPENATLAS_START_LLM=0 to skip auto-starting the bridge (Settings hub AI
 # analysis will be unavailable until you run it manually).
+# Set OPENATLAS_START_OLLAMA=0 to skip auto-starting Ollama (bridge still starts).
+# Set OPENATLAS_OLLAMA_CPU=1 to force CPU-only Ollama (GTX 10xx CUDA errors).
 : "${LLM_LISTEN_ADDR:=127.0.0.1:3847}"
 : "${LLM_PID_FILE:=${DEV_DIR}/llm-bridge.pid}"
 : "${LLM_LOG_FILE:=${DEV_DIR}/llm-bridge.log}"
 : "${LLM_HEALTH_URL:=http://${LLM_LISTEN_ADDR}/health}"
 : "${LLM_READY_TIMEOUT_SECS:=90}"
+: "${OPENATLAS_START_OLLAMA:=1}"
+: "${OPENATLAS_OLLAMA_AUTO_PULL:=1}"
+: "${OPENATLAS_OLLAMA_CPU:=0}"
+: "${OLLAMA_PID_FILE:=${DEV_DIR}/ollama.pid}"
+: "${OLLAMA_LOG_FILE:=${DEV_DIR}/ollama.log}"
+: "${OLLAMA_READY_TIMEOUT_SECS:=60}"
 
 mkdir -p "$DEV_DIR"
 
@@ -82,6 +91,8 @@ STDB_PID_FILE="$(abs_repo_path "$STDB_PID_FILE")"
 STDB_LOG_FILE="$(abs_repo_path "$STDB_LOG_FILE")"
 LLM_PID_FILE="$(abs_repo_path "$LLM_PID_FILE")"
 LLM_LOG_FILE="$(abs_repo_path "$LLM_LOG_FILE")"
+OLLAMA_PID_FILE="$(abs_repo_path "$OLLAMA_PID_FILE")"
+OLLAMA_LOG_FILE="$(abs_repo_path "$OLLAMA_LOG_FILE")"
 FRONTEND_PID_FILE="$(abs_repo_path "$FRONTEND_PID_FILE")"
 FRONTEND_LOG_FILE="$(abs_repo_path "$FRONTEND_LOG_FILE")"
 
@@ -162,7 +173,41 @@ print_banner() {
     echo
 }
 
+prune_stale_server_pid() {
+    [[ -f "$PID_FILE" ]] || return 0
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [[ -n "${pid:-}" ]] && ! kill -0 "$pid" 2>/dev/null; then
+        rm -f "$PID_FILE"
+    fi
+}
+
+ingest_http_ok() {
+    require_cmd curl
+    curl -sf "$HEALTH_URL" >/dev/null 2>&1
+}
+
+ensure_ingest_binary() {
+    if [[ -x "$INGEST_BIN" ]]; then
+        return 0
+    fi
+    require_cmd cargo
+    style_muted "compiling openatlas-ingest (first run can take ~1–2 min)…"
+    cargo build -p openatlas-ingest -q
+}
+
+# When a Capacitor build baked a LAN ingest URL, listen on all interfaces for phones.
+maybe_enable_ingest_lan_bind() {
+    local cap="${FRONTEND_DIR}/.env.capacitor.local"
+    [[ -f "$cap" ]] || return 0
+    if grep -qE 'VITE_INGEST_BASE=http://[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:8080' "$cap" 2>/dev/null; then
+        export OPENATLAS_INGEST_LAN_BIND=1
+        style_muted "LAN ingest bind enabled (Capacitor .env.capacitor.local)"
+    fi
+}
+
 server_pid() {
+    prune_stale_server_pid
     [[ -f "$PID_FILE" ]] || return 1
     local pid
     pid="$(cat "$PID_FILE" 2>/dev/null || true)"
@@ -183,7 +228,7 @@ print_status_line() {
     else
         style_warn "○ spacetimedb local not running"
     fi
-    if pid="$(server_pid)"; then
+    if pid="$(server_pid)" && ingest_http_ok; then
         uri="$(current_ingest_stdb_uri)"
         mode="$(ingest_mode_running)"
         if is_cloud_stdb_uri "$uri"; then
@@ -191,6 +236,8 @@ print_status_line() {
         else
             style_ok "● ingest → local ${STDB_DB_NAME} (pid=${pid}, mode=${mode:-?})"
         fi
+    elif pid="$(server_pid)"; then
+        style_warn "○ ingest pid ${pid} but HTTP unhealthy (./dev.sh start)"
     else
         style_warn "○ ingest not running"
     fi
@@ -201,6 +248,11 @@ print_status_line() {
     fi
     if [[ -d "$FRONTEND_DIST_DIR" ]]; then
         style_muted "  dist/ present (production build)"
+    fi
+    if ollama_api_ok "$(ollama_host_from_base "${OPENATLAS_OLLAMA_BASE:-http://127.0.0.1:11434}")"; then
+        style_ok "● Ollama API (${OPENATLAS_OLLAMA_BASE:-http://127.0.0.1:11434})"
+    else
+        style_warn "○ Ollama not reachable (./dev.sh ollama:start or ollama serve)"
     fi
     if pid="$(llm_bridge_pid)"; then
         style_ok "● openatlas-llm-bridge running (pid=${pid}, http://${LLM_LISTEN_ADDR})"
@@ -228,12 +280,24 @@ require_cmd() {
 # ----------------------------------------------------------------------------
 # Build
 # ----------------------------------------------------------------------------
+# node_modules/ can exist but be stale (e.g. Capacitor added to package.json later).
+frontend_deps_ok() {
+    [[ -d "${FRONTEND_DIR}/node_modules/@capacitor/core" ]] \
+        && [[ -d "${FRONTEND_DIR}/node_modules/spacetimedb" ]] \
+        && [[ -d "${FRONTEND_DIR}/node_modules/svelte" ]]
+}
+
+install_frontend_deps() {
+    require_cmd bun "install from https://bun.sh"
+    spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
+}
+
 do_build_frontend() {
     require_cmd bun "install from https://bun.sh"
     sync_brand_assets
     style_header "🔨 Building Svelte frontend (bun)"
-    if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
-        spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
+    if ! frontend_deps_ok; then
+        install_frontend_deps
     fi
     spin "bun run build (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun run build"
     style_ok "frontend bundle written to ${FRONTEND_DIST_DIR}/"
@@ -250,8 +314,8 @@ source "${SCRIPT_DIR}/scripts/mobile-env.sh"
 
 mobile_ensure_deps() {
     require_cmd bun "install from https://bun.sh"
-    if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
-        spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
+    if ! frontend_deps_ok; then
+        install_frontend_deps
     fi
 }
 
@@ -370,7 +434,7 @@ mobile_ensure_env_file() {
     target="$(mobile_resolve_target)"
     style_muted "mobile build target: ${target} (override: OPENATLAS_MOBILE_TARGET=emulator|device|maincloud)"
     mobile_write_env_local
-    style_ok "wrote ${FRONTEND_DIR}/.env.local for Capacitor bundle"
+    style_ok "wrote ${FRONTEND_DIR}/.env.capacitor.local for Capacitor bundle"
 }
 
 do_mobile_run() {
@@ -474,9 +538,8 @@ do_mobile_ios() {
 }
 
 ensure_frontend_deps() {
-    require_cmd bun "install from https://bun.sh"
-    if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
-        spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
+    if ! frontend_deps_ok; then
+        install_frontend_deps
     fi
 }
 
@@ -549,6 +612,8 @@ start_frontend_dev() {
         return 0
     fi
     ensure_frontend_deps
+    web_env_local_strip_mobile || true
+    web_vite_dev_env
     : > "$FRONTEND_LOG_FILE"
     case "$stdb_target" in
         cloud|maincloud)
@@ -559,6 +624,9 @@ start_frontend_dev() {
                 nohup env \
                     VITE_STDB_URI="${STDB_CLOUD_WS}" \
                     VITE_STDB_DB="${STDB_CLOUD_DB}" \
+                    VITE_INGEST_BASE= \
+                    VITE_LLM_BASE= \
+                    VITE_NATIVE_DEFAULT_LLM= \
                     bun run dev >>"$FRONTEND_LOG_FILE" 2>&1 &
                 echo $! > "$FRONTEND_PID_FILE"
             )
@@ -570,6 +638,9 @@ start_frontend_dev() {
                 nohup env \
                     VITE_STDB_URI="ws://127.0.0.1:3000" \
                     VITE_STDB_DB="${STDB_DB_NAME}" \
+                    VITE_INGEST_BASE= \
+                    VITE_LLM_BASE= \
+                    VITE_NATIVE_DEFAULT_LLM= \
                     bun run dev >>"$FRONTEND_LOG_FILE" 2>&1 &
                 echo $! > "$FRONTEND_PID_FILE"
             )
@@ -581,24 +652,47 @@ start_frontend_dev() {
 }
 
 # Vite: command-line VITE_* wins over .env / .env.local (see web/src/lib/stdb-endpoint.ts).
+web_vite_dev_env() {
+    # CLI overrides beat .env.local — clear mobile APK URLs so /status and /api/llm use Vite proxy.
+    export VITE_INGEST_BASE=
+    export VITE_LLM_BASE=
+    export VITE_NATIVE_DEFAULT_LLM=
+}
+
 web_vite_local() {
     ensure_frontend_deps
+    web_env_local_strip_mobile || true
+    web_vite_dev_env
     style_header "⚡ Vite :5173 → local SpacetimeDB (ws://127.0.0.1:3000)"
     style_muted "Ingest proxy :8080 · no ?demo=1 for live STDB"
     (
         cd "$FRONTEND_DIR"
-        VITE_STDB_URI="ws://127.0.0.1:3000" VITE_STDB_DB="${STDB_DB_NAME}" bun run dev
+        env \
+            VITE_STDB_URI="ws://127.0.0.1:3000" \
+            VITE_STDB_DB="${STDB_DB_NAME}" \
+            VITE_INGEST_BASE= \
+            VITE_LLM_BASE= \
+            VITE_NATIVE_DEFAULT_LLM= \
+            bun run dev
     )
 }
 
 web_vite_cloud() {
     ensure_frontend_deps
+    web_env_local_strip_mobile || true
+    web_vite_dev_env
     ensure_web_cloud_env_file
     style_header "⚡ Vite :5173 → Maincloud (${STDB_CLOUD_DB})"
     style_muted "${STDB_CLOUD_WS} · publish: ./dev.sh spacetime:publish:cloud"
     (
         cd "$FRONTEND_DIR"
-        VITE_STDB_URI="${STDB_CLOUD_WS}" VITE_STDB_DB="${STDB_CLOUD_DB}" bun run dev
+        env \
+            VITE_STDB_URI="${STDB_CLOUD_WS}" \
+            VITE_STDB_DB="${STDB_CLOUD_DB}" \
+            VITE_INGEST_BASE= \
+            VITE_LLM_BASE= \
+            VITE_NATIVE_DEFAULT_LLM= \
+            bun run dev
     )
 }
 
@@ -612,13 +706,11 @@ do_dev_frontend() {
 
 do_dev_web_only() {
     local stdb_target="${1:-local}"
-    apply_stdb_target "$stdb_target"
-    if ! server_pid >/dev/null; then
-        style_warn "ingest not running — /status proxy will fail until you start a backend"
-        style_muted "Tip: ./dev.sh run:${stdb_target}:sim  (full stack in one terminal)"
-    elif ! ingest_matches_target "$stdb_target"; then
-        style_warn "ingest target mismatch — restart with ./dev.sh start:${stdb_target}:sim (or live)"
-    fi
+    local ingest_mode="hybrid"
+    case "$stdb_target" in
+        cloud|maincloud) ingest_mode="${OPENATLAS_INGEST_MODE:-hybrid}" ;;
+    esac
+    ensure_stack_for_run "$stdb_target" "$ingest_mode" || return 1
     do_dev_frontend "$stdb_target"
 }
 
@@ -810,7 +902,7 @@ start_server() {
     local stdb_target="${2:-${OPENATLAS_STDB_TARGET:-local}}"
     apply_stdb_target "$stdb_target"
 
-    if server_pid >/dev/null; then
+    if server_pid >/dev/null && ingest_http_ok; then
         local running
         running="$(ingest_mode_running)"
         if ingest_matches_target "$stdb_target" \
@@ -819,6 +911,9 @@ start_server() {
             return 0
         fi
         style_warn "restarting ingest → ${stdb_target}/${ingest_mode} (was ${running:-?})"
+        stop_server
+    elif server_pid >/dev/null; then
+        style_warn "stale or unhealthy ingest pid — restarting"
         stop_server
     fi
 
@@ -832,6 +927,9 @@ start_server() {
         cloud_preflight || return 1
     fi
 
+    maybe_enable_ingest_lan_bind
+    ensure_ingest_binary || return 1
+
     style_header "▶️  Starting openatlas-ingest (${stdb_target} · ${ingest_mode})"
     : > "$LOG_FILE"
     (
@@ -844,8 +942,12 @@ start_server() {
         if [[ "$ingest_mode" == "live" || "$ingest_mode" == "hybrid" ]]; then
             env_args+=("OPENATLAS_ENABLE_LIVE_FEEDS=1")
         fi
+        if [[ -n "${OPENATLAS_INGEST_LAN_BIND:-}" ]]; then
+            env_args+=("OPENATLAS_BIND=0.0.0.0:8080")
+            style_muted "ingest LAN bind (phone/APK): 0.0.0.0:8080 — set OPENATLAS_API_KEY for mutations"
+        fi
         nohup env "${env_args[@]}" \
-            cargo run -p openatlas-ingest --quiet >>"$LOG_FILE" 2>&1 &
+            "$INGEST_BIN" >>"$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
     )
     style_info "pid $(cat "$PID_FILE") · logs: $LOG_FILE"
@@ -864,15 +966,20 @@ start_server() {
 wait_for_ready() {
     require_cmd curl
     local deadline=$(( $(date +%s) + READY_TIMEOUT_SECS ))
-    if has_gum; then
-        if gum spin --spinner meter --title "waiting for /ready (up to ${READY_TIMEOUT_SECS}s)" -- bash -c "
+    local spin_title="waiting for ingest /health + /ready (up to ${READY_TIMEOUT_SECS}s)"
+    local wait_loop='
             while true; do
-                if curl -sf ${READY_URL} >/dev/null 2>&1; then exit 0; fi
+                if curl -sf '"${HEALTH_URL}"' >/dev/null 2>&1 \
+                    && curl -sf '"${READY_URL}"' >/dev/null 2>&1; then
+                    exit 0
+                fi
                 sleep 1
-                if [[ \$(date +%s) -gt ${deadline} ]]; then exit 1; fi
+                if [[ $(date +%s) -gt '"${deadline}"' ]]; then exit 1; fi
             done
-        "; then
-            style_ok "ingest ready at ${READY_URL}"
+        '
+    if has_gum; then
+        if gum spin --spinner meter --title "$spin_title" -- bash -c "$wait_loop"; then
+            style_ok "ingest ready (${HEALTH_URL}, ${READY_URL})"
         else
             style_err "server did not become ready within ${READY_TIMEOUT_SECS}s"
             style_muted "see $LOG_FILE for details"
@@ -880,12 +987,14 @@ wait_for_ready() {
         fi
     else
         while true; do
-            if curl -sf "$READY_URL" >/dev/null 2>&1; then
-                style_ok "ingest ready at ${READY_URL}"
+            if curl -sf "$HEALTH_URL" >/dev/null 2>&1 \
+                && curl -sf "$READY_URL" >/dev/null 2>&1; then
+                style_ok "ingest ready (${HEALTH_URL}, ${READY_URL})"
                 return 0
             fi
             if (( $(date +%s) > deadline )); then
                 style_err "server did not become ready within ${READY_TIMEOUT_SECS}s"
+                style_muted "see $LOG_FILE for details"
                 return 1
             fi
             sleep 1
@@ -894,8 +1003,136 @@ wait_for_ready() {
 }
 
 # ----------------------------------------------------------------------------
-# LLM bridge (Ollama) — `openatlas-llm-bridge` on LLM_LISTEN_ADDR (default :3847)
+# Ollama + LLM bridge — Ollama :11434, `openatlas-llm-bridge` on :3847
 # ----------------------------------------------------------------------------
+
+ollama_host_from_base() {
+    local base="${1:-http://127.0.0.1:11434}"
+    base="${base#http://}"
+    base="${base#https://}"
+    printf '%s' "$base"
+}
+
+ollama_api_ok() {
+    local host="$1"
+    curl -sf "http://${host}/api/tags" >/dev/null 2>&1
+}
+
+ollama_has_model() {
+    local model="${1:-llama3.2}"
+    local host="$2"
+    if ! command -v ollama >/dev/null 2>&1; then
+        return 1
+    fi
+    if ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qE "^${model}(:|$)"; then
+        return 0
+    fi
+    if ollama_api_ok "$host"; then
+        curl -sf "http://${host}/api/tags" 2>/dev/null \
+            | jq -r '.models[]?.name // empty' 2>/dev/null \
+            | grep -qE "^${model}(:|$)" && return 0
+    fi
+    return 1
+}
+
+wait_for_ollama_api() {
+    local host="$1"
+    local deadline=$(( $(date +%s) + OLLAMA_READY_TIMEOUT_SECS ))
+    while true; do
+        if ollama_api_ok "$host"; then
+            return 0
+        fi
+        if (( $(date +%s) > deadline )); then
+            return 1
+        fi
+        sleep 0.5
+    done
+}
+
+ensure_ollama_model() {
+    local model="${OPENATLAS_OLLAMA_MODEL:-llama3.2}"
+    local host
+    host="$(ollama_host_from_base "${OPENATLAS_OLLAMA_BASE:-http://127.0.0.1:11434}")"
+    if [[ "${OPENATLAS_OLLAMA_AUTO_PULL:-1}" == "0" ]]; then
+        return 0
+    fi
+    if ollama_has_model "$model" "$host"; then
+        return 0
+    fi
+    require_cmd ollama "install from https://ollama.com/download"
+    style_info "Pulling Ollama model ${model} (first run may take several minutes)…"
+    if has_gum; then
+        gum spin --spinner dot --title "ollama pull ${model}" -- ollama pull "$model"
+    else
+        ollama pull "$model"
+    fi
+    style_ok "Ollama model ${model} ready"
+}
+
+ensure_ollama_running() {
+    if [[ "${OPENATLAS_START_OLLAMA:-1}" == "0" ]]; then
+        return 0
+    fi
+    if ! command -v ollama >/dev/null 2>&1; then
+        style_warn "Ollama not installed — Hub AI needs https://ollama.com/download"
+        style_muted "Or OPENATLAS_START_OLLAMA=0 and Settings → Gemini API key"
+        return 0
+    fi
+
+    local host
+    host="$(ollama_host_from_base "${OPENATLAS_OLLAMA_BASE:-http://127.0.0.1:11434}")"
+
+    if ollama_api_ok "$host"; then
+        ensure_ollama_model
+        return 0
+    fi
+
+    style_info "▶️  Starting Ollama on http://${host}…"
+    chmod +x "${SCRIPT_DIR}/scripts/ollama-serve-cpu.sh" 2>/dev/null || true
+
+    if [[ "${OPENATLAS_OLLAMA_CPU:-0}" == "1" ]]; then
+        if ! "${SCRIPT_DIR}/scripts/ollama-serve-cpu.sh" --background; then
+            style_err "Could not start CPU-only Ollama (port may be in use). See ${DEV_DIR}/ollama-cpu.log"
+            return 1
+        fi
+    else
+        if pgrep -x ollama >/dev/null 2>&1; then
+            style_warn "ollama process exists but API is down — waiting for http://${host}…"
+        else
+            export OLLAMA_HOST="http://${host}"
+            : >"$OLLAMA_LOG_FILE"
+            nohup ollama serve >>"$OLLAMA_LOG_FILE" 2>&1 &
+            echo $! >"$OLLAMA_PID_FILE"
+            style_muted "pid $(cat "$OLLAMA_PID_FILE") · logs: $OLLAMA_LOG_FILE"
+        fi
+    fi
+
+    if ! wait_for_ollama_api "$host"; then
+        style_err "Ollama did not become ready within ${OLLAMA_READY_TIMEOUT_SECS}s"
+        style_muted "GPU/CUDA errors: OPENATLAS_OLLAMA_CPU=1 ./dev.sh up  or  ./dev.sh ollama:cpu"
+        return 1
+    fi
+    style_ok "Ollama API ready at http://${host}"
+    ensure_ollama_model
+}
+
+stop_ollama_dev() {
+    local pidfile pid
+    for pidfile in "$OLLAMA_PID_FILE" "$(abs_repo_path "${DEV_DIR}/ollama-cpu.pid")"; do
+        [[ -f "$pidfile" ]] || continue
+        pid="$(cat "$pidfile" 2>/dev/null || true)"
+        [[ -n "${pid:-}" ]] || continue
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+            for _ in 1 2 3 4 5; do
+                kill -0 "$pid" 2>/dev/null || break
+                sleep 0.2
+            done
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+        rm -f "$pidfile"
+    done
+}
 
 llm_bridge_pid() {
     [[ -f "$LLM_PID_FILE" ]] || return 1
@@ -908,8 +1145,10 @@ start_llm_bridge() {
     if [[ "${OPENATLAS_START_LLM:-1}" == "0" ]]; then
         return 0
     fi
+    ensure_ollama_running || style_warn "Continuing without Ollama — bridge will start but /v1/ready may fail"
     if llm_bridge_pid >/dev/null; then
         style_warn "openatlas-llm-bridge already running (pid=$(llm_bridge_pid))"
+        wait_for_llm_bridge_healthy
         return 0
     fi
     require_cmd cargo
@@ -963,10 +1202,15 @@ wait_for_llm_bridge_healthy() {
     done
 }
 
+do_ollama_start() {
+    OPENATLAS_OLLAMA_CPU="${OPENATLAS_OLLAMA_CPU:-0}"
+    ensure_ollama_running
+}
+
 do_ollama_cpu() {
     style_header "🦙 Ollama CPU-only (CUDA_VISIBLE_DEVICES=\"\")"
     style_muted "Use when inference fails with: architectural feature absent from the device"
-  chmod +x "$SCRIPT_DIR/scripts/ollama-serve-cpu.sh" 2>/dev/null || true
+    stop_ollama_dev
     if pgrep -x ollama >/dev/null 2>&1; then
         style_warn "An ollama process is already running. Stop it first, e.g.:"
         style_muted "  systemctl --user stop ollama   # if using systemd"
@@ -974,9 +1218,9 @@ do_ollama_cpu() {
         style_muted "Then re-run: ./dev.sh ollama:cpu"
         return 1
     fi
-    "$SCRIPT_DIR/scripts/ollama-serve-cpu.sh" --background
-    style_ok "CPU-only Ollama started. Pull a model if needed: ollama pull ${OPENATLAS_OLLAMA_MODEL:-llama3.2}"
-    style_muted "Then: ./dev.sh llm:start  and test Hub → AI analysis"
+    OPENATLAS_OLLAMA_CPU=1 ensure_ollama_running
+    start_llm_bridge || true
+    style_muted "Test: ./dev.sh prove:llm  or  Settings → Test LLM pipeline"
 }
 
 stop_llm_bridge() {
@@ -1039,9 +1283,13 @@ do_status() {
         style_warn "spacetimedb not running"
     fi
     if pid="$(server_pid)"; then
-        style_ok "ingest running (pid=${pid})"
+        if ingest_http_ok; then
+            style_ok "ingest running (pid=${pid}, HTTP ok)"
+        else
+            style_warn "ingest pid ${pid} but HTTP not healthy — run: ./dev.sh start"
+        fi
     else
-        style_warn "ingest not running"
+        style_warn "ingest not running — run: ./dev.sh up  or  ./dev.sh start:cloud:hybrid"
     fi
     if pid="$(frontend_dev_pid)"; then
         style_ok "vite dev running (pid=${pid}, ${DASHBOARD_URL})"
@@ -1138,10 +1386,11 @@ do_down() {
     stop_frontend_dev
     stop_server
     stop_llm_bridge
+    stop_ollama_dev
     do_spacetime_stop
     stop_dev_stack_ports
     rm -f "$FRONTEND_PID_FILE" "$PID_FILE" "$LLM_PID_FILE" "$STDB_PID_FILE"
-    style_ok "everything stopped (Vite, ingest, LLM bridge, local SpacetimeDB)"
+    style_ok "everything stopped (Vite, ingest, LLM bridge, Ollama if dev-started, local SpacetimeDB)"
 }
 
 do_vite_logs() {
@@ -1313,12 +1562,19 @@ ensure_stack_for_run() {
     local stdb_target="$1"
     local ingest_mode="$2"
     apply_stdb_target "$stdb_target"
+    prune_stale_server_pid
 
     local need_up=0
     if [[ "$stdb_target" == "local" ]] && ! stdb_pid >/dev/null; then
         need_up=1
     fi
-    if ! server_pid >/dev/null; then
+    if ! ingest_http_ok; then
+        if server_pid >/dev/null; then
+            style_warn "ingest HTTP down — restarting (${stdb_target}/${ingest_mode})"
+            stop_server
+        fi
+        need_up=1
+    elif ! server_pid >/dev/null; then
         need_up=1
     elif ! ingest_matches_target "$stdb_target"; then
         style_warn "ingest points at wrong STDB — restarting for ${stdb_target}"
@@ -1419,8 +1675,8 @@ do_clean_force() {
 do_web_check() {
     require_cmd bun "install from https://bun.sh"
     style_header "🌐 Web typecheck + unit tests"
-    if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
-        spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
+    if ! frontend_deps_ok; then
+        install_frontend_deps
     fi
     spin "svelte-check" bash -c "cd '${FRONTEND_DIR}' && bun run check"
     spin "bun test (web)" bash -c "cd '${FRONTEND_DIR}' && bun test src/lib"
@@ -1451,8 +1707,8 @@ do_check() {
 do_dev_frontend_demo() {
     require_cmd bun "install from https://bun.sh"
     style_header "Vite dev server (DEMO / no SpacetimeDB) on :5173"
-    if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
-        spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
+    if ! frontend_deps_ok; then
+        install_frontend_deps
     fi
     (cd "$FRONTEND_DIR" && VITE_DEMO_DATA=1 bun run dev)
 }
@@ -1478,7 +1734,7 @@ Full stack (STDB + ingest + LLM + Vite + opens browser) — use Run in TUI or:
   OPENATLAS_VITE_FOREGROUND=1 ./dev.sh run   Vite in foreground (Ctrl+C = UI only)
 
 Advanced / partial (./dev.sh menu → Advanced)
-  web | web:cloud     Vite only (backend must already be up)
+  web | web:cloud     Vite + auto-start/repair ingest (hybrid by default)
   web:demo            Demo UI only (no SpacetimeDB)
   start:*             Ingest only (no Vite)
   down                Stop everything (TUI Stop = same)
@@ -1497,7 +1753,7 @@ Mobile (Capacitor — see docs/MOBILE.md)
   mobile:dev                 Live reload against Vite (Android)
 
 Advanced
-  prove:live | prove:llm | feeds | spacetime:* | llm:* | cli | tail | clean
+  prove:live | prove:llm | feeds | spacetime:* | llm:* | ollama:start | ollama:cpu | cli | tail | clean
 
 Config: ./dev.sh init-config  (see docs/CONFIG.md)
 Env: .env sets defaults; Run/web commands force local vs cloud STDB for ingest + Vite.
@@ -1720,14 +1976,18 @@ menu_advanced_observe() {
 menu_advanced_llm() {
     local l
     l="$(choose \
-        "Start" \
-        "Stop" \
+        "Start Ollama" \
+        "Start LLM bridge" \
+        "Ollama CPU-only" \
+        "Stop LLM bridge" \
         "Logs" \
         "Back")" || return
     case "$l" in
-        "Start")  start_llm_bridge ;;
-        "Stop")   stop_llm_bridge ;;
-        "Logs")   do_llm_logs ;;
+        "Start Ollama")       do_ollama_start ;;
+        "Start LLM bridge")   start_llm_bridge ;;
+        "Ollama CPU-only")    do_ollama_cpu ;;
+        "Stop LLM bridge")    stop_llm_bridge ;;
+        "Logs")               do_llm_logs ;;
         "Back"|"") return ;;
         *)        style_warn "unknown: $l" ;;
     esac
@@ -1823,6 +2083,7 @@ main() {
         llm:start)            start_llm_bridge ;;
         llm:stop)            stop_llm_bridge ;;
         llm:logs)            do_llm_logs ;;
+        ollama:start)        do_ollama_start ;;
         ollama:cpu)          do_ollama_cpu ;;
         restart)             stop_server; start_server live local ;;
         status)              do_status ;;

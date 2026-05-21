@@ -33,6 +33,16 @@
   import { readiness } from "../readiness.svelte";
   import CompactNumber from "./CompactNumber.svelte";
 
+  interface Props {
+    /**
+     * Mobile settings drill-down: flat panel, no nested details (iOS/WebView jank),
+     * defer ingest polling until after the slide transition, always show body.
+     */
+    mobilePanel?: boolean;
+  }
+
+  let { mobilePanel = false }: Props = $props();
+
   type OpsTab = "overview" | "feeds" | "metrics" | "logs";
 
   const DISPLAY_LOG_MAX = 200;
@@ -53,14 +63,17 @@
     return true;
   }
 
-  let expanded = $state(readExpandedDefault());
+  let expanded = $state(mobilePanel ? true : readExpandedDefault());
+  /** Avoid polling + network burst during the settings slide animation on mobile. */
+  let pollActive = $state(!mobilePanel);
 
   $effect(() => {
-    if (typeof localStorage === "undefined") return;
+    if (mobilePanel || typeof localStorage === "undefined") return;
     localStorage.setItem(OPS_EXPAND_KEY, expanded ? "true" : "false");
   });
   let activeTab = $state<OpsTab>("overview");
   let logRev = $state(0);
+  let logNotifyRaf = 0;
   let llmProbe = $state<{
     ready: boolean;
     configured: boolean;
@@ -95,13 +108,28 @@
 
   onMount(() => {
     const unsubLog = subscribeOpsLog(() => {
-      logRev = opsLogRevision();
+      if (logNotifyRaf) return;
+      logNotifyRaf = requestAnimationFrame(() => {
+        logNotifyRaf = 0;
+        logRev = opsLogRevision();
+      });
     });
-    return () => unsubLog();
+    let deferPoll: ReturnType<typeof setTimeout> | undefined;
+    if (mobilePanel) {
+      deferPoll = setTimeout(() => {
+        pollActive = true;
+      }, 400);
+    }
+    return () => {
+      unsubLog();
+      if (deferPoll) clearTimeout(deferPoll);
+      if (logNotifyRaf) cancelAnimationFrame(logNotifyRaf);
+    };
   });
 
   $effect(() => {
-    if (!expanded) return;
+    const shouldPoll = mobilePanel ? pollActive : expanded;
+    if (!shouldPoll) return;
     const release = acquireOpsPolling();
     void probeLlm();
     return release;
@@ -155,34 +183,20 @@
   }
 </script>
 
-<details
-  class="ops-console"
-  bind:open={expanded}
-  data-expanded={expanded ? "true" : "false"}
->
-  <summary class="ops-console__summary">
-    <span class="ops-console__title">
-      <Activity size={14} strokeWidth={2} aria-hidden="true" />
-      Live diagnostics
-    </span>
-    <span class="ops-console__hint">
-      {#if opsObservability.loading}
-        polling…
-      {:else if snap?.ingestReady}
-        ingest ready
-      {:else if snap?.ingestReachable}
-        ingest degraded
-      {:else}
-        ingest offline
-      {/if}
-      · STDB {dashboard.connection}
-    </span>
-    <span class="ops-console__chev" aria-hidden="true">
-      <ChevronDown size={14} />
-    </span>
-  </summary>
+{#snippet statusHint()}
+  {#if opsObservability.loading}
+    polling…
+  {:else if snap?.ingestReady}
+    ingest ready
+  {:else if snap?.ingestReachable}
+    ingest degraded
+  {:else}
+    ingest offline
+  {/if}
+  · STDB {dashboard.connection}
+{/snippet}
 
-  <div class="ops-console__body">
+{#snippet consoleInner()}
     <div class="ops-console__toolbar">
       <div class="ops-tabs" role="tablist" aria-label="Diagnostics sections">
         {#each tabs as tab (tab.id)}
@@ -418,8 +432,46 @@
         {/if}
       </div>
     {/if}
-  </div>
-</details>
+{/snippet}
+
+{#if mobilePanel}
+  <section
+    class="ops-console ops-console--panel"
+    aria-label="Live diagnostics"
+    data-expanded="true"
+  >
+    <header class="ops-console__panel-head">
+      <span class="ops-console__title">
+        <Activity size={14} strokeWidth={2} aria-hidden="true" />
+        Live diagnostics
+      </span>
+      <span class="ops-console__hint">{@render statusHint()}</span>
+    </header>
+    <div class="ops-console__body">
+      {@render consoleInner()}
+    </div>
+  </section>
+{:else}
+  <details
+    class="ops-console"
+    bind:open={expanded}
+    data-expanded={expanded ? "true" : "false"}
+  >
+    <summary class="ops-console__summary">
+      <span class="ops-console__title">
+        <Activity size={14} strokeWidth={2} aria-hidden="true" />
+        Live diagnostics
+      </span>
+      <span class="ops-console__hint">{@render statusHint()}</span>
+      <span class="ops-console__chev" aria-hidden="true">
+        <ChevronDown size={14} />
+      </span>
+    </summary>
+    <div class="ops-console__body">
+      {@render consoleInner()}
+    </div>
+  </details>
+{/if}
 
 <style>
   .ops-console {
@@ -429,6 +481,22 @@
     background: color-mix(in srgb, var(--bg-glass, var(--bg-1)) 92%, transparent);
     backdrop-filter: blur(8px);
     overflow: hidden;
+  }
+  .ops-console--panel {
+    margin-top: var(--space-3);
+    backdrop-filter: none;
+    background: var(--bg-1);
+  }
+  .ops-console__panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-1);
+  }
+  .ops-console--panel .ops-console__body {
+    border-top: 0;
   }
   .ops-console__summary {
     display: flex;

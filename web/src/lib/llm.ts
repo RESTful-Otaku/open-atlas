@@ -7,6 +7,7 @@
  */
 
 import { llmBaseUrl } from "./native-config";
+import { probeFetch } from "./probe-fetch";
 
 /** Default insight timeout (slow CPU models). Override: VITE_LLM_INSIGHT_TIMEOUT_MS */
 const DEFAULT_INSIGHT_TIMEOUT_MS = 120_000;
@@ -134,7 +135,7 @@ export function llmBaseUrlForDisplay(): string {
  */
 export async function checkLlmBridgePing(): Promise<boolean> {
   try {
-    const r = await fetch(`${llmBaseUrl()}/v1/ready`, { method: "GET" });
+    const r = await probeFetch(`${llmBaseUrl()}/v1/ready`, { method: "GET" }, 8_000);
     return r.ok;
   } catch {
     return false;

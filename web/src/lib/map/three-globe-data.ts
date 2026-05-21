@@ -149,7 +149,7 @@ export function buildGlobeArcs(
       endLat: b.location.lat,
       endLng: b.location.lon,
       color: c1,
-      w: 0.45 + inf * 2.4,
+      w: (0.45 + inf * 2.4) * 0.5,
       id: edge.id,
       altitude: arcAltitudeForGlobe(
         a.location.lat,

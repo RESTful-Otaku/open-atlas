@@ -6,6 +6,7 @@ import { fetchFeedCatalog, type FeedCatalog } from "../feed-config";
 import { readResponseJson } from "../http-json";
 import { fetchIngestReady, type IngestServiceStatus } from "../ingest-status";
 import { ingestUrl, shouldProbeIngest } from "../native-config";
+import { probeFetch } from "../probe-fetch";
 import {
   ingestMetricsSnapshotToCounters,
   INGEST_METRIC_NAMES,
@@ -95,7 +96,7 @@ async function fetchStatusWithExtras(): Promise<{
     return { status: null, extras: null, err: null };
   }
   try {
-    const r = await fetch(ingestUrl("/status"), { method: "GET" });
+    const r = await probeFetch(ingestUrl("/status"), { method: "GET" });
     if (!r.ok) {
       return { status: null, extras: null, err: `${r.status} ${r.statusText}` };
     }
@@ -146,7 +147,7 @@ export async function fetchIngestMetricsText(): Promise<{
     return { text: null, counters: {}, err: null };
   }
   try {
-    const r = await fetch(ingestUrl("/metrics"), { method: "GET" });
+    const r = await probeFetch(ingestUrl("/metrics"), { method: "GET" });
     if (!r.ok) {
       return {
         text: null,

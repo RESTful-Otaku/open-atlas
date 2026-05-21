@@ -33,15 +33,19 @@ function capacitorPlatform(): string | undefined {
   return cap?.getPlatform?.();
 }
 
-/** First-run defaults: Gemini on Android native (no local Ollama). */
+/** First-run defaults: Gemini on native builds only (not web dev with baked VITE_*). */
 export function defaultLlmProviderSettings(): LlmProviderSettings {
   const base = { ...DEFAULT_LLM_PROVIDER_SETTINGS };
-  const baked = (import.meta.env.VITE_NATIVE_DEFAULT_LLM as string | undefined)?.trim();
-  if (
-    baked === "gemini" ||
+  const native =
+    isNativeApp() ||
     capacitorPlatform() === "android" ||
-    isNativeApp()
-  ) {
+    capacitorPlatform() === "ios";
+  if (!native) return base;
+  const baked = (import.meta.env.VITE_NATIVE_DEFAULT_LLM as string | undefined)?.trim();
+  if (baked === "gemini" || baked === "openai_compat") {
+    return { ...base, provider: baked };
+  }
+  if (capacitorPlatform() === "android") {
     return { ...base, provider: "gemini" };
   }
   return base;

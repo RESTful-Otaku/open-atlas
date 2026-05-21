@@ -6,7 +6,13 @@
 import { bumpDashboardRevision } from "./dashboard-revision.svelte";
 import { buildDemoSnapshot } from "./demo-seed";
 import { invalidateGeoEventIndex } from "./geo-event-index";
-import { dashboard, rebuildEventIdIndex, setConnection, setConnectionLastError } from "./state.svelte";
+import {
+  dashboard,
+  rebuildEventIdIndex,
+  setConnection,
+  setConnectionLastError,
+  setSelectedDomain,
+} from "./state.svelte";
 
 /**
  * Project synthetic data into the global dashboard (same shape as STDB
@@ -21,7 +27,7 @@ export function installDemoData(): void {
   dashboard.recentCausalEdges = [...s.recentCausalEdges];
   dashboard.domainInsights = { ...s.domainInsights };
   dashboard.eventNarratives = { ...s.eventNarratives };
-  dashboard.selectedDomain = null;
+  setSelectedDomain(null);
   setConnectionLastError(null);
   setConnection("offline");
   dashboard.dataMode = "demo";

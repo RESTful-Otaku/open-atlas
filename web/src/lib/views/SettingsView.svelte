@@ -203,7 +203,7 @@
     <code>/metrics</code> every ~8s while expanded (Vite dev proxies to
     <code>127.0.0.1:8080</code>).
   </p>
-  <OpsConsole />
+  <OpsConsole mobilePanel={useMobileDrilldown} />
 {/snippet}
 
 {#snippet appearanceBody()}
@@ -373,12 +373,15 @@
     <div
       class="settings-mobile-stack"
       class:is-detail={detailTrackOpen}
-      ontouchstart={swipe.ontouchstart}
-      ontouchend={swipe.ontouchend}
-      ontouchcancel={swipe.ontouchcancel}
     >
       <div class="settings-mobile-track" bind:this={trackEl}>
-        <div class="settings-mobile-pane settings-mobile-pane--list" data-settings-menu>
+        <div
+          class="settings-mobile-pane settings-mobile-pane--list"
+          data-settings-menu
+          ontouchstart={swipe.ontouchstart}
+          ontouchend={swipe.ontouchend}
+          ontouchcancel={swipe.ontouchcancel}
+        >
           <header class="settings-mobile-list-head">
             <div class="settings-title">
               <SettingsIcon size={18} strokeWidth={1.75} />
@@ -399,7 +402,12 @@
           </nav>
         </div>
 
-        <div class="settings-mobile-pane settings-mobile-pane--detail">
+        <div
+          class="settings-mobile-pane settings-mobile-pane--detail"
+          ontouchstart={swipe.ontouchstart}
+          ontouchend={swipe.ontouchend}
+          ontouchcancel={swipe.ontouchcancel}
+        >
           {#if activeSection && activeMeta}
             <SettingsMobileDetail
               title={activeMeta.title}
@@ -537,6 +545,12 @@
     transform: translate3d(-50%, 0, 0);
   }
 
+  /* Off-screen list pane: skip layout/paint while detail is open (large ops console). */
+  .settings-mobile-stack.is-detail .settings-mobile-pane--list {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .settings-mobile-pane {
     display: flex;
     flex-direction: column;
@@ -550,6 +564,10 @@
 
   .settings-mobile-pane--list {
     flex: 1 1 auto;
+  }
+
+  .settings-mobile-pane--detail {
+    touch-action: pan-y;
   }
 
   .settings-mobile-list-head {

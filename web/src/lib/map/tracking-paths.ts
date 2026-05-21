@@ -46,7 +46,7 @@ function greatCircleRad(
   return 2 * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-/** Arc altitude in globe-radius units — clears the surface between endpoints. */
+/** Arc peak altitude in globe-radius units — modest lift; must stay above the surface. */
 export function arcAltitudeForGlobe(
   startLat: number,
   startLng: number,
@@ -54,7 +54,8 @@ export function arcAltitudeForGlobe(
   endLng: number,
 ): number {
   const deg = (greatCircleRad(startLat, startLng, endLat, endLng) * 180) / Math.PI;
-  return Math.max(0.14, Math.min(0.58, 0.1 + deg * 0.014));
+  const peak = 0.1 + deg * 0.014;
+  return Math.max(0.08, Math.min(0.29, peak * 0.5));
 }
 
 function interpolateGreatCircle(

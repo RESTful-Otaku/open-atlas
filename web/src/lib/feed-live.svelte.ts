@@ -64,6 +64,7 @@ export function feedSummaryTier(
   if (summary.error > 0) return "degraded";
   if (summary.ok > 0) return "live";
   if (summary.degraded > 0) return "degraded";
+  if (summary.total > 0) return "degraded";
   return "offline";
 }
 

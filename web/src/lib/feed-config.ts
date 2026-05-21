@@ -4,6 +4,7 @@
 
 import { readResponseJson } from "./http-json";
 import { ingestUrl, shouldProbeIngest } from "./native-config";
+import { probeFetch } from "./probe-fetch";
 
 export type FeedConnectionStatus =
   | "ok"
@@ -87,7 +88,7 @@ export async function fetchFeedCatalog(): Promise<FeedCatalog> {
   if (!shouldProbeIngest()) {
     throw new Error("Ingest URL not configured (set VITE_INGEST_BASE)");
   }
-  const r = await fetch(ingestUrl("/feeds"), { method: "GET" });
+  const r = await probeFetch(ingestUrl("/feeds"), { method: "GET" }, 12_000);
   if (!r.ok) throw new Error(await parseError(r));
   const parsed = await readResponseJson<FeedCatalog>(r);
   if (!parsed.ok) throw new Error(parsed.err);
