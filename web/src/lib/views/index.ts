@@ -144,6 +144,18 @@ export function hrefForNavEntry(entry: ViewCatalogEntry): string {
 /** Globe and 2D map fill the shell main column; everything else scrolls there. */
 export type MainScrollMode = "fill" | "page";
 
-export function mainScrollModeForPattern(pattern: string): MainScrollMode {
-  return pattern === "/" || pattern === "/map" ? "fill" : "page";
+/**
+ * @param compactLayout Phone/tablet/native shell — settings uses fill for drill-down.
+ */
+export function mainScrollModeForPattern(
+  pattern: string,
+  compactLayout = false,
+): MainScrollMode {
+  if (pattern === "/" || pattern === "/map") {
+    return "fill";
+  }
+  if (pattern === "/settings") {
+    return compactLayout ? "fill" : "page";
+  }
+  return "page";
 }

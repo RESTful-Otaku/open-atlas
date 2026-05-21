@@ -88,6 +88,15 @@
 
   import CompactNumber from "./CompactNumber.svelte";
   import EventMapHoverCard from "./EventMapHoverCard.svelte";
+  import {
+    isEventPinned,
+    MAX_MAP_PINS_DESKTOP,
+    prunePinnedInspectors,
+    togglePinInspector,
+    unpinInspector,
+    unpinLastInspector,
+    type PinnedMapInspector,
+  } from "../map/map-pinned-inspectors";
   import MapLayersPanel from "./MapLayersPanel.svelte";
   import MapMobileSheet from "./MapMobileSheet.svelte";
   import OpsStrip from "./OpsStrip.svelte";
@@ -121,10 +130,8 @@
   /** Pointer over the hover card — do not dismiss while true. */
   let hoverCardPointerInside = $state(false);
   let stickyHoverClearTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Pinned inspector — stays open for clicks until unpinned or Escape. */
-  let inspectorPinned = $state(false);
-  let pinnedEventId = $state<string | null>(null);
-  let stickyInspectorPos = $state({ x: 0, y: 0 });
+  /** Pinned inspectors — up to 3 on desktop, 1 docked on compact. */
+  let pinnedInspectors = $state<PinnedMapInspector[]>([]);
 
   const shownMapPointHover = $derived(
     mapPointHover ?? stickyMapPointHover,
@@ -142,16 +149,16 @@
     if (next) {
       mapPointHover = next;
       stickyMapPointHover = next;
-      if (inspectorPinned) {
-        stickyInspectorPos = { x: next.x, y: next.y };
-      }
       return;
     }
     mapPointHover = null;
-    if (hoverCardPointerInside || inspectorPinned) return;
+    if (hoverCardPointerInside) return;
+    if (compactLayout && pinnedInspectors.length > 0) return;
     stickyHoverClearTimer = setTimeout(() => {
       stickyHoverClearTimer = undefined;
-      if (!hoverCardPointerInside && !inspectorPinned) stickyMapPointHover = null;
+      if (!hoverCardPointerInside && !(compactLayout && pinnedInspectors.length > 0)) {
+        stickyMapPointHover = null;
+      }
     }, 320);
   }
 
@@ -173,42 +180,69 @@
     return getGeoEventIndex(mapDisplayEvents).eventById.get(m.id) ?? null;
   });
 
-  const pinnedInspectorEvent = $derived.by(() => {
-    if (!inspectorPinned || !pinnedEventId) return null;
+  const geoEventIndex = $derived.by(() => {
     void dashboardData.revision;
-    return getGeoEventIndex(mapDisplayEvents).eventById.get(pinnedEventId) ?? null;
+    return getGeoEventIndex(mapDisplayEvents);
   });
 
-  const inspectorEvent = $derived(pinnedInspectorEvent ?? mapHoverEvent);
+  const pinnedInspectorEvents = $derived.by(() => {
+    const idx = geoEventIndex;
+    return pinnedInspectors
+      .map((pin) => {
+        const event = idx.eventById.get(pin.eventId) ?? null;
+        return event ? { pin, event } : null;
+      })
+      .filter((row): row is { pin: PinnedMapInspector; event: UiEvent } => row !== null);
+  });
 
-  const inspectorPos = $derived.by(() => {
-    if (inspectorPinned) return stickyInspectorPos;
+  const floatingHoverEvent = $derived.by(() => {
+    if (compactLayout) return null;
+    const ev = mapHoverEvent;
+    if (!ev || isEventPinned(pinnedInspectors, ev.id)) return null;
+    return ev;
+  });
+
+  const compactInspectorEvent = $derived.by(() => {
+    if (!compactLayout) return null;
+    const pin = pinnedInspectors[0];
+    if (pin) return geoEventIndex.eventById.get(pin.eventId) ?? mapHoverEvent;
+    return mapHoverEvent;
+  });
+
+  const compactInspectorPos = $derived.by(() => {
+    const pin = pinnedInspectors[0];
+    if (pin) return { x: pin.x, y: pin.y };
     const m = shownMapPointHover;
     return { x: m?.x ?? 0, y: m?.y ?? 0 };
   });
 
-  function setInspectorPin(next: boolean): void {
-    if (!next) {
-      inspectorPinned = false;
-      pinnedEventId = null;
+  function handlePinChange(
+    eventId: string,
+    x: number,
+    y: number,
+    wantPinned: boolean,
+  ): void {
+    if (!wantPinned) {
+      pinnedInspectors = unpinInspector(pinnedInspectors, eventId);
       return;
     }
-    const ev = mapHoverEvent;
-    if (!ev) return;
-    inspectorPinned = true;
-    pinnedEventId = ev.id;
-    stickyInspectorPos = {
-      x: shownMapPointHover?.x ?? stickyInspectorPos.x,
-      y: shownMapPointHover?.y ?? stickyInspectorPos.y,
-    };
-    cancelStickyHoverClear();
+    const r = togglePinInspector(
+      pinnedInspectors,
+      { eventId, x, y },
+      compactLayout,
+    );
+    if (r.ok) {
+      pinnedInspectors = r.pins;
+      cancelStickyHoverClear();
+    }
   }
 
-  function dismissInspector(): void {
-    if (inspectorPinned) {
-      inspectorPinned = false;
-      pinnedEventId = null;
-    }
+  function dismissAllInspectors(): void {
+    pinnedInspectors = [];
+    dismissMapPointHover();
+  }
+
+  function dismissFloatingInspector(): void {
     dismissMapPointHover();
   }
 
@@ -218,15 +252,15 @@
     const hover = { x, y, id };
     mapPointHover = hover;
     stickyMapPointHover = hover;
-    stickyInspectorPos = { x, y };
-    inspectorPinned = true;
-    pinnedEventId = id;
+    const r = togglePinInspector(pinnedInspectors, { eventId: id, x, y }, true);
+    if (r.ok) pinnedInspectors = r.pins;
   }
 
   $effect(() => {
-    if (inspectorPinned && pinnedEventId && !pinnedInspectorEvent) {
-      inspectorPinned = false;
-      pinnedEventId = null;
+    const ids = new Set(geoEventIndex.eventById.keys());
+    const pruned = prunePinnedInspectors(pinnedInspectors, ids);
+    if (pruned.length !== pinnedInspectors.length) {
+      pinnedInspectors = pruned;
     }
   });
 
@@ -1263,6 +1297,7 @@
     if (!(el instanceof Element)) return;
     if (
       el.closest(".emhc-wrap") ||
+      el.closest("[data-map-inspector-overlay]") ||
       el.closest("#map-layers-panel") ||
       el.closest(".map-float-bar") ||
       el.closest(".map-mobile-controls")
@@ -1435,30 +1470,82 @@
   {/if}
 {/snippet}
 
+{#snippet mapInspectors()}
+  {#if !compactLayout && pinnedInspectorEvents.length > 0}
+    <div class="map-pinned-dock" aria-label="Pinned event comparisons">
+      {#each pinnedInspectorEvents as { pin, event } (pin.eventId)}
+        <EventMapHoverCard
+          {event}
+          x={pin.x}
+          y={pin.y}
+          container={mapSurfaceEl ?? null}
+          pinned={true}
+          docked={true}
+          dockLayout="flex"
+          pinCount={pinnedInspectors.length}
+          onPinChange={(next) => handlePinChange(pin.eventId, pin.x, pin.y, next)}
+          onDismiss={() => {
+            pinnedInspectors = unpinInspector(pinnedInspectors, pin.eventId);
+          }}
+        />
+      {/each}
+    </div>
+  {/if}
+  {#if compactLayout && compactInspectorEvent}
+    <div class="map-inspector-overlay" data-map-inspector-overlay>
+      <EventMapHoverCard
+        event={compactInspectorEvent}
+        x={compactInspectorPos.x}
+        y={compactInspectorPos.y}
+        container={mapSurfaceEl ?? null}
+        pinned={pinnedInspectors.length > 0}
+        docked={pinnedInspectors.length > 0}
+        dockLayout="compact"
+        pinCount={pinnedInspectors.length}
+        onPinChange={(next) =>
+          handlePinChange(compactInspectorEvent.id, compactInspectorPos.x, compactInspectorPos.y, next)}
+        onDismiss={dismissAllInspectors}
+        onCardPointerChange={(inside) => {
+          hoverCardPointerInside = inside;
+          if (inside) cancelStickyHoverClear();
+          else if (pinnedInspectors.length === 0) dismissMapPointHover();
+        }}
+      />
+    </div>
+  {:else if floatingHoverEvent}
+    {@const hoverPos = shownMapPointHover ?? { x: 0, y: 0 }}
+    <EventMapHoverCard
+      event={floatingHoverEvent}
+      x={hoverPos.x}
+      y={hoverPos.y}
+      container={mapSurfaceEl ?? null}
+      pinned={false}
+      docked={false}
+      pinCount={pinnedInspectors.length}
+      pinAtCapacity={pinnedInspectors.length >= MAX_MAP_PINS_DESKTOP}
+      onPinChange={(next) =>
+        handlePinChange(floatingHoverEvent.id, hoverPos.x, hoverPos.y, next)}
+      onDismiss={dismissFloatingInspector}
+      onCardPointerChange={(inside) => {
+        hoverCardPointerInside = inside;
+        if (inside) cancelStickyHoverClear();
+        else dismissMapPointHover();
+      }}
+    />
+  {/if}
+{/snippet}
+
 {#if embedded}
   <Panel title="Global event map" span={panelSpan}>
     <div
       class="map-wrap"
+      class:map-wrap--inspector-open={compactLayout && pinnedInspectors.length > 0 && compactInspectorEvent != null}
       bind:this={mapSurfaceEl}
       onpointerdowncapture={onMapSurfacePointerDown}
     >
       {@render mapFloatControls()}
       <div bind:this={container} class="map"></div>
-      <EventMapHoverCard
-        event={inspectorEvent}
-        x={inspectorPos.x}
-        y={inspectorPos.y}
-        container={mapSurfaceEl ?? null}
-        pinned={inspectorPinned}
-        docked={inspectorPinned}
-        onPinChange={setInspectorPin}
-        onDismiss={dismissInspector}
-        onCardPointerChange={(inside) => {
-          hoverCardPointerInside = inside;
-          if (inside) cancelStickyHoverClear();
-          else if (!inspectorPinned) dismissMapPointHover();
-        }}
-      />
+      {@render mapInspectors()}
     </div>
   </Panel>
 {:else}
@@ -1495,6 +1582,7 @@
     </header>
     <div
       class="map-wrap map-wrap-globe"
+      class:map-wrap--inspector-open={compactLayout && pinnedInspectors.length > 0 && compactInspectorEvent != null}
       bind:this={mapSurfaceEl}
       onpointerdowncapture={onMapSurfacePointerDown}
     >
@@ -1528,7 +1616,9 @@
               : undefined}
             onMapBackgroundTap={compactLayout
               ? () => {
-                  if (inspectorPinned || shownMapPointHover) dismissInspector();
+                  if (pinnedInspectors.length > 0 || shownMapPointHover) {
+                    dismissAllInspectors();
+                  }
                 }
               : undefined}
           />
@@ -1572,21 +1662,7 @@
           </p>
         </div>
       {/if}
-      <EventMapHoverCard
-        event={inspectorEvent}
-        x={inspectorPos.x}
-        y={inspectorPos.y}
-        container={mapSurfaceEl ?? null}
-        pinned={inspectorPinned}
-        docked={inspectorPinned}
-        onPinChange={setInspectorPin}
-        onDismiss={dismissInspector}
-        onCardPointerChange={(inside) => {
-          hoverCardPointerInside = inside;
-          if (inside) cancelStickyHoverClear();
-          else if (!inspectorPinned) dismissMapPointHover();
-        }}
-      />
+      {@render mapInspectors()}
     </div>
   </section>
 {/if}
@@ -1594,8 +1670,12 @@
 <svelte:window
   onkeydown={(e) => {
     if (e.key !== "Escape") return;
-    if (inspectorPinned) {
-      dismissInspector();
+    if (!compactLayout && (mapPointHover || stickyMapPointHover)) {
+      dismissMapPointHover();
+      return;
+    }
+    if (pinnedInspectors.length > 0) {
+      pinnedInspectors = unpinLastInspector(pinnedInspectors);
       return;
     }
     closeMapLayers();
@@ -1720,6 +1800,53 @@
   .map-mobile-controls:has(:global(.map-mobile-flyout)) {
     top: 34%;
     transform: translateY(calc(-50% - 28px));
+  }
+
+  /**
+   * Full-map layer for the event inspector on compact — always above the right rail,
+   * MapLibre controls, and layers flyout (z-index 48; nav bar stays at 250).
+   */
+  .map-inspector-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 260;
+    pointer-events: none;
+    isolation: isolate;
+    overflow: visible;
+  }
+
+  .map-inspector-overlay > :global(.emhc-wrap) {
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .map-wrap--inspector-open .map-mobile-controls {
+    z-index: 6;
+  }
+
+  .map-wrap--inspector-open :global(.maplibregl-ctrl-top-right),
+  .map-wrap--inspector-open :global(.maplibregl-ctrl-bottom-right) {
+    z-index: 2 !important;
+  }
+
+  /* Desktop: up to three pinned comparison cards along the bottom of the map. */
+  .map-pinned-dock {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 32;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 10px;
+    max-height: min(48vh, calc(100% - 24px));
+    pointer-events: none;
+    box-sizing: border-box;
+  }
+
+  .map-pinned-dock > :global(.emhc-wrap) {
+    pointer-events: auto;
   }
   .map-mobile-rail {
     display: flex;

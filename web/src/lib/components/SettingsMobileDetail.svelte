@@ -1,24 +1,18 @@
 <!--
-  Full-screen settings section (mobile). Slides in from the right; back slides out.
+  Settings section body (mobile drill-down detail pane). Parent track handles slide motion.
 -->
 <script lang="ts">
-  import { fly } from "svelte/transition";
   import { ArrowLeft } from "@lucide/svelte";
   import type { Component } from "svelte";
-
-  import { settingsScreenFly } from "../motion/transitions";
 
   interface Props {
     title: string;
     icon?: Component;
-    slidePx: number;
     onBack: () => void;
     children?: import("svelte").Snippet;
   }
 
-  let { title, icon: Icon, slidePx, onBack, children }: Props = $props();
-
-  const motion = $derived(settingsScreenFly(slidePx));
+  let { title, icon: Icon, onBack, children }: Props = $props();
 
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === "Escape") {
@@ -31,12 +25,9 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="settings-mobile-detail"
-  role="dialog"
-  aria-modal="true"
+  role="region"
   aria-label={title}
   tabindex="-1"
-  in:fly={motion}
-  out:fly={motion}
   onkeydown={onKeydown}
 >
   <header class="settings-mobile-detail-head">
@@ -58,19 +49,16 @@
 
 <style>
   .settings-mobile-detail {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    height: 100%;
     background: var(--bg-0);
     overflow: hidden;
   }
 
   .settings-mobile-detail-head {
     flex-shrink: 0;
-    padding-top: env(safe-area-inset-top, 0px);
     border-bottom: 1px solid var(--border-1);
     background: var(--bg-1);
   }
@@ -116,7 +104,7 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     padding: var(--space-4);
-    padding-bottom: calc(var(--space-6) + var(--mobile-nav-height, 68px));
+    padding-bottom: calc(var(--space-4) + var(--mobile-nav-height, 68px));
   }
 
   .settings-mobile-detail-body :global(p) {

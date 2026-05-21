@@ -319,9 +319,10 @@
   .shell-mobile-brand {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-2);
     min-width: 0;
-    flex: 1 1 0;
+    flex: 0 1 auto;
+    max-width: 38%;
   }
 
   .shell-mobile-brand .brand-logo {
@@ -347,8 +348,18 @@
     align-items: center;
     justify-content: flex-end;
     gap: var(--space-2);
-    flex: 0 0 auto;
+    flex: 1 1 0;
+    min-width: 0;
     margin-left: auto;
+  }
+
+  :global(html[data-compact-layout]) .shell-mobile-actions :global(.mobile-status-strip) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  :global(html[data-tablet-layout]) .shell-mobile-brand {
+    max-width: 42%;
   }
 
   .shell-icon-btn {

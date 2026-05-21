@@ -29,7 +29,6 @@
     gap: 12px;
     width: 100%;
     border: 0;
-    border-bottom: 1px solid var(--border-1);
     background: var(--bg-1);
     cursor: pointer;
     padding: var(--space-4);
