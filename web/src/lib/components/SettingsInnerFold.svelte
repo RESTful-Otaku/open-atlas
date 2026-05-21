@@ -1,12 +1,10 @@
 <!--
-  Nested settings accordion (e.g. LLM bridge) — same motion as section folds on mobile.
+  Nested settings accordion (e.g. LLM bridge) — same motion as top-level folds.
 -->
 <script lang="ts">
   import { fade, slide } from "svelte/transition";
   import { ChevronDown } from "@lucide/svelte";
 
-  import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
-  import { onMount } from "svelte";
   import { settingsFoldTransition } from "../motion/transitions";
 
   interface Props {
@@ -23,54 +21,40 @@
     children,
   }: Props = $props();
 
-  let compact = $state(isCompactLayout());
   let open = $state(defaultOpen);
-  const foldMotion = $derived(settingsFoldTransition());
-
-  onMount(() =>
-    subscribeMobileLayout(() => {
-      compact = isCompactLayout();
-    }),
-  );
+  const foldMotion = $derived(settingsFoldTransition({ desktop: true }));
 
   function toggle(): void {
     open = !open;
   }
 </script>
 
-{#if compact}
-  <section class="settings-inner-fold {className}" class:is-open={open} data-settings-fold>
-    <button
-      type="button"
-      class="settings-inner-fold-summary"
-      aria-expanded={open}
-      onclick={toggle}
+<section class="settings-inner-fold {className}" class:is-open={open} data-settings-fold>
+  <button
+    type="button"
+    class="settings-inner-fold-summary"
+    aria-expanded={open}
+    onclick={toggle}
+  >
+    <span class="settings-inner-fold-label">{summary}</span>
+    <ChevronDown size={14} strokeWidth={2} class="settings-inner-fold-chev" aria-hidden="true" />
+  </button>
+  {#if open}
+    <div
+      class="settings-inner-fold-body-shell"
+      in:slide={foldMotion.slide}
+      out:slide={foldMotion.slide}
     >
-      <span class="settings-inner-fold-label">{summary}</span>
-      <ChevronDown size={14} strokeWidth={2} class="settings-inner-fold-chev" aria-hidden="true" />
-    </button>
-    {#if open}
       <div
-        class="settings-inner-fold-body-shell"
-        in:slide={foldMotion.slide}
-        out:slide={foldMotion.slide}
+        class="settings-inner-fold-body"
+        in:fade={foldMotion.fade}
+        out:fade={foldMotion.fade}
       >
-        <div
-          class="settings-inner-fold-body"
-          in:fade={foldMotion.fade}
-          out:fade={foldMotion.fade}
-        >
-          {@render children?.()}
-        </div>
+        {@render children?.()}
       </div>
-    {/if}
-  </section>
-{:else}
-  <details class="settings-bridge-details {className}">
-    <summary>{summary}</summary>
-    {@render children?.()}
-  </details>
-{/if}
+    </div>
+  {/if}
+</section>
 
 <style>
   .settings-inner-fold {
@@ -79,6 +63,14 @@
     border-radius: var(--radius);
     background: color-mix(in srgb, var(--bg-2) 55%, var(--bg-1));
     overflow: hidden;
+    transition:
+      border-color var(--motion-med, 220ms) var(--ease, ease),
+      background var(--motion-med, 220ms) var(--ease, ease);
+  }
+
+  .settings-inner-fold.is-open {
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border-1));
+    background: color-mix(in srgb, var(--bg-2) 75%, var(--bg-1));
   }
 
   .settings-inner-fold-summary {
@@ -90,7 +82,7 @@
     background: transparent;
     cursor: pointer;
     padding: var(--space-3) var(--space-4);
-    min-height: var(--mobile-tap-min, 44px);
+    min-height: 44px;
     font-size: 13px;
     font-weight: 600;
     color: var(--text-2);
@@ -118,15 +110,17 @@
   :global(.settings-inner-fold-chev) {
     flex-shrink: 0;
     color: var(--text-3);
-    transition: transform var(--motion-med, 220ms) var(--ease, ease);
+    transition: transform 300ms cubic-bezier(0.34, 1.2, 0.64, 1);
   }
 
   .settings-inner-fold.is-open :global(.settings-inner-fold-chev) {
     transform: rotate(180deg);
+    color: var(--accent);
   }
 
   .settings-inner-fold-body-shell {
     overflow: hidden;
+    will-change: height;
   }
 
   .settings-inner-fold-body {
@@ -137,17 +131,8 @@
     margin-top: 0;
   }
 
-  :global(.settings-bridge-details) {
-    margin-top: var(--space-3);
-  }
-
-  :global(.settings-bridge-details summary) {
-    cursor: pointer;
-    font-weight: 600;
-    color: var(--text-2);
-  }
-
   @media (prefers-reduced-motion: reduce) {
+    .settings-inner-fold,
     .settings-inner-fold-summary,
     :global(.settings-inner-fold-chev) {
       transition: none;

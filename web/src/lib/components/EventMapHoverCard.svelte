@@ -11,7 +11,15 @@
   import { dashboard } from "../state.svelte";
   import { navigate } from "../router.svelte";
   import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
-  import { clampCardPosition, signalsForEvent } from "../map/event-map-hover";
+  import {
+    clampCardPosition,
+    compactMapCardInsets,
+    HOVER_CARD_SIZE,
+    HOVER_CARD_SIZE_COMPACT,
+    mobileNavInsetPx,
+    signalsForEvent,
+  } from "../map/event-map-hover";
+  import { MAX_MAP_PINS_DESKTOP } from "../map/map-pinned-inspectors";
   import {
     causalNeighborsForEvent,
     eventDetailPath,
@@ -33,18 +41,15 @@
     pinned?: boolean;
     /** Fixed dock position (used when pinned). */
     docked?: boolean;
+    /** Desktop comparison dock lays out in a bottom flex row. */
+    dockLayout?: "flex" | "compact";
+    /** Pin disabled because the desktop comparison limit is reached. */
+    pinAtCapacity?: boolean;
+    /** Active pinned count (for button hint). */
+    pinCount?: number;
     onPinChange?: (pinned: boolean) => void;
     onDismiss?: () => void;
   }
-  let compactLayout = $state(isCompactLayout());
-
-  $effect(() => {
-    const unsub = subscribeMobileLayout(() => {
-      compactLayout = isCompactLayout();
-    });
-    return unsub;
-  });
-
   let {
     event,
     x,
@@ -53,9 +58,64 @@
     onCardPointerChange,
     pinned = false,
     docked = false,
+    dockLayout = undefined,
+    pinAtCapacity = false,
+    pinCount = 0,
     onPinChange,
     onDismiss,
   }: Props = $props();
+
+  let compactLayout = $state(isCompactLayout());
+  let navBottomPx = $state(mobileNavInsetPx());
+
+  $effect(() => {
+    const unsub = subscribeMobileLayout(() => {
+      compactLayout = isCompactLayout();
+    });
+    return unsub;
+  });
+
+  $effect(() => {
+    if (!compactLayout || !docked || dockLayout !== "compact") return;
+    const measure = (): void => {
+      navBottomPx = mobileNavInsetPx();
+    };
+    measure();
+    const nav = document.querySelector(".mobile-bottom-nav");
+    let ro: ResizeObserver | undefined;
+    if (nav instanceof HTMLElement && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(measure);
+      ro.observe(nav);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  });
+
+  const compactDockBottom = $derived(
+    docked && dockLayout === "compact"
+      ? `calc(12px + ${navBottomPx}px)`
+      : undefined,
+  );
+
+  const compactDockMaxHeight = $derived(
+    docked && dockLayout === "compact"
+      ? `min(50dvh, calc(100dvh - ${navBottomPx}px - 72px))`
+      : undefined,
+  );
+
+  const pinTitle = $derived.by(() => {
+    if (pinned) return "Unpin inspector (Esc)";
+    if (pinAtCapacity) {
+      return `Maximum ${MAX_MAP_PINS_DESKTOP} pinned — unpin one to compare another`;
+    }
+    if (pinCount > 0) {
+      return `Pin inspector (${pinCount}/${MAX_MAP_PINS_DESKTOP})`;
+    }
+    return "Pin inspector to map";
+  });
 
   function onCardKeydown(e: KeyboardEvent): void {
     if (e.key === "Escape") {
@@ -91,10 +151,11 @@
   const insight = $derived(
     event ? (dashboard.domainInsights[event.domain] ?? null) : null,
   );
-  const hoverInsets = $derived.by(() => {
-    if (!compactLayout) return {};
-    return { bottom: 8, right: 72 };
-  });
+  const hoverInsets = $derived.by(() =>
+    compactLayout ? compactMapCardInsets() : {},
+  );
+
+  const cardSize = $derived(compactLayout ? HOVER_CARD_SIZE_COMPACT : HOVER_CARD_SIZE);
 
   const pos = $derived.by(() => {
     if (!event || !container || docked) {
@@ -105,8 +166,8 @@
       y,
       container.clientWidth,
       container.clientHeight,
-      undefined,
-      undefined,
+      cardSize.w,
+      cardSize.h,
       undefined,
       hoverInsets,
     );
@@ -135,8 +196,12 @@
   <div
     class="emhc-wrap"
     class:emhc-wrap-docked={docked}
+    class:emhc-wrap-docked-compact={docked && dockLayout === "compact"}
+    class:emhc-wrap-docked-flex={docked && dockLayout === "flex"}
     style:left={docked ? undefined : `${pos.left}px`}
     style:top={docked ? undefined : `${pos.top}px`}
+    style:bottom={compactDockBottom}
+    style:max-height={compactDockMaxHeight}
     role={pinned ? "dialog" : "status"}
     aria-label={pinned ? `Inspector: ${domainLabel(event.domain)} event` : undefined}
     tabindex={pinned ? 0 : undefined}
@@ -145,11 +210,7 @@
     onmouseleave={() => onCardPointerChange?.(false)}
     onkeydown={onCardKeydown}
   >
-    <div
-      class="emhc"
-      class:emhc-scroll={docked}
-      style="--emhc-accent: {domainColor(event.domain)}"
-    >
+    {#snippet inspectorHead()}
       <header class="emhc-head">
         <span
           class="emhc-dom"
@@ -163,8 +224,9 @@
           <button
             type="button"
             class="emhc-icon-btn"
-            title={pinned ? "Unpin inspector (Esc)" : "Pin inspector to map"}
+            title={pinTitle}
             aria-pressed={pinned}
+            disabled={!pinned && pinAtCapacity}
             onclick={() => onPinChange?.(!pinned)}
           >
             {#if pinned}
@@ -190,6 +252,21 @@
           {/if}
         </div>
       </header>
+    {/snippet}
+
+    {#snippet inspectorFoot()}
+      <div class="emhc-foot" class:emhc-foot-docked={docked}>
+        <button
+          type="button"
+          class="emhc-open"
+          onclick={() => navigate(`/events/${encodeURIComponent(event.id)}`)}
+        >
+          Open full analysis
+        </button>
+      </div>
+    {/snippet}
+
+    {#snippet inspectorBody()}
       <p class="emhc-time mono">{event.timestamp?.replace("T", " ").slice(0, 19)} UTC</p>
 
       <div class="emhc-bars" aria-label="Key metrics">
@@ -311,27 +388,22 @@
         {/if}
       </dl>
       <p class="emhc-id mono" title="Event id">{event.id}</p>
-      {#if !docked}
-        <div class="emhc-foot">
-          <button
-            type="button"
-            class="emhc-open"
-            onclick={() => navigate(`/events/${encodeURIComponent(event.id)}`)}
-          >
-            Open full analysis
-          </button>
-        </div>
-      {/if}
-    </div>
+    {/snippet}
+
     {#if docked}
-      <div class="emhc-foot">
-        <button
-          type="button"
-          class="emhc-open"
-          onclick={() => navigate(`/events/${encodeURIComponent(event.id)}`)}
-        >
-          Open full analysis
-        </button>
+      {@render inspectorHead()}
+      <div
+        class="emhc emhc-inspector-scroll"
+        style="--emhc-accent: {domainColor(event.domain)}"
+      >
+        {@render inspectorBody()}
+      </div>
+      {@render inspectorFoot()}
+    {:else}
+      <div class="emhc" style="--emhc-accent: {domainColor(event.domain)}">
+        {@render inspectorHead()}
+        {@render inspectorBody()}
+        {@render inspectorFoot()}
       </div>
     {/if}
   </div>
@@ -344,8 +416,22 @@
     pointer-events: auto;
     width: min(300px, calc(100% - 12px));
   }
+
+  :global(html[data-compact-layout]) .emhc-wrap:not(.emhc-wrap-docked-compact),
+  :global(html[data-mobile-layout]) .emhc-wrap:not(.emhc-wrap-docked-compact) {
+    z-index: 48;
+  }
+
+  :global(html[data-compact-layout]) .emhc-wrap-docked-compact,
+  :global(html[data-mobile-layout]) .emhc-wrap-docked-compact {
+    position: fixed;
+    z-index: 260;
+  }
+
   .emhc-wrap-docked {
     left: 12px;
+    right: 12px;
+    width: auto;
     bottom: 12px;
     top: auto;
     display: flex;
@@ -353,16 +439,59 @@
     max-height: min(70%, calc(100% - 24px));
     overflow: hidden;
   }
-  .emhc-scroll {
+
+  .emhc-wrap-docked-flex {
+    position: relative;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    flex: 1 1 0;
+    min-width: min(240px, 100%);
+    max-width: min(340px, 100%);
+    width: auto;
+    max-height: min(46vh, 100%);
+    z-index: 1;
+  }
+
+  .emhc-icon-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .emhc-inspector-scroll {
     flex: 1 1 auto;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    border-radius: 0;
+    border: none;
+    border-top: 1px solid var(--border-1);
+    border-bottom: 1px solid var(--border-1);
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--bg-1) 94%, #0a0a12 6%);
   }
-  .emhc-wrap-docked .emhc-foot {
+
+  .emhc-wrap-docked .emhc-head {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 10px 12px 8px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    border: 1px solid var(--border-2);
+    border-bottom: none;
+    background: color-mix(in srgb, var(--bg-1) 96%, #0a0a12 4%);
+  }
+
+  .emhc-wrap-docked .emhc-foot-docked {
     flex-shrink: 0;
     margin-top: 0;
-    background: color-mix(in srgb, var(--bg-1) 94%, #0a0a12 6%);
+    padding: 10px 12px 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    border-radius: 0 0 var(--radius) var(--radius);
+    border: 1px solid var(--border-2);
+    border-top: 1px solid var(--border-1);
+    background: color-mix(in srgb, var(--bg-1) 96%, #0a0a12 4%);
   }
   .emhc-head-actions {
     display: inline-flex;
@@ -375,6 +504,7 @@
     align-items: center;
     gap: 3px;
     padding: 3px 6px;
+    min-height: 32px;
     border-radius: 4px;
     border: 1px solid var(--border-1);
     background: var(--bg-2);
@@ -382,6 +512,22 @@
     font-size: 9px;
     font-weight: 600;
     cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .emhc-wrap-docked-compact .emhc-icon-btn {
+    min-height: var(--mobile-tap-min, 44px);
+    min-width: var(--mobile-tap-min, 44px);
+    padding: 8px 10px;
+    justify-content: center;
+  }
+
+  .emhc-wrap-docked-compact .emhc-icon-lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
   }
   .emhc-icon-btn:hover {
     color: var(--text-0);
@@ -568,6 +714,7 @@
     display: block;
     width: 100%;
     padding: 6px 8px;
+    min-height: var(--mobile-tap-min, 40px);
     border-radius: 5px;
     border: 1px solid var(--border-1);
     background: var(--bg-2);
@@ -575,11 +722,19 @@
     font-size: 10px;
     font-weight: 600;
     cursor: pointer;
+    touch-action: manipulation;
   }
   .emhc-open:hover {
     background: var(--bg-3);
     color: var(--text-0);
   }
+
+  .emhc-wrap-docked-compact .emhc-open {
+    min-height: var(--mobile-tap-min, 44px);
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+
   .mono {
     font-family: var(--font-mono);
   }

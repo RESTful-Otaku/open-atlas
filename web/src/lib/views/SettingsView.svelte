@@ -27,7 +27,8 @@
     type SettingsSectionId,
   } from "./settings/settings-sections";
   import { shouldProbeIngest } from "../native-config";
-  import { isMobileLayout, subscribeMobileLayout } from "../mobile-layout";
+  import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
+  import { settingsSwipeBack } from "../settings-mobile-gestures";
   import CompactNumber from "../components/CompactNumber.svelte";
   import OpsConsole from "../components/OpsConsole.svelte";
   import {
@@ -49,10 +50,11 @@
   let llmTestRunning = $state(false);
   let llmTestResult = $state<string | null>(null);
 
-  let mobile = $state(isMobileLayout());
+  let useMobileDrilldown = $state(isCompactLayout());
   let activeSection = $state<SettingsSectionId | null>(null);
-  let stackEl: HTMLDivElement | undefined = $state();
-  let slidePx = $state(360);
+  /** Drives track slide; kept true until exit transition ends so detail content stays mounted. */
+  let detailTrackOpen = $state(false);
+  let trackEl: HTMLDivElement | undefined = $state();
 
   const activeMeta = $derived(
     activeSection
@@ -60,32 +62,54 @@
       : null,
   );
 
+  const swipe = settingsSwipeBack(
+    () => detailTrackOpen,
+    () => closeSection(),
+  );
+
   onMount(() => {
     void refreshRemoteReadiness();
     const unsubLayout = subscribeMobileLayout(() => {
-      mobile = isMobileLayout();
-      if (!mobile) activeSection = null;
+      useMobileDrilldown = isCompactLayout();
+      if (!useMobileDrilldown) {
+        activeSection = null;
+        detailTrackOpen = false;
+      }
     });
-    const ro =
-      typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(() => {
-            slidePx = stackEl?.clientWidth ?? window.innerWidth;
-          })
-        : null;
-    if (stackEl && ro) ro.observe(stackEl);
-    slidePx = stackEl?.clientWidth ?? window.innerWidth;
-    return () => {
-      unsubLayout();
-      ro?.disconnect();
-    };
+    return unsubLayout;
   });
 
   function openSection(id: SettingsSectionId): void {
     activeSection = id;
+    detailTrackOpen = true;
   }
 
   function closeSection(): void {
-    activeSection = null;
+    if (!detailTrackOpen) return;
+    detailTrackOpen = false;
+    if (typeof window === "undefined") {
+      activeSection = null;
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      activeSection = null;
+      return;
+    }
+    const el = trackEl;
+    if (!el) {
+      activeSection = null;
+      return;
+    }
+    const onEnd = (e: TransitionEvent): void => {
+      if (e.propertyName !== "transform") return;
+      el.removeEventListener("transitionend", onEnd);
+      if (!detailTrackOpen) activeSection = null;
+    };
+    el.addEventListener("transitionend", onEnd);
+    window.setTimeout(() => {
+      el.removeEventListener("transitionend", onEnd);
+      if (!detailTrackOpen) activeSection = null;
+    }, 400);
   }
 
   async function testLlmPipeline(): Promise<void> {
@@ -290,7 +314,7 @@
     <button type="button" class="btn" onclick={() => void refreshRemoteReadiness()}>
       Check again
     </button>
-    {#if mobile}
+    {#if useMobileDrilldown}
       <button type="button" class="btn btn-link" onclick={() => openSection("ops")}>
         Open console
       </button>
@@ -340,54 +364,67 @@
   </p>
 {/snippet}
 
-<section class="settings-page" class:settings-page--mobile={mobile}>
-  {#if mobile}
-    <div class="settings-mobile-stack" bind:this={stackEl}>
-      <div class="settings-mobile-list" class:is-dimmed={activeSection !== null}>
-        <header class="settings-mobile-list-head">
-          <div class="settings-title">
-            <SettingsIcon size={18} strokeWidth={1.75} />
-            <span>Settings</span>
-          </div>
-          <p class="settings-mobile-lead">
-            SpacetimeDB, appearance, ingest, and API keys for operators.
-          </p>
-        </header>
-        <nav class="settings-mobile-nav" aria-label="Settings sections">
-          {#each SETTINGS_SECTIONS as section (section.id)}
-            <SettingsSectionRow
-              title={section.title}
-              icon={section.icon}
-              onSelect={() => openSection(section.id)}
-            />
-          {/each}
-        </nav>
-      </div>
+<section
+  class="settings-page"
+  class:settings-page--mobile={useMobileDrilldown}
+  class:settings-page--desktop={!useMobileDrilldown}
+>
+  {#if useMobileDrilldown}
+    <div
+      class="settings-mobile-stack"
+      class:is-detail={detailTrackOpen}
+      ontouchstart={swipe.ontouchstart}
+      ontouchend={swipe.ontouchend}
+      ontouchcancel={swipe.ontouchcancel}
+    >
+      <div class="settings-mobile-track" bind:this={trackEl}>
+        <div class="settings-mobile-pane settings-mobile-pane--list" data-settings-menu>
+          <header class="settings-mobile-list-head">
+            <div class="settings-title">
+              <SettingsIcon size={18} strokeWidth={1.75} />
+              <span>Settings</span>
+            </div>
+            <p class="settings-mobile-lead">
+              SpacetimeDB, appearance, ingest, and API keys for operators.
+            </p>
+          </header>
+          <nav class="settings-mobile-nav" aria-label="Settings sections">
+            {#each SETTINGS_SECTIONS as section (section.id)}
+              <SettingsSectionRow
+                title={section.title}
+                icon={section.icon}
+                onSelect={() => openSection(section.id)}
+              />
+            {/each}
+          </nav>
+        </div>
 
-      {#if activeSection && activeMeta}
-        <SettingsMobileDetail
-          title={activeMeta.title}
-          icon={activeMeta.icon}
-          {slidePx}
-          onBack={closeSection}
-        >
-          {#if activeSection === "stdb"}
-            {@render stdbBody()}
-          {:else if activeSection === "ops"}
-            {@render opsBody()}
-          {:else if activeSection === "appearance"}
-            {@render appearanceBody()}
-          {:else if activeSection === "demo"}
-            {@render demoBody()}
-          {:else if activeSection === "ingest"}
-            {@render ingestBody()}
-          {:else if activeSection === "llm"}
-            {@render llmBody()}
-          {:else if activeSection === "feeds"}
-            {@render feedsBody()}
+        <div class="settings-mobile-pane settings-mobile-pane--detail">
+          {#if activeSection && activeMeta}
+            <SettingsMobileDetail
+              title={activeMeta.title}
+              icon={activeMeta.icon}
+              onBack={closeSection}
+            >
+              {#if activeSection === "stdb"}
+                {@render stdbBody()}
+              {:else if activeSection === "ops"}
+                {@render opsBody()}
+              {:else if activeSection === "appearance"}
+                {@render appearanceBody()}
+              {:else if activeSection === "demo"}
+                {@render demoBody()}
+              {:else if activeSection === "ingest"}
+                {@render ingestBody()}
+              {:else if activeSection === "llm"}
+                {@render llmBody()}
+              {:else if activeSection === "feeds"}
+                {@render feedsBody()}
+              {/if}
+            </SettingsMobileDetail>
           {/if}
-        </SettingsMobileDetail>
-      {/if}
+        </div>
+      </div>
     </div>
   {:else}
     <section class="settings">
@@ -456,6 +493,15 @@
   .settings-page {
     padding: var(--space-8) var(--space-6);
     max-width: 960px;
+    box-sizing: border-box;
+  }
+
+  /* Desktop/web: grow with content; #shell-main scrolls when sections expand. */
+  .settings-page--desktop {
+    flex: 0 0 auto;
+    min-height: 0;
+    height: auto;
+    overflow: visible;
   }
 
   .settings-page--mobile {
@@ -463,39 +509,52 @@
     max-width: none;
     flex: 1 1 auto;
     min-height: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .settings-mobile-stack {
-    position: relative;
     flex: 1 1 auto;
     min-height: 0;
+    height: 100%;
     overflow: hidden;
     background: var(--bg-0);
+    touch-action: pan-y;
   }
 
-  .settings-mobile-list {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
+  .settings-mobile-track {
+    display: flex;
+    width: 200%;
+    height: 100%;
+    transform: translate3d(0, 0, 0);
+    transition: transform 320ms cubic-bezier(0.34, 1.28, 0.64, 1);
+    will-change: transform;
+  }
+
+  .settings-mobile-stack.is-detail .settings-mobile-track {
+    transform: translate3d(-50%, 0, 0);
+  }
+
+  .settings-mobile-pane {
     display: flex;
     flex-direction: column;
+    width: 50%;
+    flex-shrink: 0;
     min-height: 0;
+    height: 100%;
     overflow: hidden;
     background: var(--bg-0);
-    transition: transform var(--motion-panel, 280ms) var(--ease, ease);
   }
 
-  .settings-mobile-list.is-dimmed {
-    transform: translateX(-18%);
-    pointer-events: none;
+  .settings-mobile-pane--list {
+    flex: 1 1 auto;
   }
 
   .settings-mobile-list-head {
     flex-shrink: 0;
-    padding: var(--space-4);
-    padding-top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+    padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border-1);
     background: var(--bg-1);
   }
@@ -510,9 +569,23 @@
   .settings-mobile-nav {
     flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: var(--mobile-nav-height, 68px);
+    /* Scroll end clears fixed bottom nav (nav is position:fixed over the shell). */
+    padding: 0 0 var(--mobile-nav-height, 68px);
+  }
+
+  .settings-mobile-nav :global(.settings-mobile-row) {
+    flex: 0 0 auto;
+    min-height: var(--mobile-tap-min, 52px);
+    border-bottom: 1px solid var(--border-1);
+  }
+
+  .settings-mobile-nav :global(.settings-mobile-row:last-child) {
+    border-bottom: 0;
   }
 
   .settings {
@@ -708,13 +781,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .settings-mobile-list {
+    .settings-mobile-track {
       transition: none;
-    }
-
-    .settings-mobile-list.is-dimmed {
-      transform: none;
-      opacity: 0.6;
     }
   }
 </style>

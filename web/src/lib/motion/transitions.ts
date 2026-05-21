@@ -5,6 +5,10 @@ export const MOTION_FAST_MS = 220;
 export const MOTION_PANEL_MS = 280;
 /** Settings accordion expand/collapse on compact layouts. */
 export const MOTION_SETTINGS_FOLD_MS = 260;
+/** Settings drill-down track slide (list ↔ section). */
+export const MOTION_SETTINGS_TRACK_MS = 320;
+/** Subtle overshoot for premium mobile panel slides. */
+export const settingsTrackEase = backOut;
 
 /** Smooth ease-in-out for settings folds (close to `--ease` in app.css). */
 export const appEase = quintInOut;
@@ -16,15 +20,26 @@ export function prefersReducedMotion(): boolean {
   );
 }
 
+export type SettingsFoldTransitionOptions = {
+  /** Desktop/web accordion — slightly longer with subtle ease-out overshoot. */
+  desktop?: boolean;
+};
+
 /** Height + opacity for settings section bodies. */
-export function settingsFoldTransition() {
+export function settingsFoldTransition(
+  options: SettingsFoldTransitionOptions = {},
+): { slide: { duration: number; easing: (t: number) => number }; fade: { duration: number; easing: (t: number) => number } } {
   if (prefersReducedMotion()) {
-    return { duration: 0 };
+    return {
+      slide: { duration: 0, easing: appEase },
+      fade: { duration: 0, easing: appEase },
+    };
   }
-  const duration = MOTION_SETTINGS_FOLD_MS;
+  const duration = options.desktop ? MOTION_SETTINGS_FOLD_MS + 40 : MOTION_SETTINGS_FOLD_MS;
+  const easing = options.desktop ? backOut : appEase;
   return {
-    slide: { duration, easing: appEase },
-    fade: { duration: duration * 0.85, easing: appEase },
+    slide: { duration, easing },
+    fade: { duration: Math.round(duration * 0.82), easing: appEase },
   };
 }
 

@@ -380,6 +380,8 @@ html[data-mobile-layout] {
   /* Matches .mobile-bottom-nav padding + 44px tap targets + label */
   --mobile-nav-height: calc(68px + env(safe-area-inset-bottom, 0px));
   --mobile-top-inset: calc(env(safe-area-inset-top, 0px) + 52px);
+  /* Pinned map inspector must paint above .mobile-bottom-nav (250). */
+  --z-map-inspector: 260;
 }
 
 html[data-compact-layout] #app,
@@ -569,11 +571,13 @@ html[data-tablet-layout] :global(.settings-fold + .settings-fold) {
   border-top: 1px solid var(--border-1);
 }
 
+html[data-compact-layout] :global(.settings-page--mobile),
 html[data-mobile-layout] :global(.settings-page--mobile) {
   padding: 0;
   max-width: none;
   min-height: 0;
   flex: 1 1 auto;
+  height: 100%;
 }
 
 html[data-compact-layout] :global(.settings-fold.card--ops),
@@ -642,15 +646,59 @@ html[data-mobile-layout] :global(.map-wrap .map-mobile-controls:has(.map-mobile-
   transform: translateY(calc(-50% - 28px));
 }
 
-html[data-compact-layout] :global(.map-wrap .emhc-wrap-docked),
-html[data-mobile-layout] :global(.map-wrap .emhc-wrap-docked) {
-  left: 8px;
-  right: 72px;
-  bottom: 10px;
+/* Event inspector — above map rail; pinned card uses --z-map-inspector (260) > bottom nav (250). */
+html[data-compact-layout] :global(.map-wrap .emhc-wrap:not(.emhc-wrap-docked-compact)),
+html[data-mobile-layout] :global(.map-wrap .emhc-wrap:not(.emhc-wrap-docked-compact)) {
+  z-index: 48;
+}
+
+html[data-compact-layout] :global(.map-wrap .map-inspector-overlay),
+html[data-mobile-layout] :global(.map-wrap .map-inspector-overlay) {
+  z-index: var(--z-map-inspector, 260);
+}
+
+html[data-compact-layout] :global(.map-wrap.map-wrap--inspector-open),
+html[data-mobile-layout] :global(.map-wrap.map-wrap--inspector-open) {
+  /* container-type: size makes position:fixed anchor to the map box, not the viewport */
+  container-type: normal;
+}
+
+html:not([data-compact-layout]):not([data-mobile-layout]) :global(.map-pinned-dock .emhc-wrap-docked-flex) {
+  max-height: min(46vh, calc(100% - 24px));
+}
+
+/* Pinned mobile inspector: fixed to viewport, always above bottom nav. */
+html[data-compact-layout] :global(.emhc-wrap-docked-compact),
+html[data-mobile-layout] :global(.emhc-wrap-docked-compact) {
+  position: fixed;
+  left: max(8px, env(safe-area-inset-left, 0px));
+  right: max(80px, calc(56px + env(safe-area-inset-right, 0px) + 16px));
   width: auto;
   max-width: none;
-  max-height: min(52dvh, calc(100% - 20px));
-  z-index: 13;
+  bottom: calc(12px + var(--mobile-nav-height, calc(68px + env(safe-area-inset-bottom, 0px))));
+  max-height: min(
+    50dvh,
+    calc(
+      100dvh - var(--mobile-top-inset, 52px) - var(--mobile-nav-height, calc(68px + env(safe-area-inset-bottom, 0px))) -
+        16px
+    )
+  );
+  z-index: var(--z-map-inspector, 260);
+  box-shadow: 0 -12px 40px -8px color-mix(in srgb, #000 55%, transparent);
+}
+
+html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-controls),
+html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-controls) {
+  z-index: 6;
+}
+
+html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-rail),
+html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-rail-btn),
+html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-flyout),
+html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-rail),
+html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-rail-btn),
+html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-flyout) {
+  z-index: 6;
 }
 
 html[data-compact-layout] :global(.map-mobile-rail),
@@ -818,8 +866,8 @@ html[data-mobile-layout] :global(.globe-page) {
   );
 }
 
-html[data-compact-layout] :global(.settings-page),
-html[data-mobile-layout] :global(.settings-page) {
+html[data-compact-layout] :global(.settings-page:not(.settings-page--mobile)),
+html[data-mobile-layout] :global(.settings-page:not(.settings-page--mobile)) {
   padding: var(--space-4);
   padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
   padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));

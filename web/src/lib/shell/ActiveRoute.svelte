@@ -7,6 +7,7 @@
   import type { Component } from "svelte";
   import { fade } from "svelte/transition";
   import { router } from "../router.svelte";
+  import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
   import { mainScrollModeForPattern, viewForPattern } from "../views";
   import { loadViewForPattern, peekCachedView } from "../view-loaders";
   import {
@@ -16,7 +17,10 @@
   } from "../dashboard-flush";
 
   const entry = $derived(viewForPattern(router.match.pattern));
-  const scrollMode = $derived(mainScrollModeForPattern(router.match.pattern));
+  let compactLayout = $state(isCompactLayout());
+  const scrollMode = $derived(
+    mainScrollModeForPattern(router.match.pattern, compactLayout),
+  );
 
   /** Remount when pattern changes, or when parametric routes need a fresh instance. */
   const routeKey = $derived.by(() => {
@@ -34,6 +38,9 @@
   onMount(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     routeFadeMs = reduced ? 0 : 180;
+    return subscribeMobileLayout(() => {
+      compactLayout = isCompactLayout();
+    });
   });
   let loadGen = 0;
   let loadedPattern: string | null = null;

@@ -25,6 +25,8 @@ export function countCausalForEvent(
 
 const CARD_W = 300;
 const CARD_H_EST = 360;
+/** Taller estimate for rich inspector on compact (clamp before overlap with bottom nav). */
+const CARD_H_EST_COMPACT = 420;
 
 export type MapHoverInsets = {
   top?: number;
@@ -72,14 +74,41 @@ export function clampCardPosition(
   return { left, top };
 }
 
-/** Read `--mobile-nav-height` for compact map hover clamping. */
+const MOBILE_NAV_FALLBACK_PX = 68;
+
+/**
+ * Resolved bottom-nav height for map inspector clamping.
+ * `--mobile-nav-height` is often `calc(...)` in CSS; measure the live nav bar when present.
+ */
 export function mobileNavInsetPx(): number {
-  if (typeof document === "undefined") return 0;
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue("--mobile-nav-height")
-    .trim();
-  const match = raw.match(/([\d.]+)px/);
-  return match ? Number.parseFloat(match[1]) : 0;
+  if (typeof document === "undefined") return MOBILE_NAV_FALLBACK_PX;
+  const nav = document.querySelector(".mobile-bottom-nav");
+  if (nav instanceof HTMLElement) {
+    const h = nav.getBoundingClientRect().height;
+    if (h > 0) return h;
+  }
+  const shell = document.querySelector(".shell.shell--compact");
+  if (shell instanceof HTMLElement) {
+    const pb = getComputedStyle(shell).paddingBottom;
+    const match = pb.match(/([\d.]+)px/);
+    if (match) return Number.parseFloat(match[1]);
+  }
+  return MOBILE_NAV_FALLBACK_PX;
+}
+
+/** Width reserved for the map control rail on the right (compact layouts). */
+export const MAP_MOBILE_RAIL_INSET_PX = 80;
+
+/** Insets for floating hover cards on phone/tablet (clears bottom nav + map rail). */
+export function compactMapCardInsets(): MapHoverInsets {
+  const nav = mobileNavInsetPx();
+  return {
+    top: 8,
+    right: MAP_MOBILE_RAIL_INSET_PX,
+    bottom: nav + 16,
+    left: 8,
+  };
 }
 
 export const HOVER_CARD_SIZE = { w: CARD_W, h: CARD_H_EST };
+export const HOVER_CARD_SIZE_COMPACT = { w: CARD_W, h: CARD_H_EST_COMPACT };

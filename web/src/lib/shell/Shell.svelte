@@ -94,7 +94,7 @@
 
   const activeView = $derived(viewForPattern(router.match.pattern));
   const mainScrollMode = $derived(
-    mainScrollModeForPattern(router.match.pattern),
+    mainScrollModeForPattern(router.match.pattern, compactLayout),
   );
   const showTicker = $derived(routeShowsTicker(router.match.pattern));
   const showCommandBar = $derived(
@@ -354,9 +354,7 @@
   }
 
   .shell.shell--compact .shell-main.shell-main-fill {
-    min-height: calc(
-      100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) -
-        52px
-    );
+    min-height: calc(100dvh - var(--mobile-top-inset) - var(--mobile-nav-height));
+    max-height: calc(100dvh - var(--mobile-top-inset) - var(--mobile-nav-height));
   }
 </style>
