@@ -107,13 +107,22 @@ pub async fn list_feeds(State(state): State<AppState>) -> impl IntoResponse {
         let requires_env = descriptor.requires_env.map(str::to_owned);
         let api_key_configured = requires_env
             .as_ref()
-            .is_none_or(|key| feed_config::env_key_present(key));
-        let preview = requires_env.as_ref().and_then(|key| {
+            .is_none_or(|key| feed_config::env_key_present(key))
+            || (descriptor.name == "opensky" && feed_config::opensky_oauth_configured());
+        let preview = if descriptor.name == "opensky" && feed_config::opensky_oauth_configured() {
             file.secrets
-                .get(key)
+                .get("OPENSKY_CLIENT_ID")
                 .filter(|v| !v.is_empty())
                 .map(|v| mask_secret(v))
-        });
+                .map(|p| format!("OAuth {p}"))
+        } else {
+            requires_env.as_ref().and_then(|key| {
+                file.secrets
+                    .get(key)
+                    .filter(|v| !v.is_empty())
+                    .map(|v| mask_secret(v))
+            })
+        };
 
         let (enabled, worker_running, success_count, failure_count, consecutive_failures) = health
             .map(|h| {
@@ -199,11 +208,7 @@ fn build_secret_fields(
             .as_ref()
             .filter(|v| !v.is_empty())
             .map(|v| mask_secret(v));
-        let linked: Vec<String> = feeds::REGISTRY
-            .iter()
-            .filter(|d| d.requires_env == Some(key))
-            .map(|d| d.name.to_owned())
-            .collect();
+        let linked = feed_config::feeds_for_secret_key(key);
         rows.push(SecretFieldRow {
             env_key: key.to_owned(),
             description: feed_config::env_key_description(key).to_owned(),

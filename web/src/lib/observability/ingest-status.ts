@@ -3,7 +3,9 @@
  */
 
 import { fetchFeedCatalog, type FeedCatalog } from "../feed-config";
+import { readResponseJson } from "../http-json";
 import { fetchIngestReady, type IngestServiceStatus } from "../ingest-status";
+import { ingestUrl, shouldProbeIngest } from "../native-config";
 import {
   ingestMetricsSnapshotToCounters,
   INGEST_METRIC_NAMES,
@@ -69,19 +71,41 @@ function hasPrometheusCounters(counters: Partial<Record<IngestMetricName, number
   return INGEST_METRIC_NAMES.some((name) => counters[name] != null);
 }
 
+function emptyObservabilitySnapshot(at: string): ObservabilitySnapshot {
+  return {
+    at,
+    ingestReachable: false,
+    ingestReady: false,
+    ingestErr: null,
+    status: null,
+    statusExtras: null,
+    feeds: null,
+    feedsErr: null,
+    prometheus: {},
+    metricsErr: null,
+  };
+}
+
 async function fetchStatusWithExtras(): Promise<{
   status: IngestServiceStatus | null;
   extras: StatusExtras | null;
   err: string | null;
 }> {
+  if (!shouldProbeIngest()) {
+    return { status: null, extras: null, err: null };
+  }
   try {
-    const r = await fetch("/status", { method: "GET" });
+    const r = await fetch(ingestUrl("/status"), { method: "GET" });
     if (!r.ok) {
       return { status: null, extras: null, err: `${r.status} ${r.statusText}` };
     }
-    const body = (await r.json()) as Record<string, unknown> & {
-      ingest_mode: string;
-    };
+    const parsed = await readResponseJson<
+      Record<string, unknown> & { ingest_mode: string }
+    >(r);
+    if (!parsed.ok) {
+      return { status: null, extras: null, err: parsed.err };
+    }
+    const body = parsed.data;
     const { ingest_mode: rawMode, feeds } = body;
     const mode =
       rawMode === "live" || rawMode === "hybrid" || rawMode === "static"
@@ -118,8 +142,11 @@ export async function fetchIngestMetricsText(): Promise<{
   counters: Partial<Record<IngestMetricName, number>>;
   err: string | null;
 }> {
+  if (!shouldProbeIngest()) {
+    return { text: null, counters: {}, err: null };
+  }
   try {
-    const r = await fetch("/metrics", { method: "GET" });
+    const r = await fetch(ingestUrl("/metrics"), { method: "GET" });
     if (!r.ok) {
       return {
         text: null,
@@ -150,6 +177,9 @@ export async function fetchIngestMetricsText(): Promise<{
 
 export async function fetchObservabilitySnapshot(): Promise<ObservabilitySnapshot> {
   const at = new Date().toISOString();
+  if (!shouldProbeIngest()) {
+    return emptyObservabilitySnapshot(at);
+  }
   const [ready, statusResult, feedsResult, metricsResult] = await Promise.all([
     fetchIngestReady(),
     fetchStatusWithExtras(),

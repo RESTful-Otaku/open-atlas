@@ -6,7 +6,8 @@
  * this path is for operator-facing narrative analysis only.
  */
 
-const DEFAULT_BASE = "/api/llm";
+import { llmBaseUrl } from "./native-config";
+
 /** Default insight timeout (slow CPU models). Override: VITE_LLM_INSIGHT_TIMEOUT_MS */
 const DEFAULT_INSIGHT_TIMEOUT_MS = 120_000;
 
@@ -19,13 +20,7 @@ function insightTimeoutMs(): number {
   return DEFAULT_INSIGHT_TIMEOUT_MS;
 }
 
-function llmBaseUrl(): string {
-  const fromEnv = import.meta.env.VITE_LLM_BASE as string | undefined;
-  if (fromEnv && fromEnv.length > 0) {
-    return fromEnv.replace(/\/$/, "");
-  }
-  return DEFAULT_BASE;
-}
+export { llmBaseUrl };
 
 export interface LlmInsightResponse {
   readonly text: string;
@@ -112,10 +107,14 @@ export async function requestLlmInsight(
   userPrompt?: string,
   options?: { retries?: number },
 ): Promise<LlmInsightResponse> {
+  const { requestProviderLlmInsight, usesClientSideLlm } = await import("./llm/llm-providers");
   const retries = options?.retries ?? 1;
   let lastErr: Error | null = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      if (usesClientSideLlm()) {
+        return await requestProviderLlmInsight(snapshot, userPrompt);
+      }
       return await requestLlmInsightOnce(snapshot, userPrompt);
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));

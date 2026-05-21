@@ -46,7 +46,7 @@ export function buildPerDomainHeatmaps(
 ): GlobeHeatmapDatum[] {
   const out: GlobeHeatmapDatum[] = [];
   for (const d of DOMAIN_CATALOG) {
-    if (mapDomains.size > 0 && !mapDomains.has(d.id)) continue;
+    if (!mapDomains.has(d.id)) continue;
     const pts: [number, number, number][] = [];
     for (const e of index.byDomain.get(d.id) ?? []) {
       if (!matchesSelectedDomain(e.domain)) continue;
@@ -85,7 +85,7 @@ export function buildGlobePoints(
   const pts: GlobeEventPoint[] = [];
   for (const e of geoEvents) {
     if (!matchesSelectedDomain(e.domain)) continue;
-    if (mapDomains.size > 0 && !mapDomains.has(e.domain)) continue;
+    if (!mapDomains.has(e.domain)) continue;
     if (!isGeoEvent(e)) continue;
     const sev = e.severity_score;
     const w = Number.isFinite(sev) ? Math.max(0.12, sev) : 0.28;
@@ -137,7 +137,7 @@ export function buildGlobeArcs(
     const a = eventById.get(edge.source_event_id);
     const b = eventById.get(edge.target_event_id);
     if (!a || !b || !isGeoEvent(a) || !isGeoEvent(b)) continue;
-    if (mapDomains !== null && mapDomains.size > 0) {
+    if (mapDomains !== null) {
       if (!mapDomains.has(a.domain) || !mapDomains.has(b.domain)) continue;
     }
     const inf = Math.max(0, Math.min(1, edge.influence_score));

@@ -56,7 +56,8 @@ pub fn poll_config_display() -> String {
 pub fn min_interval_secs(feed: &str) -> u64 {
     match feed {
         "gdelt" => 300,
-        "world-bank" | "opensky" | "eia" | "fred" => 300,
+        "opensky" => 900,
+        "world-bank" | "eia" | "fred" => 300,
         "nasa-eonet" => 180,
         "coingecko" => 60,
         _ => 30,

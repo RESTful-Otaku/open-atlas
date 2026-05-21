@@ -1,0 +1,94 @@
+name: Mobile Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: APK variant
+        type: choice
+        options:
+          - debug
+          - release
+        default: debug
+      target:
+        description: Mobile env target (maincloud = production phone)
+        type: choice
+        options:
+          - maincloud
+          - emulator
+        default: maincloud
+  push:
+    tags:
+      - "v*"
+    paths:
+      - "web/**"
+      - "media/**"
+      - "scripts/mobile-*.sh"
+      - "scripts/sync-brand-assets.sh"
+      - ".github/workflows/mobile-android.yml"
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build APK (shared script)
+        env:
+          OPENATLAS_MOBILE_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'maincloud' }}
+          OPENATLAS_MOBILE_MAINCLOUD_PHYSICAL: "1"
+          OPENATLAS_MOBILE_VARIANT: ${{ github.event_name == 'workflow_dispatch' && inputs.variant || 'debug' }}
+        run: |
+          chmod +x scripts/mobile-build-apk.sh scripts/sync-brand-assets.sh
+          ./scripts/mobile-build-apk.sh
+
+      - name: Upload debug APK
+        if: github.event_name != 'workflow_dispatch' || inputs.variant != 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openatlas-android-debug
+          path: dist/mobile/openatlas-maincloud-debug.apk
+          if-no-files-found: error
+
+      - name: Upload release APK (unsigned)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.variant == 'release')
+        uses: actions/upload-artifact@v4
+        with:
+          name: openatlas-android-release-unsigned
+          path: dist/mobile/openatlas-maincloud-release-unsigned.apk
+          if-no-files-found: ignore
+
+      - name: Workflow summary
+        run: |
+          {
+            echo "## OpenAtlas Android APK"
+            echo ""
+            echo "| Setting | Value |"
+            echo "|---------|-------|"
+            echo "| Target | \`${OPENATLAS_MOBILE_TARGET:-maincloud}\` |"
+            echo "| Variant | \`${OPENATLAS_MOBILE_VARIANT:-debug}\` |"
+            echo "| STDB | \`wss://maincloud.spacetimedb.com\` · db \`openatlas\` |"
+            echo ""
+            echo "Artifacts: **openatlas-android-debug** (and release-unsigned on tag / dispatch)."
+            echo ""
+            echo "### Install on phone"
+            echo "\`\`\`bash"
+            echo "adb install -r dist/mobile/openatlas-maincloud-debug.apk"
+            echo "\`\`\`"
+            echo ""
+            echo "Enable USB debugging, transfer APK, or download from Actions → Artifacts."
+            echo ""
+            echo "Docs: [docs/MOBILE.md](https://github.com/${{ github.repository }}/blob/main/docs/MOBILE.md)"
+          } >> "$GITHUB_STEP_SUMMARY"

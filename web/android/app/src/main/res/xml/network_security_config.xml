@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext HTTP for local dev (emulator 10.0.2.2, LAN IP).
+  Production builds should use HTTPS/WSS endpoints in VITE_* env.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">spacetimedb.com</domain>
+        <domain includeSubdomains="true">maincloud.spacetimedb.com</domain>
+    </domain-config>
+</network-security-config>

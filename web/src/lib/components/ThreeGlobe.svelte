@@ -94,6 +94,10 @@
     /** Terminator shade + city lights over CARTO tiles (off when photoreal is on). */
     showSolarShading?: boolean;
     onMapPointScreen?: (d: MapPointScreen | null) => void;
+    /** Compact/mobile: tap event point → show inspector instead of navigating. */
+    onEventPointTap?: (d: MapPointScreen) => void;
+    /** Fired when the user taps the globe without hitting an event point (mobile dismiss). */
+    onMapBackgroundTap?: () => void;
   }
   let {
     mode = "points",
@@ -110,6 +114,8 @@
     trackingPathRows = [],
     showWeatherOverlays = false,
     onMapPointScreen = undefined,
+    onEventPointTap = undefined,
+    onMapBackgroundTap = undefined,
   }: Props = $props();
 
   let root: HTMLDivElement | undefined = $state();
@@ -501,8 +507,9 @@
   onMount(() => {
     let cancelled = false;
     let onLeaveHandler: (() => void) | undefined;
+    let onGlobePointerUp: (() => void) | undefined;
     let onWheelBlock: ((e: WheelEvent) => void) | undefined;
-    let loadSafetyTimer: ReturnType<typeof setTimeout> | undefined;
+    let loadSafetyTimer: number | undefined;
     const run = async (): Promise<void> => {
       globeReady = false;
       await tick();
@@ -586,13 +593,28 @@
           root.addEventListener("wheel", onWheelBlock, { capture: true, passive: true });
         }
 
+        let globeTapHadPoint = false;
         g.onPointClick((pt: object | null) => {
           if (!pt) return;
           const p = pt as GlobeEventPoint;
-          if (p.kind === "event" && p.id) {
-            navigate(`/events/${encodeURIComponent(p.id)}`);
+          if (p.kind !== "event" || !p.id) return;
+          globeTapHadPoint = true;
+          const al = p.altitude ?? 0.006;
+          const xy = g.getScreenCoords(p.lat, p.lng, al);
+          if (onEventPointTap && xy) {
+            onEventPointTap({ x: xy.x, y: xy.y, id: p.id });
+            return;
           }
+          navigate(`/events/${encodeURIComponent(p.id)}`);
         });
+        onGlobePointerUp = (): void => {
+          if (!onMapBackgroundTap) return;
+          queueMicrotask(() => {
+            if (!globeTapHadPoint) onMapBackgroundTap();
+            globeTapHadPoint = false;
+          });
+        };
+        root?.addEventListener("pointerup", onGlobePointerUp);
         g.onPolygonHover((feat: object | null) => {
           hoverAdmin = feat ? (feat as AdminFeature) : null;
         });
@@ -701,6 +723,9 @@
       }
       if (onLeaveHandler && root) {
         root.removeEventListener("mouseleave", onLeaveHandler);
+      }
+      if (onGlobePointerUp && root) {
+        root.removeEventListener("pointerup", onGlobePointerUp);
       }
       if (onWheelBlock && root) {
         root.removeEventListener("wheel", onWheelBlock, { capture: true });
@@ -883,10 +908,12 @@
   .oa-three-globe-wrap {
     position: absolute;
     inset: 0;
-    z-index: 0;
+    z-index: 1;
     min-height: 200px;
     border-radius: inherit;
     overflow: hidden;
+    touch-action: none;
+    pointer-events: auto;
     /* Match 2D map canvas fill — no photo skybox visible outside WebGL. */
     background: var(--map-canvas-bg, var(--bg-0));
   }

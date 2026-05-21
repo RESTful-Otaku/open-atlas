@@ -2,6 +2,9 @@
  * Parsed shape of `GET /status` from openatlas-ingest.
  */
 
+import { readResponseJson } from "./http-json";
+import { ingestUrl, shouldProbeIngest } from "./native-config";
+
 export type IngestModeId = "sim" | "live" | "hybrid" | "static";
 
 function parseIngestMode(raw: string): IngestModeId {
@@ -32,11 +35,13 @@ export interface IngestServiceStatus {
 
 /** `GET /ready` — ingest can reach SpacetimeDB (stricter than `/status` alone). */
 export async function fetchIngestReady(): Promise<boolean> {
+  if (!shouldProbeIngest()) return false;
   try {
-    const r = await fetch("/ready", { method: "GET" });
+    const r = await fetch(ingestUrl("/ready"), { method: "GET" });
     if (!r.ok) return false;
-    const body = (await r.json()) as { ready?: boolean };
-    return body.ready === true;
+    const parsed = await readResponseJson<{ ready?: boolean }>(r);
+    if (!parsed.ok) return false;
+    return parsed.data.ready === true;
   } catch {
     return false;
   }
@@ -47,14 +52,21 @@ export async function fetchIngestStatus(): Promise<{
   status: IngestServiceStatus | null;
   err: string | null;
 }> {
+  if (!shouldProbeIngest()) {
+    return { ok: false, status: null, err: "Ingest URL not configured (set VITE_INGEST_BASE)" };
+  }
   try {
-    const r = await fetch("/status", { method: "GET" });
+    const r = await fetch(ingestUrl("/status"), { method: "GET" });
     if (!r.ok) {
       return { ok: false, status: null, err: `${r.status} ${r.statusText}` };
     }
-    const body = (await r.json()) as Omit<IngestServiceStatus, "ingest_mode"> & {
-      ingest_mode: string;
-    };
+    const parsed = await readResponseJson<
+      Omit<IngestServiceStatus, "ingest_mode"> & { ingest_mode: string }
+    >(r);
+    if (!parsed.ok) {
+      return { ok: false, status: null, err: parsed.err };
+    }
+    const body = parsed.data;
     const status: IngestServiceStatus = {
       ...body,
       ingest_mode: parseIngestMode(body.ingest_mode),

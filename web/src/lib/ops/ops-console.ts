@@ -35,19 +35,19 @@ export {
   refreshOpsObservability,
 } from "../observability/observability.svelte";
 
+import { ingestUrl, llmBaseUrl, shouldProbeIngest } from "../native-config";
 import { checkLlmBridgePing } from "../llm";
-
-const llmBase =
-  (import.meta.env.VITE_LLM_BASE as string | undefined)?.replace(/\/$/, "") ||
-  "/api/llm";
 
 /** `GET /health` — ingest process liveness (body `ok`). */
 export async function fetchIngestHealth(): Promise<{
   ok: boolean;
   err: string | null;
 }> {
+  if (!shouldProbeIngest()) {
+    return { ok: false, err: null };
+  }
   try {
-    const r = await fetch("/health", { method: "GET" });
+    const r = await fetch(ingestUrl("/health"), { method: "GET" });
     if (!r.ok) {
       return { ok: false, err: `${r.status} ${r.statusText}` };
     }
@@ -75,14 +75,14 @@ export async function fetchLlmHealth(): Promise<{
     return {
       ready,
       configured,
-      base: llmBase,
+      base: llmBaseUrl(),
       err: ready ? null : "bridge /v1/ready failed",
     };
   } catch (e) {
     return {
       ready: false,
       configured,
-      base: llmBase,
+      base: llmBaseUrl(),
       err: e instanceof Error ? e.message : String(e),
     };
   }

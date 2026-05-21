@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Settings as SettingsIcon, Cpu, Radio, BookOpen, FlaskConical } from "@lucide/svelte";
+  import { Settings as SettingsIcon } from "@lucide/svelte";
 
   import { connectionErrorDisplay } from "../connection-errors";
   import { autoReconnectStatusLine, reconnectNow } from "../connection.svelte";
@@ -17,6 +17,17 @@
   import { requestLlmInsight } from "../llm";
   import { ensureLlmReady, readiness, refreshRemoteReadiness } from "../readiness.svelte";
   import FeedApisPanel from "../components/FeedApisPanel.svelte";
+  import SettingsCollapsibleSection from "../components/SettingsCollapsibleSection.svelte";
+  import SettingsInnerFold from "../components/SettingsInnerFold.svelte";
+  import SettingsMobileDetail from "../components/SettingsMobileDetail.svelte";
+  import SettingsSectionRow from "../components/SettingsSectionRow.svelte";
+  import LlmProvidersSettings from "./settings/LlmProvidersSettings.svelte";
+  import {
+    SETTINGS_SECTIONS,
+    type SettingsSectionId,
+  } from "./settings/settings-sections";
+  import { shouldProbeIngest } from "../native-config";
+  import { isMobileLayout, subscribeMobileLayout } from "../mobile-layout";
   import CompactNumber from "../components/CompactNumber.svelte";
   import OpsConsole from "../components/OpsConsole.svelte";
   import {
@@ -38,9 +49,44 @@
   let llmTestRunning = $state(false);
   let llmTestResult = $state<string | null>(null);
 
+  let mobile = $state(isMobileLayout());
+  let activeSection = $state<SettingsSectionId | null>(null);
+  let stackEl: HTMLDivElement | undefined = $state();
+  let slidePx = $state(360);
+
+  const activeMeta = $derived(
+    activeSection
+      ? SETTINGS_SECTIONS.find((s) => s.id === activeSection) ?? null
+      : null,
+  );
+
   onMount(() => {
     void refreshRemoteReadiness();
+    const unsubLayout = subscribeMobileLayout(() => {
+      mobile = isMobileLayout();
+      if (!mobile) activeSection = null;
+    });
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            slidePx = stackEl?.clientWidth ?? window.innerWidth;
+          })
+        : null;
+    if (stackEl && ro) ro.observe(stackEl);
+    slidePx = stackEl?.clientWidth ?? window.innerWidth;
+    return () => {
+      unsubLayout();
+      ro?.disconnect();
+    };
   });
+
+  function openSection(id: SettingsSectionId): void {
+    activeSection = id;
+  }
+
+  function closeSection(): void {
+    activeSection = null;
+  }
 
   async function testLlmPipeline(): Promise<void> {
     llmTestRunning = true;
@@ -76,218 +122,191 @@
   }
 </script>
 
-<section class="settings-page">
-<section class="settings">
-  <header>
-    <div class="settings-title">
-      <SettingsIcon size={16} strokeWidth={1.75} />
-      <span>Settings & integration</span>
-    </div>
-    <p>
-      The Svelte app reads live rows from <strong>SpacetimeDB</strong> in the
-      browser. Ingest, LLM, and public APIs are operator-controlled outside this
-      page.
-    </p>
-  </header>
-
-  <div class="card">
-    <h3>
-      <Radio size={14} strokeWidth={1.75} /> SpacetimeDB stream
-    </h3>
-    <p>
-      State: <strong>{dashboard.connection}</strong>{#if dashboard.dataMode === "demo"} (not used in demo; preview label only).{:else}.{/if} The
-      UI subscribes to <code>event</code>, <code>world_state</code>, <code>signal</code>, and
-      related tables when not in demo mode.
-    </p>
-    {#if dashboard.dataMode !== "demo"}
-      {@const reconnectNote = autoReconnectStatusLine()}
-      {#if reconnectNote}
-        <p class="settings-sub" role="status">{reconnectNote}</p>
-      {/if}
+{#snippet stdbBody()}
+  <p>
+    State: <strong>{dashboard.connection}</strong>{#if dashboard.dataMode === "demo"} (not used in demo; preview label only).{:else}.{/if} The
+    UI subscribes to <code>event</code>, <code>world_state</code>, <code>signal</code>, and
+    related tables when not in demo mode.
+  </p>
+  {#if dashboard.dataMode !== "demo"}
+    {@const reconnectNote = autoReconnectStatusLine()}
+    {#if reconnectNote}
+      <p class="settings-sub" role="status">{reconnectNote}</p>
     {/if}
-    {#if dashboard.dataMode !== "demo" && dashboard.connectionLastError}
-      {@const err = connectionErrorDisplay(dashboard.connectionLastError)}
-      <p class="err-block" role="alert">
-        {#if err}
-          <strong>{err.summary}</strong> — {err.remediation}
-          <span class="err-raw">({err.raw})</span>
-        {:else}
-          <strong>Last error</strong> — {dashboard.connectionLastError}
-        {/if}
-      </p>
-    {/if}
-    {#if dashboard.dataMode !== "demo"}
-      <p class="settings-actions">
-        <button type="button" class="btn" onclick={() => reconnectNow()}>
-          Reconnect to SpacetimeDB now
-        </button>
-      </p>
-    {/if}
-    <p class="settings-sub">
-      <span class="lbl">WebSocket (effective)</span> — <code>{stdbEffective}</code>
-    </p>
-    <p class="settings-sub">
-      <span class="lbl">Vite</span> — {#if stdbFromEnv}
-        <code>VITE_STDB_URI</code> is set to <code>{stdbFromEnv}</code> (overrides
-        same-host default).
+  {/if}
+  {#if dashboard.dataMode !== "demo" && dashboard.connectionLastError}
+    {@const err = connectionErrorDisplay(dashboard.connectionLastError)}
+    <p class="err-block" role="alert">
+      {#if err}
+        <strong>{err.summary}</strong> — {err.remediation}
+        <span class="err-raw">({err.raw})</span>
       {:else}
-        <code>VITE_STDB_URI</code> is unset; the app uses this page’s hostname on
-        port 3000 (<code>localhost</code> / <code>::1</code> →
-        <code>127.0.0.1</code> because dev SpacetimeDB binds IPv4 loopback only).
-        LAN URLs like <code>http://192.168.x.x:5173</code> use
-        <code>ws://192.168.x.x:3000</code> — run SpacetimeDB on
-        <code>0.0.0.0:3000</code> for that to work.
-      {/if}
-      <code>VITE_STDB_DB</code> = <code>{stdbDb}</code>. Override in
-      <code>web/.env</code> and rebuild for production.
-    </p>
-  </div>
-
-  <div class="card card--wide card--ops" id="ops-console">
-    <h3>
-      <Radio size={14} strokeWidth={1.75} /> Operations console
-    </h3>
-    <p>
-      Live operator view: SpacetimeDB connection events, ingest health, feed polls,
-      and Prometheus counters. Polls <code>/status</code>, <code>/feeds</code>, and
-      <code>/metrics</code> every ~8s while expanded (Vite dev proxies to
-      <code>127.0.0.1:8080</code>).
-    </p>
-    <OpsConsole />
-  </div>
-
-  <div class="card">
-    <h3>
-      <SettingsIcon size={14} strokeWidth={1.75} /> Appearance
-    </h3>
-    <p>Choose a shell theme. Charts and maps follow the same surface tokens.</p>
-    <div class="theme-grid" role="radiogroup" aria-label="Theme">
-      {#each THEME_OPTIONS as opt (opt.id)}
-        <button
-          type="button"
-          class="theme-card"
-          class:is-active={theme === opt.id}
-          role="radio"
-          aria-checked={theme === opt.id}
-          onclick={() => pickTheme(opt.id)}
-        >
-          <span class="theme-swatch" data-theme-preview={opt.id}></span>
-          <span class="theme-label">{opt.label}</span>
-          <span class="theme-desc">{opt.description}</span>
-        </button>
-      {/each}
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>
-      <FlaskConical size={14} strokeWidth={1.75} /> Demo / test data (no backend)
-    </h3>
-    <p>
-      Load a large deterministic synthetic dataset (hundreds of geo-located
-      events, signals, world state, and insights) to validate maps and matrices
-      without SpacetimeDB, ingest, or external APIs. Uses the same dashboard
-      types as production.
-    </p>
-    <p class="row">
-      Status: {#if dashboard.dataMode === "demo"}
-        <span class="ok">demo mode active</span> —
-        <CompactNumber value={dashboard.events.length} /> events
-        in buffer.
-      {:else}
-        <span class="muted">off — you are on live (or connecting) data.</span>
+        <strong>Last error</strong> — {dashboard.connectionLastError}
       {/if}
     </p>
+  {/if}
+  {#if dashboard.dataMode !== "demo"}
     <p class="settings-actions">
-      {#if dashboard.dataMode === "demo"}
-        <button type="button" class="btn" onclick={() => installDemoData()}>
-          Re-seed demo data
-        </button>
-        <button
-          type="button"
-          class="btn"
-          onclick={() => exitDemoModeAndReload()}>Use live SpacetimeDB (reload)</button
-        >
-      {:else}
-        <button
-          type="button"
-          class="btn"
-          onclick={() => enableDemoModeAndReload()}>Start demo mode (reload)</button
-        >
-      {/if}
-    </p>
-    <p class="settings-sub">
-      <span class="lbl">URL</span> — append <code>?demo=1</code> to this origin, or
-      set <code>VITE_DEMO_DATA=1</code> at build time.
-    </p>
-  </div>
-
-  <div class="card">
-    <h3>
-      <Radio size={14} strokeWidth={1.75} /> Ingest service
-    </h3>
-    <p>
-      The ingest process pushes events into SpacetimeDB. The UI never reads
-      ingest directly — only the database WebSocket. In Vite dev,
-      <code>GET /ready</code>, <code>GET /status</code>, and <code>GET /metrics</code>
-      proxy to <code>127.0.0.1:8080</code>. Use the <strong>Operations console</strong>
-      above for auto-refreshing health, feeds, and Prometheus counters.
-    </p>
-    <p class="row">
-      Readiness: {#if readiness.ingestReady === null}
-        <span class="muted">checking…</span>
-      {:else if readiness.ingestReady}
-        <span class="ok">ready</span>
-      {:else}
-        <span class="err">not reachable</span>
-        {#if readiness.ingestCheckErr}
-          <span class="muted"> — {readiness.ingestCheckErr}</span>
-        {/if}
-      {/if}
-    </p>
-    {#if readiness.ingestStatus}
-      <p class="settings-sub">
-        <span class="lbl">Ingest mode</span> —
-        <code>{readiness.ingestStatus.ingest_mode}</code>
-        ({ingestModeLabel(readiness.ingestStatus.ingest_mode)}). STDB
-        {#if readiness.ingestStatus.stdb_reachable}
-          <span class="ok">reachable</span>
-        {:else}
-          <span class="err">unreachable</span>
-        {/if}
-        at <code>{readiness.ingestStatus.stdb_uri}</code> /
-        <code>{readiness.ingestStatus.stdb_database}</code>.
-      </p>
-    {/if}
-    <p class="settings-actions">
-      <button type="button" class="btn" onclick={() => void refreshRemoteReadiness()}>
-        Check again
+      <button type="button" class="btn" onclick={() => reconnectNow()}>
+        Reconnect to SpacetimeDB now
       </button>
-      <a class="btn btn-link" href="#ops-console">Open console</a>
     </p>
-  </div>
+  {/if}
+  <p class="settings-sub">
+    <span class="lbl">WebSocket (effective)</span> — <code>{stdbEffective}</code>
+  </p>
+  <p class="settings-sub">
+    <span class="lbl">Vite</span> — {#if stdbFromEnv}
+      <code>VITE_STDB_URI</code> is set to <code>{stdbFromEnv}</code> (overrides
+      same-host default).
+    {:else}
+      <code>VITE_STDB_URI</code> is unset; the app uses this page’s hostname on
+      port 3000 (<code>localhost</code> / <code>::1</code> →
+      <code>127.0.0.1</code> because dev SpacetimeDB binds IPv4 loopback only).
+      LAN URLs like <code>http://192.168.x.x:5173</code> use
+      <code>ws://192.168.x.x:3000</code> — run SpacetimeDB on
+      <code>0.0.0.0:3000</code> for that to work.
+    {/if}
+    <code>VITE_STDB_DB</code> = <code>{stdbDb}</code>. Override in
+    <code>web/.env</code> and rebuild for production.
+  </p>
+{/snippet}
 
-  <div class="card">
-    <h3>
-      <Cpu size={14} strokeWidth={1.75} /> LLM (Ollama via bridge)
-    </h3>
+{#snippet opsBody()}
+  <p>
+    Live operator view: SpacetimeDB connection events, ingest health, feed polls,
+    and Prometheus counters. Polls <code>/status</code>, <code>/feeds</code>, and
+    <code>/metrics</code> every ~8s while expanded (Vite dev proxies to
+    <code>127.0.0.1:8080</code>).
+  </p>
+  <OpsConsole />
+{/snippet}
+
+{#snippet appearanceBody()}
+  <p>Choose a shell theme. Charts and maps follow the same surface tokens.</p>
+  <div class="theme-grid" role="radiogroup" aria-label="Theme">
+    {#each THEME_OPTIONS as opt (opt.id)}
+      <button
+        type="button"
+        class="theme-card"
+        class:is-active={theme === opt.id}
+        role="radio"
+        aria-checked={theme === opt.id}
+        onclick={() => pickTheme(opt.id)}
+      >
+        <span class="theme-swatch" data-theme-preview={opt.id}></span>
+        <span class="theme-label">{opt.label}</span>
+        <span class="theme-desc">{opt.description}</span>
+      </button>
+    {/each}
+  </div>
+{/snippet}
+
+{#snippet demoBody()}
+  <p>
+    Load a large deterministic synthetic dataset (hundreds of geo-located
+    events, signals, world state, and insights) to validate maps and matrices
+    without SpacetimeDB, ingest, or external APIs. Uses the same dashboard
+    types as production.
+  </p>
+  <p class="row">
+    Status: {#if dashboard.dataMode === "demo"}
+      <span class="ok">demo mode active</span> —
+      <CompactNumber value={dashboard.events.length} /> events
+      in buffer.
+    {:else}
+      <span class="muted">off — you are on live (or connecting) data.</span>
+    {/if}
+  </p>
+  <p class="settings-actions">
+    {#if dashboard.dataMode === "demo"}
+      <button type="button" class="btn" onclick={() => installDemoData()}>
+        Re-seed demo data
+      </button>
+      <button
+        type="button"
+        class="btn"
+        onclick={() => exitDemoModeAndReload()}>Use live SpacetimeDB (reload)</button
+      >
+    {:else}
+      <button
+        type="button"
+        class="btn"
+        onclick={() => enableDemoModeAndReload()}>Start demo mode (reload)</button
+      >
+    {/if}
+  </p>
+  <p class="settings-sub">
+    <span class="lbl">URL</span> — append <code>?demo=1</code> to this origin, or
+    set <code>VITE_DEMO_DATA=1</code> at build time.
+  </p>
+{/snippet}
+
+{#snippet ingestBody()}
+  <p>
+    The ingest process pushes events into SpacetimeDB. The UI never reads
+    ingest directly — only the database WebSocket. In Vite dev,
+    <code>GET /ready</code>, <code>GET /status</code>, and <code>GET /metrics</code>
+    proxy to <code>127.0.0.1:8080</code>. Use the <strong>Operations console</strong>
+    section for auto-refreshing health, feeds, and Prometheus counters.
+  </p>
+  {#if !shouldProbeIngest()}
+    <p class="settings-sub">
+      This build uses <strong>Maincloud SpacetimeDB</strong> only. Third-party APIs are
+      polled by ingest on a server — not from the phone. Map and hub data update when STDB
+      is connected. Optional: set <code>VITE_INGEST_BASE</code> at build time to a public
+      ingest URL for operator health checks.
+    </p>
+  {/if}
+  <p class="row">
+    Readiness: {#if !shouldProbeIngest()}
+      <span class="muted">not configured on this build</span> — use SpacetimeDB status above.
+    {:else if readiness.ingestReady === null}
+      <span class="muted">checking…</span>
+    {:else if readiness.ingestReady}
+      <span class="ok">ready</span>
+    {:else}
+      <span class="err">not reachable</span>
+      {#if readiness.ingestCheckErr}
+        <span class="muted"> — {readiness.ingestCheckErr}</span>
+      {/if}
+    {/if}
+  </p>
+  {#if readiness.ingestStatus}
+    <p class="settings-sub">
+      <span class="lbl">Ingest mode</span> —
+      <code>{readiness.ingestStatus.ingest_mode}</code>
+      ({ingestModeLabel(readiness.ingestStatus.ingest_mode)}). STDB
+      {#if readiness.ingestStatus.stdb_reachable}
+        <span class="ok">reachable</span>
+      {:else}
+        <span class="err">unreachable</span>
+      {/if}
+      at <code>{readiness.ingestStatus.stdb_uri}</code> /
+      <code>{readiness.ingestStatus.stdb_database}</code>.
+    </p>
+  {/if}
+  <p class="settings-actions">
+    <button type="button" class="btn" onclick={() => void refreshRemoteReadiness()}>
+      Check again
+    </button>
+    {#if mobile}
+      <button type="button" class="btn btn-link" onclick={() => openSection("ops")}>
+        Open console
+      </button>
+    {:else}
+      <a class="btn btn-link" href="#ops-console">Open console</a>
+    {/if}
+  </p>
+{/snippet}
+
+{#snippet llmBody()}
+  <LlmProvidersSettings />
+  <SettingsInnerFold summary="Local Ollama bridge (desktop)">
     <p>
       The hub &ldquo;AI analysis&rdquo; button calls
-      <code>POST {llmBase}/v1/insight</code>. In <code>vite</code> dev, that path
-      proxies to <code>http://127.0.0.1:3847</code> (see
-      <code>web/vite.config.ts</code>).
-    </p>
-    <p class="row">
-      Bridge readiness: {#if readiness.llmReady === null}
-        <span class="muted">checking…</span>
-      {:else if readiness.llmReady}
-        <span class="ok">reachable</span> — Ollama HTTP is up through the bridge.
-        Use <strong>Test LLM pipeline</strong> to verify inference (catches CUDA/GPU issues).
-      {:else}
-        <span class="err">unreachable</span> — start
-        <code>openatlas-llm-bridge</code> and <code>ollama serve</code>, or set
-        <code>VITE_LLM_BASE</code> to a reachable URL and rebuild.
-      {/if}
+      <code>POST {llmBase}/v1/insight</code> when using the bridge provider. In
+      <code>vite</code> dev, that path proxies to <code>http://127.0.0.1:3847</code>.
     </p>
     <p class="settings-actions">
       <button
@@ -296,38 +315,141 @@
         disabled={llmTestRunning}
         onclick={() => void testLlmPipeline()}
       >
-        {llmTestRunning ? "Testing LLM…" : "Test LLM pipeline"}
-      </button>
-      <button type="button" class="btn" onclick={() => void refreshRemoteReadiness()}>
-        Check bridge only
+        {llmTestRunning ? "Testing LLM…" : "Test bridge pipeline"}
       </button>
     </p>
     <p class="settings-sub">
       <span class="lbl">CUDA / GTX 10xx</span> — if analysis fails with
-      <code>architectural feature absent from the device</code>, stop
-      <code>ollama serve</code> and run
-      <code>./scripts/ollama-serve-cpu.sh</code> (or
-      <code>./dev.sh ollama:cpu</code>), then <code>./dev.sh llm:start</code>.
+      <code>architectural feature absent from the device</code>, use CPU-only Ollama
+      (<code>./scripts/ollama-serve-cpu.sh</code>).
     </p>
     {#if llmTestResult}
       <p class="settings-sub" role="status">{llmTestResult}</p>
     {/if}
-  </div>
+  </SettingsInnerFold>
+{/snippet}
 
-  <div class="card">
-    <h3>
-      <BookOpen size={14} strokeWidth={1.75} /> Public APIs &amp; live feeds
-    </h3>
-    <FeedApisPanel />
-    <p class="settings-sub">
-      <span class="lbl">Ingest mode</span> — set when starting ingest:
-      <code>OPENATLAS_INGEST_MODE=hybrid|live|sim|static</code> (see
-      <code>./dev.sh up</code>). Keys saved here are written to
-      <code>.dev/feed-secrets.json</code> (gitignored). See
-      <code>docs/CONFIG.md</code> for all local config paths.
-    </p>
-  </div>
-</section>
+{#snippet feedsBody()}
+  <FeedApisPanel />
+  <p class="settings-sub">
+    <span class="lbl">Ingest mode</span> — set when starting ingest:
+    <code>OPENATLAS_INGEST_MODE=hybrid|live|sim|static</code> (see
+    <code>./dev.sh up</code>). Keys saved here are written to
+    <code>.dev/feed-secrets.json</code> (gitignored). See
+    <code>docs/CONFIG.md</code> for all local config paths.
+  </p>
+{/snippet}
+
+<section class="settings-page" class:settings-page--mobile={mobile}>
+  {#if mobile}
+    <div class="settings-mobile-stack" bind:this={stackEl}>
+      <div class="settings-mobile-list" class:is-dimmed={activeSection !== null}>
+        <header class="settings-mobile-list-head">
+          <div class="settings-title">
+            <SettingsIcon size={18} strokeWidth={1.75} />
+            <span>Settings</span>
+          </div>
+          <p class="settings-mobile-lead">
+            SpacetimeDB, appearance, ingest, and API keys for operators.
+          </p>
+        </header>
+        <nav class="settings-mobile-nav" aria-label="Settings sections">
+          {#each SETTINGS_SECTIONS as section (section.id)}
+            <SettingsSectionRow
+              title={section.title}
+              icon={section.icon}
+              onSelect={() => openSection(section.id)}
+            />
+          {/each}
+        </nav>
+      </div>
+
+      {#if activeSection && activeMeta}
+        <SettingsMobileDetail
+          title={activeMeta.title}
+          icon={activeMeta.icon}
+          {slidePx}
+          onBack={closeSection}
+        >
+          {#if activeSection === "stdb"}
+            {@render stdbBody()}
+          {:else if activeSection === "ops"}
+            {@render opsBody()}
+          {:else if activeSection === "appearance"}
+            {@render appearanceBody()}
+          {:else if activeSection === "demo"}
+            {@render demoBody()}
+          {:else if activeSection === "ingest"}
+            {@render ingestBody()}
+          {:else if activeSection === "llm"}
+            {@render llmBody()}
+          {:else if activeSection === "feeds"}
+            {@render feedsBody()}
+          {/if}
+        </SettingsMobileDetail>
+      {/if}
+    </div>
+  {:else}
+    <section class="settings">
+      <header>
+        <div class="settings-title">
+          <SettingsIcon size={16} strokeWidth={1.75} />
+          <span>Settings & integration</span>
+        </div>
+        <p>
+          The Svelte app reads live rows from <strong>SpacetimeDB</strong> in the
+          browser. Ingest, LLM, and public APIs are operator-controlled outside this
+          page.
+        </p>
+      </header>
+
+      <SettingsCollapsibleSection
+        title="SpacetimeDB stream"
+        icon={SETTINGS_SECTIONS[0].icon}
+        id="stdb"
+        class="settings-group"
+      >
+        {@render stdbBody()}
+      </SettingsCollapsibleSection>
+
+      <SettingsCollapsibleSection
+        title="Operations console"
+        icon={SETTINGS_SECTIONS[1].icon}
+        id="ops-console"
+        class="card--wide card--ops settings-group"
+      >
+        {@render opsBody()}
+      </SettingsCollapsibleSection>
+
+      <SettingsCollapsibleSection
+        title="Appearance"
+        icon={SETTINGS_SECTIONS[2].icon}
+        class="settings-group"
+      >
+        {@render appearanceBody()}
+      </SettingsCollapsibleSection>
+
+      <SettingsCollapsibleSection title="Demo / test data (no backend)" icon={SETTINGS_SECTIONS[3].icon}>
+        {@render demoBody()}
+      </SettingsCollapsibleSection>
+
+      <SettingsCollapsibleSection title="Ingest service" icon={SETTINGS_SECTIONS[4].icon}>
+        {@render ingestBody()}
+      </SettingsCollapsibleSection>
+
+      <SettingsCollapsibleSection
+        title="LLM providers"
+        icon={SETTINGS_SECTIONS[5].icon}
+        class="settings-group"
+      >
+        {@render llmBody()}
+      </SettingsCollapsibleSection>
+
+      <SettingsCollapsibleSection title="Public APIs & live feeds" icon={SETTINGS_SECTIONS[6].icon}>
+        {@render feedsBody()}
+      </SettingsCollapsibleSection>
+    </section>
+  {/if}
 </section>
 
 <style>
@@ -335,26 +457,75 @@
     padding: var(--space-8) var(--space-6);
     max-width: 960px;
   }
+
+  .settings-page--mobile {
+    padding: 0;
+    max-width: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .settings-mobile-stack {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg-0);
+  }
+
+  .settings-mobile-list {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg-0);
+    transition: transform var(--motion-panel, 280ms) var(--ease, ease);
+  }
+
+  .settings-mobile-list.is-dimmed {
+    transform: translateX(-18%);
+    pointer-events: none;
+  }
+
+  .settings-mobile-list-head {
+    flex-shrink: 0;
+    padding: var(--space-4);
+    padding-top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+    border-bottom: 1px solid var(--border-1);
+    background: var(--bg-1);
+  }
+
+  .settings-mobile-lead {
+    margin: var(--space-2) 0 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-2);
+  }
+
+  .settings-mobile-nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--mobile-nav-height, 68px);
+  }
+
   .settings {
     max-width: 880px;
   }
-  .card--wide {
-    max-width: none;
-  }
-  .card--ops {
-    scroll-margin-top: var(--space-6);
-    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-1));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  .card--ops h3 {
-    color: var(--text-1);
-  }
+
   .btn-link {
     display: inline-flex;
     align-items: center;
     text-decoration: none;
     margin-left: 8px;
   }
+
   .settings-title {
     display: inline-flex;
     align-items: center;
@@ -364,49 +535,41 @@
     color: var(--text-1);
     letter-spacing: -0.01em;
   }
+
+  .settings-page--mobile .settings-title {
+    font-size: 22px;
+  }
+
   .settings p {
     margin-top: var(--space-2);
     color: var(--text-2);
     line-height: 1.55;
   }
+
   .settings p.row {
     margin-top: var(--space-3);
   }
-  h3 {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0 0 var(--space-2);
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-1);
-  }
-  .card {
-    margin-top: var(--space-5);
-    padding: var(--space-4) var(--space-4);
-    border: 1px solid var(--border-1);
-    border-radius: var(--radius);
-    background: var(--bg-1);
-  }
-  .card p code {
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }
+
   .ok {
     color: var(--accent, #22c55e);
   }
+
   .err {
     color: #f87171;
   }
+
   .muted {
     color: var(--text-3);
   }
+
   .settings-sub {
     margin-top: var(--space-3) !important;
   }
+
   .settings-actions {
     margin-top: var(--space-3) !important;
   }
+
   .btn {
     font: inherit;
     font-size: 12px;
@@ -418,10 +581,12 @@
     color: var(--text-1);
     cursor: pointer;
   }
+
   .btn:hover {
     background: var(--bg-3);
     border-color: var(--border-2);
   }
+
   .err-raw {
     display: block;
     margin-top: 6px;
@@ -430,6 +595,7 @@
     color: var(--text-3);
     word-break: break-word;
   }
+
   .err-block {
     margin-top: var(--space-2) !important;
     padding: var(--space-2) var(--space-3);
@@ -440,18 +606,21 @@
     border: 1px solid color-mix(in srgb, #ef4444 35%, var(--border-1));
     border-radius: var(--radius);
   }
+
   .lbl {
     text-transform: uppercase;
     font-size: 10px;
     letter-spacing: 0.1em;
     color: var(--text-3);
   }
+
   .theme-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: var(--space-3);
     margin-top: var(--space-3);
   }
+
   .theme-card {
     display: flex;
     flex-direction: column;
@@ -466,37 +635,86 @@
     text-align: left;
     font: inherit;
   }
+
   .theme-card:hover {
     border-color: var(--border-2);
     background: var(--bg-3);
   }
+
   .theme-card.is-active {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
   }
+
   .theme-swatch {
     width: 100%;
     height: 28px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-1);
   }
+
   .theme-swatch[data-theme-preview="dark"] {
     background: linear-gradient(90deg, #09090b, #22d3ee 40%, #101013);
   }
+
   .theme-swatch[data-theme-preview="dim"] {
     background: linear-gradient(90deg, #121218, #67e8f9 45%, #1a1a22);
   }
+
   .theme-swatch[data-theme-preview="light"] {
     background: linear-gradient(90deg, #f4f4f5, #0891b2 40%, #ffffff);
   }
+
   .theme-label {
     font-size: 13px;
     font-weight: 600;
     color: var(--text-1);
   }
+
   .theme-desc {
     font-size: 11px;
     line-height: 1.4;
     color: var(--text-3);
+  }
+
+  :global(html[data-mobile-layout]) .settings-page:not(.settings-page--mobile) {
+    padding: 0;
+    max-width: none;
+  }
+
+  :global(html[data-mobile-layout]) .settings {
+    max-width: none;
+  }
+
+  :global(html[data-mobile-layout]) .settings > header {
+    padding: var(--space-4) var(--space-4) var(--space-3);
+    border-bottom: 1px solid var(--border-1);
+    background: var(--bg-1);
+  }
+
+  :global(html[data-mobile-layout]) .settings .btn {
+    min-height: var(--mobile-tap-min, 44px);
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  :global(html[data-mobile-layout]) .settings .theme-card {
+    min-height: var(--mobile-tap-min, 44px);
+    padding: var(--space-4);
+  }
+
+  :global(html[data-mobile-layout]) .settings .theme-grid {
+    grid-template-columns: 1fr;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .settings-mobile-list {
+      transition: none;
+    }
+
+    .settings-mobile-list.is-dimmed {
+      transform: none;
+      opacity: 0.6;
+    }
   }
 </style>

@@ -14,8 +14,10 @@ This document lists **every** config knob and API key in OpenAtlas, what needs t
 |------|---------|--------------|-----------|
 | `FRED_API_KEY` | Ingest feed `fred` | Live FRED macro data | [fred.stlouisfed.org/docs/api/api_key.html](https://fred.stlouisfed.org/docs/api/api_key.html) |
 | `EIA_API_KEY` | Ingest feed `eia` | Live EIA energy data | [eia.gov/opendata/register.php](https://www.eia.gov/opendata/register.php) |
+| `OPENSKY_CLIENT_ID` | Ingest feed `opensky` | OAuth2 client ID (optional; higher limits than anonymous) | [opensky-network.org](https://opensky-network.org) → Account → API clients |
+| `OPENSKY_CLIENT_SECRET` | Ingest feed `opensky` | OAuth2 client secret (**must** be set with `OPENSKY_CLIENT_ID`) | Same |
 
-Only these two names are accepted by `PUT /feeds` and `.dev/feed-secrets.json` (allowlist in `feed_config.rs`).
+Only these names are accepted by `PUT /feeds` and `.dev/feed-secrets.json` (allowlist in `feed_config.rs`). OpenSky works without credentials (anonymous, rate-limited).
 
 | Name | Status | Notes |
 |------|--------|-------|
@@ -64,7 +66,7 @@ Cloud hosts often use a **public** `https://` / `wss://` URL without a separate 
 
 ### Feeds without API keys (no GitHub secret)
 
-`usgs`, `open-meteo`, `coingecko`, `nasa-eonet`, `opensky`, `gdelt`, `world-bank` — public APIs; rate-limited in ingest only.
+`usgs`, `open-meteo`, `coingecko`, `nasa-eonet`, `gdelt`, `world-bank` — public APIs; rate-limited in ingest only. `opensky` is public without OAuth but benefits from client credentials.
 
 ### CI-only (GitHub Actions built-in)
 
@@ -80,7 +82,7 @@ Cloud hosts often use a **public** `https://` / `wss://` URL without a separate 
 | Workflow | Secrets required? | Notes |
 |----------|-------------------|-------|
 | **CI — Dev** (`ci.yml`) | **No** | Path-filtered tests; demo Playwright; no live feeds |
-| **CI — QA** (`qa.yml`) | **Only if** `verify_feeds: true` | Needs `FRED_API_KEY`, `EIA_API_KEY` in **`qa` environment** |
+| **CI — QA** (`qa.yml`) | **Only if** `verify_feeds: true` | Needs feed secrets in **`qa` environment** (see below) |
 | **CD — Staging** | Optional for real deploy | STDB URL + feed keys when you add publish steps |
 | **CD — Production** | Optional for real deploy | Same; use **production** environment only |
 | **Nightly** | Optional | `RUN_LIVE_FEED_TEST=1` ignored test — optional repo secret |
@@ -140,6 +142,10 @@ For each environment that runs **live feeds** or deploys ingest:
 |-------------|--------|
 | `FRED_API_KEY` | your FRED key |
 | `EIA_API_KEY` | your EIA key |
+| `OPENSKY_CLIENT_ID` | OpenSky API **client ID** (plain string, not JSON) |
+| `OPENSKY_CLIENT_SECRET` | OpenSky API **client secret** (set together with the ID) |
+
+**OpenSky:** Do not paste the `credentials.json` blob as one secret. Create **two** repository/environment secrets with the exact names above — copy `clientId` → `OPENSKY_CLIENT_ID` and `clientSecret` → `OPENSKY_CLIENT_SECRET`.
 
 Optional later:
 
@@ -180,7 +186,7 @@ Do **not** require feed-dependent jobs globally.
 
 **Actions → CI — QA (main) → Run workflow** → enable **verify_feeds**.
 
-Requires `FRED_API_KEY` and `EIA_API_KEY` on the **`qa`** environment.
+Requires feed secrets on the **`qa`** environment (at minimum the feeds you want `e2e-qa.sh --verify-feeds` to hit — include OpenSky pair for authenticated OpenSky tests).
 
 ---
 
@@ -192,7 +198,7 @@ Feed keys in CI are written to a ephemeral file (never logged):
 ./scripts/ci/write-feed-secrets-from-env.sh
 ```
 
-That script reads `FRED_API_KEY` and `EIA_API_KEY` from the environment and writes `.dev/feed-secrets.json` for ingest.
+That script reads `FRED_API_KEY`, `EIA_API_KEY`, `OPENSKY_CLIENT_ID`, and `OPENSKY_CLIENT_SECRET` from the environment and writes `.dev/feed-secrets.json` for ingest.
 
 Staging/production deploy jobs should:
 

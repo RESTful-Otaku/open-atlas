@@ -1,12 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-/** Hash router (`router.svelte.ts`) — paths live after `#`. */
-const demoHome = "/?demo=1";
-const demoPath = (path: string) => `/?demo=1#${path}`;
+import { gotoDemo } from "./demo-goto";
 
 test.describe("OpenAtlas demo smoke", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(demoHome);
+    await gotoDemo(page);
   });
 
   test("loads shell and demo banner", async ({ page }) => {
@@ -22,7 +20,7 @@ test.describe("OpenAtlas demo smoke", () => {
   });
 
   test("entities view is reachable and shows table", async ({ page }) => {
-    await page.goto(demoPath("/entities"));
+    await gotoDemo(page, "/entities");
     await expect(
       page.getByRole("region", { name: /Event table/i }),
     ).toBeVisible({ timeout: 15_000 });
@@ -30,7 +28,7 @@ test.describe("OpenAtlas demo smoke", () => {
   });
 
   test("hub view shows overview charts", async ({ page }) => {
-    await page.goto(demoPath("/hub"));
+    await gotoDemo(page, "/hub");
     await expect(
       page.getByRole("region", { name: /Cross-domain overview charts/i }),
     ).toBeVisible({ timeout: 15_000 });

@@ -367,3 +367,688 @@ html[data-theme="light"] :global(.maplibregl-ctrl-group button .maplibregl-ctrl-
 :global(.maplibregl-ctrl-attrib a) {
   color: var(--text-2) !important;
 }
+
+/* =========================================================================
+   Compact / mobile / tablet — desktop unchanged above 1024px
+   Phone ≤768: data-mobile-layout · Tablet 769–1024: data-tablet-layout
+   Shell chrome ≤1024 + native: data-compact-layout
+   ========================================================================= */
+
+html[data-compact-layout],
+html[data-mobile-layout] {
+  --mobile-tap-min: 44px;
+  /* Matches .mobile-bottom-nav padding + 44px tap targets + label */
+  --mobile-nav-height: calc(68px + env(safe-area-inset-bottom, 0px));
+  --mobile-top-inset: calc(env(safe-area-inset-top, 0px) + 52px);
+}
+
+html[data-compact-layout] #app,
+html[data-mobile-layout] #app {
+  min-height: 100dvh;
+  min-height: 100vh;
+  padding-top: 0;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  box-sizing: border-box;
+}
+
+html[data-compact-layout] :global(#shell-main.shell-main-fill),
+html[data-compact-layout] :global(#shell-main.shell-main-fill .route-view[data-scroll="fill"]),
+html[data-mobile-layout] :global(#shell-main.shell-main-fill),
+html[data-mobile-layout] :global(#shell-main.shell-main-fill .route-view[data-scroll="fill"]) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+html[data-compact-layout] :global(.route-view),
+html[data-mobile-layout] :global(.route-view) {
+  width: 100%;
+  max-width: 100%;
+  min-height: calc(100dvh - var(--mobile-nav-height) - var(--mobile-top-inset));
+  box-sizing: border-box;
+}
+
+html[data-compact-layout] :global(.route-view[data-scroll="page"]),
+html[data-mobile-layout] :global(.route-view[data-scroll="page"]) {
+  padding-bottom: var(--space-4);
+}
+
+html[data-mobile-layout] :global(.hub-grid-top),
+html[data-mobile-layout] :global(.hub-grid-bottom),
+html[data-mobile-layout] :global(.hub-grid),
+html[data-mobile-layout] :global(.domain-desk-grid),
+html[data-mobile-layout] :global(.desk-charts-grid),
+html[data-mobile-layout] :global(.matrix-bound-grid),
+html[data-mobile-layout] :global(.matrix-grid) {
+  grid-template-columns: 1fr !important;
+}
+
+html[data-mobile-layout] :global(.desk-charts-grid) {
+  flex-direction: column;
+}
+
+html[data-mobile-layout] :global(.desk-charts-grid .chart-card) {
+  flex: 1 1 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+}
+
+html[data-mobile-layout] :global(.matrix-grid .matrix-panel),
+html[data-mobile-layout] :global(.matrix-grid .matrix-panel[data-span="2"]),
+html[data-mobile-layout] :global(.matrix-grid .matrix-panel[data-span="3"]),
+html[data-mobile-layout] :global(.matrix-grid .matrix-ai) {
+  grid-column: span 1 !important;
+  grid-row: auto !important;
+  position: static !important;
+}
+
+html[data-mobile-layout] :global(.kpi-strip-panel) {
+  grid-template-columns: 1fr !important;
+  gap: var(--space-2);
+}
+
+html[data-compact-layout] :global(.hub),
+html[data-mobile-layout] :global(.hub) {
+  padding: var(--space-4) var(--space-3) var(--space-6);
+  gap: var(--space-4);
+}
+
+html[data-compact-layout] :global(.hub-overview),
+html[data-mobile-layout] :global(.hub-overview) {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+html[data-compact-layout] :global(.domain-analyst),
+html[data-mobile-layout] :global(.domain-analyst) {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+html[data-compact-layout] :global(.domain-analyst-btn),
+html[data-mobile-layout] :global(.domain-analyst-btn) {
+  min-height: var(--mobile-tap-min);
+  min-width: var(--mobile-tap-min);
+  padding: 10px 14px;
+}
+
+html[data-compact-layout] :global(.domain-map-aside),
+html[data-mobile-layout] :global(.domain-map-aside) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.matrix-header-actions),
+html[data-mobile-layout] :global(.matrix-header-actions) {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion),
+html[data-mobile-layout] :global(.matrix-ai-accordion) {
+  grid-column: span 1 !important;
+  grid-row: auto !important;
+  position: static !important;
+  margin-top: var(--space-2);
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion > summary),
+html[data-mobile-layout] :global(.matrix-ai-accordion > summary) {
+  list-style: none;
+  cursor: pointer;
+  min-height: var(--mobile-tap-min);
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  touch-action: manipulation;
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion > summary::-webkit-details-marker),
+html[data-mobile-layout] :global(.matrix-ai-accordion > summary::-webkit-details-marker) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion[open] > summary),
+html[data-mobile-layout] :global(.matrix-ai-accordion[open] > summary) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion .matrix-ai),
+html[data-mobile-layout] :global(.matrix-ai-accordion .matrix-ai) {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+html[data-compact-layout] :global(.settings-tabs),
+html[data-mobile-layout] :global(.settings-tabs) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+/* Horizontal scroll for wide tables on phone / compact */
+html[data-compact-layout] :global(.table-scroll),
+html[data-compact-layout] :global(.entities-table-wrap),
+html[data-compact-layout] :global(.feed-table-wrap),
+html[data-compact-layout] :global(.ops-table-wrap),
+html[data-mobile-layout] :global(.table-scroll),
+html[data-mobile-layout] :global(.entities-table-wrap),
+html[data-mobile-layout] :global(.feed-table-wrap),
+html[data-mobile-layout] :global(.ops-table-wrap) {
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+html[data-compact-layout] :global(.data-table),
+html[data-compact-layout] :global(.entities-table),
+html[data-compact-layout] :global(.feed-table),
+html[data-compact-layout] :global(.ops-table),
+html[data-mobile-layout] :global(.data-table),
+html[data-mobile-layout] :global(.entities-table),
+html[data-mobile-layout] :global(.feed-table),
+html[data-mobile-layout] :global(.ops-table) {
+  width: max-content;
+  min-width: 100%;
+}
+
+html[data-compact-layout] :global(.settings-fold + .settings-fold),
+html[data-tablet-layout] :global(.settings-fold + .settings-fold) {
+  border-top: 1px solid var(--border-1);
+}
+
+html[data-mobile-layout] :global(.settings-page--mobile) {
+  padding: 0;
+  max-width: none;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+html[data-compact-layout] :global(.settings-fold.card--ops),
+html[data-mobile-layout] :global(.settings-fold.card--ops) {
+  border-top: 8px solid var(--bg-0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-compact-layout] :global(.map-mobile-flyout),
+  html[data-compact-layout] :global(.mobile-domains-sheet),
+  html[data-compact-layout] :global(.shell-search-backdrop),
+  html[data-compact-layout] :global(.shell-search-sheet),
+  html[data-compact-layout] :global([data-settings-fold] .settings-fold-summary),
+  html[data-compact-layout] :global([data-settings-fold] .settings-inner-fold-summary),
+  html[data-mobile-layout] :global(.map-mobile-flyout),
+  html[data-mobile-layout] :global(.mobile-domains-sheet),
+  html[data-mobile-layout] :global(.shell-search-backdrop),
+  html[data-mobile-layout] :global(.shell-search-sheet),
+  html[data-mobile-layout] :global([data-settings-fold] .settings-fold-summary),
+  html[data-mobile-layout] :global([data-settings-fold] .settings-inner-fold-summary) {
+    animation: none !important;
+  }
+}
+
+html[data-compact-layout] :global(.map-wrap .map),
+html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
+html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe),
+html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe canvas),
+html[data-mobile-layout] :global(.map-wrap .map),
+html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
+html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe),
+html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe canvas) {
+  touch-action: none;
+  pointer-events: auto;
+}
+
+/* Map controls live inside .map-wrap (absolute, vertically centered on the right) */
+html[data-compact-layout] :global(.map-wrap),
+html[data-mobile-layout] :global(.map-wrap) {
+  overflow: visible;
+  box-sizing: border-box;
+  padding-bottom: var(--mobile-nav-height);
+}
+
+html[data-compact-layout] :global(.map-wrap .map),
+html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
+html[data-mobile-layout] :global(.map-wrap .map),
+html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe-wrap) {
+  bottom: var(--mobile-nav-height);
+}
+
+html[data-compact-layout] :global(.map-wrap .map-mobile-controls),
+html[data-mobile-layout] :global(.map-wrap .map-mobile-controls) {
+  position: absolute;
+  top: 40%;
+  right: max(6px, env(safe-area-inset-right, 0px));
+  transform: translateY(-50%);
+  max-height: calc(100% - 88px);
+  padding-bottom: 12px;
+  z-index: 12;
+}
+
+html[data-compact-layout] :global(.map-wrap .map-mobile-controls:has(.map-mobile-flyout)),
+html[data-mobile-layout] :global(.map-wrap .map-mobile-controls:has(.map-mobile-flyout)) {
+  top: 34%;
+  transform: translateY(calc(-50% - 28px));
+}
+
+html[data-compact-layout] :global(.map-wrap .emhc-wrap-docked),
+html[data-mobile-layout] :global(.map-wrap .emhc-wrap-docked) {
+  left: 8px;
+  right: 72px;
+  bottom: 10px;
+  width: auto;
+  max-width: none;
+  max-height: min(52dvh, calc(100% - 20px));
+  z-index: 13;
+}
+
+html[data-compact-layout] :global(.map-mobile-rail),
+html[data-compact-layout] :global(.map-mobile-rail-btn),
+html[data-compact-layout] :global(.map-mobile-rail .map-mode button),
+html[data-mobile-layout] :global(.map-mobile-rail),
+html[data-mobile-layout] :global(.map-mobile-rail-btn),
+html[data-mobile-layout] :global(.map-mobile-rail .map-mode button) {
+  pointer-events: auto;
+  min-height: var(--mobile-tap-min);
+  min-width: var(--mobile-tap-min);
+  touch-action: manipulation;
+}
+
+html[data-compact-layout] :global(.map-empty-dismiss),
+html[data-mobile-layout] :global(.map-empty-dismiss) {
+  min-width: var(--mobile-tap-min);
+  min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.map-float-ui) {
+  pointer-events: none;
+}
+
+html[data-compact-layout] :global(.map-float-bar),
+html[data-compact-layout] :global(.map-mode),
+html[data-compact-layout] :global(.map-float-bar button) {
+  pointer-events: auto;
+}
+
+html[data-compact-layout] :global(.map-layers-panel.is-open .map-layers-pill),
+html[data-compact-layout] :global(.map-layers-panel.is-open .map-mode-compact button),
+html[data-compact-layout] :global(.map-layers-panel.is-open .solar-scrub),
+html[data-compact-layout] :global(.map-layers-panel.is-open .solar-scrub *),
+html[data-mobile-layout] :global(.map-layers-panel.is-open .map-layers-pill),
+html[data-mobile-layout] :global(.map-layers-panel.is-open .map-mode-compact button),
+html[data-mobile-layout] :global(.map-layers-panel.is-open .solar-scrub),
+html[data-mobile-layout] :global(.map-layers-panel.is-open .solar-scrub *) {
+  pointer-events: auto;
+}
+
+html[data-compact-layout] :global(.map-command-bar) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  overflow: visible;
+}
+
+html[data-compact-layout] :global(.map-command-bar .map-command-titles) {
+  width: 100%;
+  min-width: 0;
+}
+
+html[data-compact-layout] :global(.map-command-bar .ops-strip) {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  box-sizing: border-box;
+}
+
+html[data-compact-layout] :global(.map-command-bar .ops-live) {
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+html[data-compact-layout] :global(.map-globe-root) {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+html[data-compact-layout] :global(.map-wrap.map-wrap-globe) {
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+}
+
+html[data-compact-layout] :global(.map-float-bar button),
+html[data-compact-layout] :global(.map-layers-pill),
+html[data-compact-layout] :global(.map-mode button),
+html[data-mobile-layout] :global(.map-float-bar button),
+html[data-mobile-layout] :global(.map-layers-pill),
+html[data-mobile-layout] :global(.map-mode button) {
+  min-height: var(--mobile-tap-min);
+  min-width: var(--mobile-tap-min);
+  touch-action: manipulation;
+}
+
+html[data-compact-layout] :global(.map-layers-backdrop),
+html[data-mobile-layout] :global(.map-layers-backdrop) {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg-0) 48%, transparent);
+}
+
+html[data-compact-layout] :global(.map-float-anchor:has(.map-layers-panel.is-open)),
+html[data-mobile-layout] :global(.map-float-anchor:has(.map-layers-panel.is-open)) {
+  /* Panel is position:fixed z-index:30 but lives inside anchor; raise anchor above backdrop (25). */
+  z-index: 31;
+}
+
+/* Legacy bottom sheet (desktop float only); mobile flyout uses .map-layers-panel--sheet */
+html[data-compact-layout] :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet)),
+html[data-mobile-layout] :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet)) {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: auto;
+  max-height: min(85dvh, 85vh);
+  z-index: 30;
+  pointer-events: auto;
+  grid-template-rows: 1fr !important;
+  opacity: 1;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  overflow: hidden;
+}
+
+html[data-compact-layout]
+  :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet) .map-layers-panel-inner),
+html[data-mobile-layout]
+  :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet) .map-layers-panel-inner) {
+  max-height: min(85dvh, 85vh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding-top: 0;
+  pointer-events: auto;
+}
+
+html[data-compact-layout] :global(.map-mobile-flyout .map-layers-panel--sheet),
+html[data-mobile-layout] :global(.map-mobile-flyout .map-layers-panel--sheet) {
+  position: relative;
+  max-height: none;
+  width: 100%;
+}
+
+/* Desktop float anchor only — compact map uses .map-mobile-controls rail */
+html[data-compact-layout] :global(.map-float-ui),
+html[data-mobile-layout] :global(.map-float-ui) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.map-page),
+html[data-compact-layout] :global(.globe-page),
+html[data-mobile-layout] :global(.map-page),
+html[data-mobile-layout] :global(.globe-page) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: calc(
+    100dvh - var(--mobile-top-inset) - var(--mobile-nav-height)
+  );
+}
+
+html[data-compact-layout] :global(.settings-page),
+html[data-mobile-layout] :global(.settings-page) {
+  padding: var(--space-4);
+  padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
+  padding-bottom: calc(var(--space-6) + var(--mobile-nav-height));
+  max-width: none;
+}
+
+html[data-compact-layout] :global(.settings .card),
+html[data-mobile-layout] :global(.settings .card) {
+  margin-top: var(--space-3);
+  padding: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+html[data-compact-layout] :global(.settings .card > h3),
+html[data-mobile-layout] :global(.settings .card > h3) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-1);
+}
+
+html[data-compact-layout] :global(.settings .card > :not(h3)),
+html[data-mobile-layout] :global(.settings .card > :not(h3)) {
+  margin-left: var(--space-4);
+  margin-right: var(--space-4);
+}
+
+html[data-compact-layout] :global(.settings .card > :not(h3):first-of-type),
+html[data-compact-layout] :global(.settings .card > h3 + *),
+html[data-mobile-layout] :global(.settings .card > :not(h3):first-of-type),
+html[data-mobile-layout] :global(.settings .card > h3 + *) {
+  margin-top: var(--space-3);
+}
+
+html[data-compact-layout] :global(.settings .card > :last-child),
+html[data-mobile-layout] :global(.settings .card > :last-child) {
+  margin-bottom: var(--space-4);
+}
+
+html[data-compact-layout] :global(.settings .btn),
+html[data-compact-layout] :global(.settings .theme-card),
+html[data-compact-layout] :global(.settings label),
+html[data-compact-layout] :global(.settings input[type="text"]),
+html[data-compact-layout] :global(.settings input[type="url"]),
+html[data-compact-layout] :global(.settings select),
+html[data-mobile-layout] :global(.settings .btn),
+html[data-mobile-layout] :global(.settings .theme-card),
+html[data-mobile-layout] :global(.settings label),
+html[data-mobile-layout] :global(.settings input[type="text"]),
+html[data-mobile-layout] :global(.settings input[type="url"]),
+html[data-mobile-layout] :global(.settings select) {
+  min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.settings .theme-grid),
+html[data-mobile-layout] :global(.settings .theme-grid) {
+  grid-template-columns: 1fr;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+html[data-compact-layout] :global(.settings > header),
+html[data-mobile-layout] :global(.settings > header) {
+  padding-bottom: var(--space-2);
+}
+
+html[data-compact-layout] :global(.cmd-bar),
+html[data-mobile-layout] :global(.cmd-bar) {
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+html[data-compact-layout] :global(.cmd-prompt),
+html[data-mobile-layout] :global(.cmd-prompt) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.cmd-input),
+html[data-mobile-layout] :global(.cmd-input) {
+  font-size: 11px;
+  min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.cmd-aux),
+html[data-mobile-layout] :global(.cmd-aux) {
+  min-width: var(--mobile-tap-min);
+  min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.cmd-status),
+html[data-mobile-layout] :global(.cmd-status) {
+  max-width: min(200px, 45vw);
+}
+
+/* Tablet: two-column charts; phone stays single-column via data-mobile-layout above */
+html[data-tablet-layout] :global(.hub-grid-top),
+html[data-tablet-layout] :global(.hub-grid-bottom),
+html[data-tablet-layout] :global(.hub-grid),
+html[data-tablet-layout] :global(.domain-desk-grid),
+html[data-tablet-layout] :global(.desk-charts-grid),
+html[data-tablet-layout] :global(.matrix-bound-grid),
+html[data-tablet-layout] :global(.matrix-grid) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-tablet-layout] :global(.desk-charts-grid) {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+html[data-tablet-layout] :global(.desk-charts-grid .chart-card) {
+  flex: 1 1 calc(50% - var(--space-2)) !important;
+  min-width: calc(50% - var(--space-2)) !important;
+  max-width: calc(50% - var(--space-2)) !important;
+}
+
+html[data-tablet-layout] :global(.kpi-strip-panel) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-tablet-layout] :global(.hub-grid) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-tablet-layout] :global(.viz-grid) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-tablet-layout] :global(.matrix-grid .matrix-panel),
+html[data-tablet-layout] :global(.matrix-grid .matrix-panel[data-span="2"]),
+html[data-tablet-layout] :global(.matrix-grid .matrix-panel[data-span="3"]) {
+  grid-column: span 1 !important;
+}
+
+html[data-compact-layout] :global(.event-detail) {
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-6) + var(--mobile-nav-height));
+}
+
+html[data-mobile-layout] :global(.event-detail) {
+  padding-left: max(var(--space-3), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-3), env(safe-area-inset-right, 0px));
+}
+
+html[data-mobile-layout] :global(.ed-back),
+html[data-mobile-layout] :global(.ed-loc-btn) {
+  min-height: var(--mobile-tap-min);
+  min-width: var(--mobile-tap-min);
+  touch-action: manipulation;
+}
+
+html[data-compact-layout] :global(.viz-page) {
+  padding: var(--space-4) var(--space-4) calc(var(--space-8) + var(--mobile-nav-height));
+}
+
+html[data-mobile-layout] :global(.viz-grid) {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: var(--space-4);
+}
+
+html[data-compact-layout] :global(.ops-strip) {
+  max-width: 100%;
+  font-size: 10px;
+}
+
+html[data-compact-layout] :global(.ops-strip--command) {
+  gap: 6px;
+}
+
+html[data-compact-layout] :global(.ops-pill) {
+  min-height: var(--mobile-tap-min);
+  padding: 6px 8px;
+  touch-action: manipulation;
+}
+
+html[data-mobile-layout] :global(.ops-phase) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.hub-header) {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+html[data-compact-layout] :global(.hub-btn) {
+  min-height: var(--mobile-tap-min);
+  touch-action: manipulation;
+}
+
+/* Toasts: top-center on compact — clear bottom nav and map controls */
+html[data-compact-layout] :global(.toast-a11y) {
+  top: calc(env(safe-area-inset-top, 0px) + 48px);
+  bottom: auto;
+  left: 0;
+  right: 0;
+  justify-content: center;
+  align-items: flex-start;
+  padding: var(--space-2) var(--space-3);
+  z-index: 180;
+}
+
+html[data-compact-layout] :global(.toast-stack) {
+  align-items: stretch;
+  max-width: min(20rem, calc(100vw - var(--space-6)));
+  width: 100%;
+}
+
+html[data-compact-layout] :global(.toast) {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.75rem;
+}
+
+html[data-compact-layout] :global(.toast-detail),
+html[data-compact-layout] :global(.toast-action) {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-compact-layout] :global(.mobile-tab),
+  html[data-compact-layout] :global(.map-layers-panel),
+  html[data-compact-layout] :global(.mobile-domains-sheet),
+  html[data-mobile-layout] :global(.mobile-tab),
+  html[data-mobile-layout] :global(.map-layers-panel),
+  html[data-mobile-layout] :global(.mobile-domains-sheet) {
+    transition: none;
+  }
+}

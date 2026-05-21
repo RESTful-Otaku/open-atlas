@@ -17,7 +17,9 @@ pub fn test_state() -> AppState {
     rate_limit::install(rate_limiter.clone());
     AppState {
         bind_addr: auth::resolve_bind_addr().unwrap_or_else(|_| {
-            "127.0.0.1:8080".parse::<SocketAddr>().expect("loopback parse")
+            "127.0.0.1:8080"
+                .parse::<SocketAddr>()
+                .expect("loopback parse")
         }),
         started_at: Utc::now(),
         feed_runtime: Arc::new(RwLock::new(std::collections::HashMap::new())),

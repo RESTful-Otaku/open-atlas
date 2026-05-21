@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-/** Demo globe home — hash router, no live SpacetimeDB. */
-const demoGlobe = "/?demo=1#/";
+import { gotoDemo } from "./demo-goto";
 
 function mapLayersToggle(page: import("@playwright/test").Page) {
   return page.locator('button[aria-controls="map-layers-panel"]');
@@ -9,7 +8,7 @@ function mapLayersToggle(page: import("@playwright/test").Page) {
 
 test.describe("demo map layers & solar", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(demoGlobe);
+    await gotoDemo(page, "/");
     await expect(
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });

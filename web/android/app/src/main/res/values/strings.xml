@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OpenAtlas</string>
+    <string name="title_activity_main">OpenAtlas</string>
+    <string name="package_name">com.openatlas.app</string>
+    <string name="custom_url_scheme">com.openatlas.app</string>
+</resources>

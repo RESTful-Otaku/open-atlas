@@ -6,16 +6,23 @@
   "description": "OpenAtlas dashboard — Svelte 5 + Vite + TypeScript. Use Bun: `bun install`, `bun run dev`, `bun run build`.",
   "scripts": {
     "dev": "vite",
-    "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "sync:brand": "bash ../scripts/sync-brand-assets.sh",
+    "build": "bun run sync:brand && svelte-check --tsconfig ./tsconfig.json && vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "bun test src/lib",
     "test:unit": "bun test src/lib",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:all": "bun run check && bun run test:unit"
+    "test:all": "bun run check && bun run test:unit",
+    "build:cap": "bun run sync:brand && svelte-check --tsconfig ./tsconfig.json && vite build && cap sync",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios",
+    "cap:run:android": "cap run android"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.0",
     "@playwright/test": "^1.51.0",
     "@sveltejs/vite-plugin-svelte": "^4.0.2",
     "@tsconfig/svelte": "^5.0.4",
@@ -27,6 +34,11 @@
     "vite": "^5.4.10"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.0",
+    "@capacitor/core": "^7.4.0",
+    "@capacitor/ios": "^7.4.0",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0",
     "@lucide/svelte": "^1.8.0",
     "echarts": "^5.5.1",
     "globe.gl": "^2.45.3",

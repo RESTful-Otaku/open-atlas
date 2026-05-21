@@ -10,6 +10,7 @@
   import { resolveEventNarrative } from "../event-narrative-fallback";
   import { dashboard } from "../state.svelte";
   import { navigate } from "../router.svelte";
+  import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
   import { clampCardPosition, signalsForEvent } from "../map/event-map-hover";
   import {
     causalNeighborsForEvent,
@@ -35,6 +36,15 @@
     onPinChange?: (pinned: boolean) => void;
     onDismiss?: () => void;
   }
+  let compactLayout = $state(isCompactLayout());
+
+  $effect(() => {
+    const unsub = subscribeMobileLayout(() => {
+      compactLayout = isCompactLayout();
+    });
+    return unsub;
+  });
+
   let {
     event,
     x,
@@ -81,6 +91,11 @@
   const insight = $derived(
     event ? (dashboard.domainInsights[event.domain] ?? null) : null,
   );
+  const hoverInsets = $derived.by(() => {
+    if (!compactLayout) return {};
+    return { bottom: 8, right: 72 };
+  });
+
   const pos = $derived.by(() => {
     if (!event || !container || docked) {
       return { left: 0, top: 0 };
@@ -90,6 +105,10 @@
       y,
       container.clientWidth,
       container.clientHeight,
+      undefined,
+      undefined,
+      undefined,
+      hoverInsets,
     );
   });
 
@@ -111,7 +130,8 @@
 </script>
 
 {#if event}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
     class="emhc-wrap"
     class:emhc-wrap-docked={docked}
@@ -119,13 +139,17 @@
     style:top={docked ? undefined : `${pos.top}px`}
     role={pinned ? "dialog" : "status"}
     aria-label={pinned ? `Inspector: ${domainLabel(event.domain)} event` : undefined}
-    tabindex={pinned ? -1 : undefined}
+    tabindex={pinned ? 0 : undefined}
     transition:fade={{ duration: 140 }}
     onmouseenter={() => onCardPointerChange?.(true)}
     onmouseleave={() => onCardPointerChange?.(false)}
     onkeydown={onCardKeydown}
   >
-    <div class="emhc" style="--emhc-accent: {domainColor(event.domain)}">
+    <div
+      class="emhc"
+      class:emhc-scroll={docked}
+      style="--emhc-accent: {domainColor(event.domain)}"
+    >
       <header class="emhc-head">
         <span
           class="emhc-dom"
@@ -287,6 +311,19 @@
         {/if}
       </dl>
       <p class="emhc-id mono" title="Event id">{event.id}</p>
+      {#if !docked}
+        <div class="emhc-foot">
+          <button
+            type="button"
+            class="emhc-open"
+            onclick={() => navigate(`/events/${encodeURIComponent(event.id)}`)}
+          >
+            Open full analysis
+          </button>
+        </div>
+      {/if}
+    </div>
+    {#if docked}
       <div class="emhc-foot">
         <button
           type="button"
@@ -296,7 +333,7 @@
           Open full analysis
         </button>
       </div>
-    </div>
+    {/if}
   </div>
 {/if}
 
@@ -311,8 +348,21 @@
     left: 12px;
     bottom: 12px;
     top: auto;
-    max-height: min(70%, 420px);
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    max-height: min(70%, calc(100% - 24px));
+    overflow: hidden;
+  }
+  .emhc-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .emhc-wrap-docked .emhc-foot {
+    flex-shrink: 0;
+    margin-top: 0;
+    background: color-mix(in srgb, var(--bg-1) 94%, #0a0a12 6%);
   }
   .emhc-head-actions {
     display: inline-flex;

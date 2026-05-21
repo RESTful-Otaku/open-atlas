@@ -2,25 +2,35 @@
 //!
 //! State vector column order is fixed by the OpenSky REST API; see
 //! <https://openskynetwork.github.io/opensky-api/rest.html#all-state-vectors>.
+//!
+//! Anonymous `/states/all` is heavily rate-limited. Configure
+//! `OPENSKY_CLIENT_ID` + `OPENSKY_CLIENT_SECRET` (Settings → API keys) for
+//! OAuth2 client credentials. On HTTP 429 the feed skips the cycle without
+//! tripping the failure circuit.
 
 use std::time::Duration;
 
+use anyhow::Context;
 use chrono::Utc;
 use openatlas_core::Domain;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
+use tracing::warn;
 
 use super::{
     adapter::FeedDescriptor,
-    http::fetch_json,
+    http::fetch_text_with_request,
     normalize::{
         drafts_to_events, location_from_coords, parse_epoch_secs, ratio_severity, ObservationDraft,
     },
+    opensky_auth,
 };
+use crate::rate_limit::is_rate_limit_error;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(900);
 const SOURCE_URL: &str = "https://opensky-network.org/";
+const STATES_URL: &str = "https://opensky-network.org/api/states/all";
 
 pub(super) const DESCRIPTOR: FeedDescriptor = FeedDescriptor {
     name: "opensky",
@@ -67,6 +77,23 @@ struct ParsedState {
     time_position: Option<i64>,
 }
 
+async fn build_states_request(
+    client: &Client,
+    url: &str,
+) -> anyhow::Result<reqwest::RequestBuilder> {
+    let mut req = client.get(url);
+    if let Some(token) = opensky_auth::bearer_authorization(client).await? {
+        req = req.bearer_auth(token);
+    }
+    Ok(req)
+}
+
+async fn fetch_states(client: &Client) -> anyhow::Result<Response> {
+    let req = build_states_request(client, STATES_URL).await?;
+    let text = fetch_text_with_request(client, "opensky", STATES_URL, req).await?;
+    serde_json::from_str(&text).with_context(|| format!("JSON decode failed for {STATES_URL}"))
+}
+
 fn parse_state(row: &[Value]) -> Option<ParsedState> {
     if row.len() <= idx::TRUE_TRACK {
         return None;
@@ -100,28 +127,17 @@ fn parse_state(row: &[Value]) -> Option<ParsedState> {
     })
 }
 
-async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>> {
-    let payload: Response = fetch_json(
-        &client,
-        "opensky",
-        "https://opensky-network.org/api/states/all",
-    )
-    .await?;
-
+fn states_to_events(payload: Response) -> Vec<openatlas_core::WorldEvent> {
     let batch_time = parse_epoch_secs(payload.time).unwrap_or_else(Utc::now);
     let Some(states) = payload.states else {
-        return Ok(Vec::new());
+        return Vec::new();
     };
 
     let sample_size = SAMPLE_SIZE.min(states.len());
     let stride = if sample_size == 0 {
         1
     } else {
-        states
-            .len()
-            .checked_div(sample_size)
-            .unwrap_or(1)
-            .max(1)
+        states.len().checked_div(sample_size).unwrap_or(1).max(1)
     };
 
     let mut drafts = Vec::with_capacity(sample_size);
@@ -160,7 +176,18 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
         }
         let _ = idx;
     }
-    Ok(drafts_to_events("opensky", SOURCE_URL, drafts))
+    drafts_to_events("opensky", SOURCE_URL, drafts)
+}
+
+async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>> {
+    match fetch_states(&client).await {
+        Ok(payload) => Ok(states_to_events(payload)),
+        Err(error) if is_rate_limit_error(&error) => {
+            warn!("opensky: upstream rate limited — skipping cycle (retry after poll interval)");
+            Ok(Vec::new())
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(test)]

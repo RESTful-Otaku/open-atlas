@@ -13,6 +13,8 @@
   import { mainScrollModeForPattern, viewForPattern } from "../views";
   import ActiveRoute from "./ActiveRoute.svelte";
   import LeftRail from "./LeftRail.svelte";
+  import MobileBottomNav from "./MobileBottomNav.svelte";
+  import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
   import ShellTopBar from "./ShellTopBar.svelte";
   import MarketTicker from "./MarketTicker.svelte";
   import OperatorCommandBar from "./OperatorCommandBar.svelte";
@@ -30,8 +32,12 @@
 
   let { class: className = "" }: { class?: string } = $props();
   let paletteOpen = $state(false);
+  let compactLayout = $state(isCompactLayout());
 
   onMount(() => {
+    const unsubLayout = subscribeMobileLayout(() => {
+      compactLayout = isCompactLayout();
+    });
     const onKey = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -40,12 +46,14 @@
     };
     window.addEventListener("keydown", onKey);
 
-    let readinessPoll: ReturnType<typeof setInterval> | undefined;
-    let feedPoll: ReturnType<typeof setInterval> | undefined;
+    let readinessPoll: number | undefined;
+    let feedPoll: number | undefined;
 
     const startBackgroundPolls = (): void => {
       if (readinessPoll !== undefined) return;
-      void refreshRemoteReadiness();
+      if (dashboard.dataMode !== "demo") {
+        void refreshRemoteReadiness();
+      }
       void refreshFeedLive();
       readinessPoll = window.setInterval(
         () => void refreshRemoteReadiness(),
@@ -74,8 +82,10 @@
     if (!document.hidden) startBackgroundPolls();
 
     prefetchView("/matrix/:id");
+    prefetchView("/settings");
 
     return () => {
+      unsubLayout();
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("visibilitychange", onVisibility);
       stopBackgroundPolls();
@@ -122,6 +132,7 @@
   class="shell {className}"
   class:has-ticker={showTicker}
   class:has-cmd={showCommandBar}
+  class:shell--compact={compactLayout}
 >
   <div class="shell-top-stack">
     <ShellTopBar
@@ -153,7 +164,7 @@
   </div>
   <LeftRail />
   {#if showTicker}
-    <MarketTicker />
+    <MarketTicker compact={compactLayout} />
   {/if}
   <main
     id="shell-main"
@@ -172,6 +183,9 @@
   {/if}
   <StateNotifyBridge />
   <ToastStack />
+  {#if compactLayout}
+    <MobileBottomNav />
+  {/if}
 </div>
 
 <style>
@@ -288,5 +302,61 @@
     min-height: 0;
     height: 100%;
     box-sizing: border-box;
+  }
+
+  .shell.shell--compact {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "top"
+      "main"
+      "main"
+      "main";
+    padding-bottom: var(--mobile-nav-height, calc(68px + env(safe-area-inset-bottom, 0px)));
+  }
+  .shell.shell--compact.has-ticker {
+    grid-template-areas:
+      "top"
+      "ticker"
+      "main"
+      "main";
+  }
+  .shell.shell--compact.has-cmd {
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "top"
+      "main"
+      "cmd";
+  }
+  .shell.shell--compact.has-ticker.has-cmd {
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas:
+      "top"
+      "ticker"
+      "main"
+      "cmd";
+  }
+  .shell.shell--compact :global(.left-rail) {
+    display: none;
+  }
+  .shell.shell--compact .shell-top-stack {
+    padding-top: 0;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  :global(html[data-compact-layout]) .shell.shell--compact .shell-top-stack {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .shell.shell--compact .shell-main {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  .shell.shell--compact .shell-main.shell-main-fill {
+    min-height: calc(
+      100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) -
+        52px
+    );
   }
 </style>

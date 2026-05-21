@@ -3,6 +3,7 @@
  */
 
 import { fetchFeedCatalog, type FeedCatalog, type FeedConnectionStatus } from "./feed-config";
+import { shouldProbeIngest } from "./native-config";
 import { dashboard } from "./state.svelte";
 
 export const feedLive = $state({
@@ -12,7 +13,7 @@ export const feedLive = $state({
 });
 
 export async function refreshFeedLive(): Promise<void> {
-  if (dashboard.dataMode === "demo") {
+  if (dashboard.dataMode === "demo" || !shouldProbeIngest()) {
     feedLive.catalog = null;
     feedLive.error = null;
     return;

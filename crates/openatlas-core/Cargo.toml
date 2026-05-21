@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+# No ` ```rust ` doc tests; workspace `cargo test` doctest harness fails to link deps.
+doctest = false
+
 [dependencies]
 chrono.workspace = true
 serde.workspace = true

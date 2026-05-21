@@ -339,11 +339,15 @@
     border: 1px solid var(--border-1);
     border-radius: var(--radius);
     background: var(--bg-1);
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     max-height: min(64vh, 720px);
+    max-width: 100%;
   }
   .entities-table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: 12px;
   }

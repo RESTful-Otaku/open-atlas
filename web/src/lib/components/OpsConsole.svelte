@@ -592,12 +592,16 @@
   }
   .ops-table-wrap {
     max-height: 280px;
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
     border: 1px solid var(--border-1);
     border-radius: var(--radius);
   }
   .ops-table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: 11px;
   }

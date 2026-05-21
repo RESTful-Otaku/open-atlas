@@ -50,9 +50,12 @@ overriding keys you already exported).
 |----------|------|
 | `FRED_API_KEY` | FRED (St. Louis Fed) |
 | `EIA_API_KEY` | EIA energy data |
+| `OPENSKY_CLIENT_ID` | OpenSky Aircraft (OAuth2, optional — higher limits than anonymous) |
+| `OPENSKY_CLIENT_SECRET` | OpenSky Aircraft (must be set together with `OPENSKY_CLIENT_ID`) |
 
 `PUT /feeds` accepts **only** these names (allowlist). Keys are masked in the
-API/UI (`••••` + last 4 characters).
+API/UI (`••••` + last 4 characters). OpenSky without credentials still polls
+anonymously (heavily rate-limited).
 
 Override secrets file path: `OPENATLAS_FEED_SECRETS=/path/to/file.json`
 

@@ -5,13 +5,14 @@
   focused on their data projections.
 -->
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { flip } from "svelte/animate";
   import { cubicOut } from "svelte/easing";
   import { ChevronDown, ChevronUp, Download, ExternalLink, GripVertical } from "@lucide/svelte";
 
   import { LiveFeedPill } from "../primitives";
   import { domainColor, domainLabel } from "../colors";
+  import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
   import { dashboard } from "../state.svelte";
   import { navigate } from "../router.svelte";
   import LayoutEditBar from "../layout/LayoutEditBar.svelte";
@@ -26,6 +27,14 @@
   }
 
   const { matrix }: Props = $props();
+
+  let compactLayout = $state(isCompactLayout());
+
+  onMount(() =>
+    subscribeMobileLayout(() => {
+      compactLayout = isCompactLayout();
+    }),
+  );
 
   const accentColor = $derived(domainColor(matrix.accentDomain));
   const domainDeskPath = $derived(`/domain/${matrix.accentDomain}`);
@@ -435,9 +444,18 @@
       </section>
     {/each}
 
-    <section class="matrix-ai">
-      <matrix.aiPanel.component {...matrix.aiPanel.props ?? {}} />
-    </section>
+    {#if compactLayout}
+      <details class="matrix-ai-accordion">
+        <summary>AI synthesis</summary>
+        <section class="matrix-ai">
+          <matrix.aiPanel.component {...matrix.aiPanel.props ?? {}} />
+        </section>
+      </details>
+    {:else}
+      <section class="matrix-ai">
+        <matrix.aiPanel.component {...matrix.aiPanel.props ?? {}} />
+      </section>
+    {/if}
   </div>
 </section>
 

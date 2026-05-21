@@ -46,6 +46,7 @@ use crate::{
     },
     ingest_mode::ingest_mode,
     pipeline::push_events_via_state,
+    rate_limit::is_rate_limit_error,
     state::AppState,
     validate::filter_valid_events,
 };
@@ -60,6 +61,7 @@ mod gdelt;
 mod nasa_eonet;
 mod open_meteo;
 mod opensky;
+pub(crate) mod opensky_auth;
 mod usgs;
 mod world_bank;
 
@@ -325,9 +327,19 @@ fn spawn_feed(
                     }
                 }
                 Err(error) => {
+                    let retry =
+                        if is_rate_limit_error(&error) {
+                            interval.max(Duration::from_secs(900)).max(
+                                feed_poll::effective_interval(name, descriptor.poll_interval),
+                            )
+                        } else {
+                            interval
+                        };
                     error!("{name} fetch failed: {error}");
-                    record_feed_failure(&state, name, error.to_string(), interval).await;
-                    circuit::on_poll_failure(&state, name).await;
+                    record_feed_failure(&state, name, error.to_string(), retry).await;
+                    if !is_rate_limit_error(&error) {
+                        circuit::on_poll_failure(&state, name).await;
+                    }
                 }
             }
         }

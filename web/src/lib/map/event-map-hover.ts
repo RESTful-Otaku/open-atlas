@@ -24,7 +24,14 @@ export function countCausalForEvent(
 }
 
 const CARD_W = 300;
-const CARD_H_EST = 320;
+const CARD_H_EST = 360;
+
+export type MapHoverInsets = {
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
+};
 
 /**
  * Keep the top-left of a fixed-size card inside a container
@@ -38,25 +45,41 @@ export function clampCardPosition(
   cardW = CARD_W,
   cardH = CARD_H_EST,
   pointerOffset = 14,
+  insets: MapHoverInsets = {},
 ): { left: number; top: number } {
   const pad = 6;
+  const topPad = pad + (insets.top ?? 0);
+  const rightPad = pad + (insets.right ?? 0);
+  const bottomPad = pad + (insets.bottom ?? 0);
+  const leftPad = pad + (insets.left ?? 0);
+
   let left = x + pointerOffset;
   let top = y + pointerOffset;
-  if (left + cardW + pad > containerW) {
+  if (left + cardW + rightPad > containerW) {
     left = x - cardW - pointerOffset;
   }
-  if (top + cardH + pad > containerH) {
+  if (top + cardH + bottomPad > containerH) {
     top = y - cardH - pointerOffset;
   }
-  if (left < pad) left = pad;
-  if (top < pad) top = pad;
-  if (left + cardW > containerW - pad) {
-    left = Math.max(pad, containerW - cardW - pad);
+  if (left < leftPad) left = leftPad;
+  if (top < topPad) top = topPad;
+  if (left + cardW > containerW - rightPad) {
+    left = Math.max(leftPad, containerW - cardW - rightPad);
   }
-  if (top + cardH > containerH - pad) {
-    top = Math.max(pad, containerH - cardH - pad);
+  if (top + cardH > containerH - bottomPad) {
+    top = Math.max(topPad, containerH - cardH - bottomPad);
   }
   return { left, top };
+}
+
+/** Read `--mobile-nav-height` for compact map hover clamping. */
+export function mobileNavInsetPx(): number {
+  if (typeof document === "undefined") return 0;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--mobile-nav-height")
+    .trim();
+  const match = raw.match(/([\d.]+)px/);
+  return match ? Number.parseFloat(match[1]) : 0;
 }
 
 export const HOVER_CARD_SIZE = { w: CARD_W, h: CARD_H_EST };

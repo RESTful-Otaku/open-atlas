@@ -230,12 +230,255 @@ require_cmd() {
 # ----------------------------------------------------------------------------
 do_build_frontend() {
     require_cmd bun "install from https://bun.sh"
+    sync_brand_assets
     style_header "🔨 Building Svelte frontend (bun)"
     if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
         spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
     fi
     spin "bun run build (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun run build"
     style_ok "frontend bundle written to ${FRONTEND_DIST_DIR}/"
+}
+
+# ----------------------------------------------------------------------------
+# Capacitor mobile (Android / iOS)
+# ----------------------------------------------------------------------------
+
+# shellcheck source=scripts/mobile-android-toolchain.sh
+source "${SCRIPT_DIR}/scripts/mobile-android-toolchain.sh"
+# shellcheck source=scripts/mobile-env.sh
+source "${SCRIPT_DIR}/scripts/mobile-env.sh"
+
+mobile_ensure_deps() {
+    require_cmd bun "install from https://bun.sh"
+    if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
+        spin "bun install (${FRONTEND_DIR})" bash -c "cd '${FRONTEND_DIR}' && bun install --silent"
+    fi
+}
+
+mobile_ensure_android_project() {
+    if [[ ! -d "${FRONTEND_DIR}/android" ]]; then
+        style_header "📱 Adding Capacitor Android project"
+        spin "cap add android" bash -c "cd '${FRONTEND_DIR}' && bunx cap add android"
+    fi
+}
+
+sync_brand_assets() {
+    if [[ -f "${SCRIPT_DIR}/scripts/sync-brand-assets.sh" ]]; then
+        bash "${SCRIPT_DIR}/scripts/sync-brand-assets.sh"
+    fi
+}
+
+mobile_generate_icons() {
+    sync_brand_assets
+    if [[ -f "${SCRIPT_DIR}/scripts/generate-android-icons.sh" ]]; then
+        bash "${SCRIPT_DIR}/scripts/generate-android-icons.sh"
+    fi
+}
+
+do_mobile_setup() {
+    mobile_ensure_deps
+    mobile_android_bootstrap
+    mobile_ensure_android_project
+    mobile_generate_icons
+    if [[ -f "${FRONTEND_DIR}/.env.mobile.example" ]] && [[ ! -f "${FRONTEND_DIR}/.env.local" ]]; then
+        cp "${FRONTEND_DIR}/.env.mobile.example" "${FRONTEND_DIR}/.env.local"
+        style_muted "created ${FRONTEND_DIR}/.env.local from .env.mobile.example — edit before production builds"
+    fi
+    do_mobile_build
+    style_ok "mobile setup complete — see docs/MOBILE.md"
+}
+
+do_mobile_build() {
+    mobile_ensure_deps
+    mobile_ensure_android_project
+    do_build_frontend
+    spin "cap sync" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync"
+    style_ok "Capacitor sync complete (web/dist → native projects)"
+}
+
+do_mobile_android() {
+    mobile_android_bootstrap
+    do_mobile_build
+    style_header "🤖 Assembling Android debug APK"
+    (
+        cd "${FRONTEND_DIR}/android"
+        chmod +x gradlew 2>/dev/null || true
+        ./gradlew assembleDebug
+    )
+    local apk="${FRONTEND_DIR}/android/app/build/outputs/apk/debug/app-debug.apk"
+    style_ok "APK: ${apk}"
+    style_muted "Install: adb install -r ${apk}"
+    if command -v adb >/dev/null 2>&1; then
+        if confirm "Install APK on connected device/emulator now?"; then
+            adb install -r "$apk" || style_warn "adb install failed — start an emulator or connect USB"
+        fi
+    fi
+}
+
+do_mobile_android_release() {
+    do_mobile_build
+    mobile_ensure_java17
+    style_header "🤖 Assembling Android release APK (unsigned)"
+    (
+        cd "${FRONTEND_DIR}/android"
+        chmod +x gradlew 2>/dev/null || true
+        ./gradlew assembleRelease
+    )
+    style_ok "Release APK: ${FRONTEND_DIR}/android/app/build/outputs/apk/release/"
+    style_muted "Sign with your keystore before Play Store upload — see docs/MOBILE.md"
+}
+
+do_mobile_dev() {
+    mobile_ensure_deps
+    local cap_url="${CAPACITOR_SERVER_URL:-http://127.0.0.1:5173}"
+    style_header "📱 Capacitor live reload → ${cap_url}"
+    style_muted "Emulator: CAPACITOR_SERVER_URL=http://10.0.2.2:5173 ./dev.sh mobile:dev"
+    (
+        cd "${FRONTEND_DIR}"
+        export CAPACITOR_SERVER_URL="$cap_url"
+        bunx cap sync
+        VITE_STDB_URI="${VITE_STDB_URI:-ws://127.0.0.1:3000}" \
+        VITE_STDB_DB="${VITE_STDB_DB:-${STDB_DB_NAME}}" \
+        bun run dev
+    ) &
+    local vite_pid=$!
+    sleep 2
+    bunx cap run android || style_warn "cap run android failed — open Android Studio via ./dev.sh mobile:android after build"
+    wait "$vite_pid" 2>/dev/null || true
+}
+
+mobile_adb_device_ready() {
+    adb devices 2>/dev/null | awk 'NR>1 && $2=="device" { found=1 } END { exit !found }'
+}
+
+mobile_ensure_java17() {
+    mobile_tc_ensure_java17
+}
+
+mobile_ensure_android_sdk() {
+    mobile_tc_ensure_android_sdk
+}
+
+do_mobile_doctor() {
+    mobile_android_doctor
+}
+
+mobile_ensure_env_file() {
+    MOBILE_ENV_REPO_ROOT="$SCRIPT_DIR"
+    MOBILE_ENV_WEB="$FRONTEND_DIR"
+    local target
+    target="$(mobile_resolve_target)"
+    style_muted "mobile build target: ${target} (override: OPENATLAS_MOBILE_TARGET=emulator|device|maincloud)"
+    mobile_write_env_local
+    style_ok "wrote ${FRONTEND_DIR}/.env.local for Capacitor bundle"
+}
+
+do_mobile_run() {
+    style_header "📱 Run Android (bootstrap → test → build → install → launch)"
+    mobile_ensure_deps
+    mobile_ensure_android_project
+
+    style_header "0/9 Toolchain bootstrap (JDK 17, SDK, Pixel 9 Pro AVD)"
+    mobile_android_bootstrap
+    mobile_generate_icons
+    if [[ -f "${SCRIPT_DIR}/.dev/android.env" ]]; then
+        # shellcheck source=/dev/null
+        source "${SCRIPT_DIR}/.dev/android.env"
+    fi
+
+    local step=1
+    if [[ "${OPENATLAS_MOBILE_SKIP_TESTS:-0}" != "1" ]]; then
+        style_header "${step}/9 Unit tests (fail fast)"
+        spin "bun test src/lib" bash -c "cd '${FRONTEND_DIR}' && bun test src/lib"
+        step=$((step + 1))
+    else
+        style_muted "Skipping unit tests (OPENATLAS_MOBILE_SKIP_TESTS=1)"
+    fi
+
+    mobile_ensure_env_file
+
+    style_header "${step}/9 Vite production build"
+    spin "bun run build" bash -c "cd '${FRONTEND_DIR}' && bun run build"
+    step=$((step + 1))
+
+    style_header "${step}/9 Capacitor sync"
+    spin "cap sync android" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync android"
+    step=$((step + 1))
+
+    style_header "${step}/9 Device / emulator (${OPENATLAS_AVD_NAME})"
+    require_cmd adb "install platform-tools (Android SDK)"
+    if ! mobile_adb_device_ready; then
+        style_muted "No adb device — starting ${OPENATLAS_AVD_NAME}"
+        bash "${SCRIPT_DIR}/scripts/mobile-android-emulator.sh" --no-install
+    else
+        style_ok "adb device connected"
+    fi
+    step=$((step + 1))
+
+    style_header "${step}/9 Gradle assembleDebug"
+    (
+        cd "${FRONTEND_DIR}/android"
+        chmod +x gradlew 2>/dev/null || true
+        ./gradlew assembleDebug --no-daemon
+    )
+    step=$((step + 1))
+
+    local apk="${FRONTEND_DIR}/android/app/build/outputs/apk/debug/app-debug.apk"
+    if [[ ! -f "$apk" ]]; then
+        style_err "APK missing: ${apk}"
+        exit 1
+    fi
+
+    style_header "${step}/9 adb install"
+    adb install -r "$apk"
+    step=$((step + 1))
+
+    style_header "${step}/9 Launch app"
+    adb shell am start -n com.openatlas.app/.MainActivity
+
+    style_ok "OpenAtlas running on device — ${apk}"
+    style_muted "AVD: ${OPENATLAS_AVD_NAME} · env: ${FRONTEND_DIR}/.env.local"
+    local mob_target
+    mob_target="$(mobile_resolve_target 2>/dev/null || echo emulator)"
+    if [[ "$mob_target" == emulator ]]; then
+        style_muted "Emulator + local stack: ./dev.sh up then OPENATLAS_MOBILE_TARGET=emulator ./dev.sh run-android"
+    elif [[ "$mob_target" == maincloud ]] && mobile_detect_adb_target 2>/dev/null | grep -q emulator; then
+        style_muted "Maincloud+emulator: publish module (./dev.sh spacetime:publish:cloud); ingest on host:"
+        style_muted "  OPENATLAS_STDB_URI=${STDB_CLOUD_SERVER} OPENATLAS_STDB_DB=${STDB_CLOUD_DB} ./dev.sh ingest:start"
+    fi
+    style_muted "Physical device + Maincloud STDB only: OPENATLAS_MOBILE_TARGET=maincloud ./dev.sh run-android"
+    style_muted "LAN device: OPENATLAS_MOBILE_TARGET=device ./dev.sh run-android"
+    style_muted "Doctor: ./dev.sh mobile:doctor"
+}
+
+do_mobile_ios() {
+    style_header "📱 iOS (build + Xcode)"
+    mobile_ensure_deps
+    local os
+    os="$(uname -s)"
+    if [[ "$os" != "Darwin" ]]; then
+        style_warn "iOS app build and Xcode require macOS — skipped on ${os}"
+        style_muted "On a Mac: ./dev.sh run-ios  (build → cap sync ios → open Xcode)"
+        style_muted "Docs: docs/MOBILE.md#ios-notes"
+        if [[ -d "${FRONTEND_DIR}/ios" ]]; then
+            style_header "Syncing web/dist → existing ios/ (Linux-safe)"
+            do_build_frontend
+            spin "cap sync ios" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync ios"
+            style_ok "ios/ synced — open the project on a Mac to run or archive"
+        else
+            style_muted "No ${FRONTEND_DIR}/ios yet — on Mac run: cd web && bunx cap add ios"
+        fi
+        return 0
+    fi
+    if [[ ! -d "${FRONTEND_DIR}/ios" ]]; then
+        spin "cap add ios" bash -c "cd '${FRONTEND_DIR}' && bunx cap add ios"
+    fi
+    do_mobile_build
+    spin "cap sync ios" bash -c "cd '${FRONTEND_DIR}' && bunx cap sync ios"
+    bash -c "cd '${FRONTEND_DIR}' && bunx cap open ios"
+    style_ok "Opened Xcode — select a simulator or device, then Product → Run (⌘R)"
+    style_muted "First run: set Signing & Capabilities team in Xcode (Apple Developer account)"
+    style_muted "Simulator: iPhone 15+ recommended · Archive: Product → Archive for TestFlight"
 }
 
 ensure_frontend_deps() {
@@ -1254,6 +1497,13 @@ Cloud module
 Test & build
   test | build | verify [--full] | e2e | e2e:quick | status | logs
 
+Mobile (Capacitor — see docs/MOBILE.md)
+  run-android | mobile:run   One-click Android: bootstrap → test → build → Pixel 9 Pro → APK → launch
+  run-ios | mobile:ios       macOS only: build → cap sync ios → open Xcode (signing manual)
+  mobile:doctor              Check/install JDK 17, SDK, adb, Pixel 9 Pro AVD
+  mobile:setup | mobile:build | mobile:android | mobile:android:release
+  mobile:dev                 Live reload against Vite (Android)
+
 Advanced
   prove:live | prove:llm | feeds | spacetime:* | llm:* | cli | tail | clean
 
@@ -1347,12 +1597,42 @@ menu_up_backend() {
     esac
 }
 
+menu_mobile() {
+    local m
+    local ios_label="Open iOS in Xcode (macOS only)"
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        ios_label="iOS — requires macOS + Xcode (skipped here)"
+    fi
+    m="$(choose \
+        "Run Android (Pixel / emulator)" \
+        "$ios_label" \
+        "Build + sync only" \
+        "Assemble debug APK" \
+        "Live reload (mobile:dev)" \
+        "Setup (first time)" \
+        "Back")" || return
+    case "$m" in
+        "Run Android (Pixel / emulator)") do_mobile_run ;;
+        "Open iOS in Xcode (macOS only)") do_mobile_ios ;;
+        "iOS — requires macOS + Xcode (skipped here)")
+            style_warn "iOS builds need macOS — see docs/MOBILE.md"
+            ;;
+        "Build + sync only")            do_mobile_build ;;
+        "Assemble debug APK")           do_mobile_android ;;
+        "Live reload (mobile:dev)")     do_mobile_dev ;;
+        "Setup (first time)")           do_mobile_setup ;;
+        "Back"|"")                      return ;;
+        *)                              style_warn "unknown: $m" ;;
+    esac
+}
+
 menu_advanced() {
     local a
     a="$(choose \
         "Run — other preset..." \
         "Run — web only..." \
         "Run — backend only..." \
+        "Mobile (Android / iOS)..." \
         "SpacetimeDB..." \
         "Ingest..." \
         "Observe (logs / feeds / status)" \
@@ -1366,6 +1646,7 @@ menu_advanced() {
         "Run — other preset...")     menu_run_presets ;;
         "Run — web only...")         menu_web_only ;;
         "Run — backend only...")     menu_up_backend ;;
+        "Mobile (Android / iOS)...") menu_mobile ;;
         "SpacetimeDB...")            menu_advanced_spacetime ;;
         "Ingest...")                 menu_advanced_ingest ;;
         "Observe (logs / feeds / status)")
@@ -1563,6 +1844,14 @@ main() {
         e2e:quick)          "$SCRIPT_DIR/scripts/e2e-qa.sh" --quick ;;
         e2e:feeds)          "$SCRIPT_DIR/scripts/e2e-qa.sh" --verify-feeds ;;
         clean)               do_clean ;;
+        run-android|mobile:run) do_mobile_run ;;
+        mobile:doctor)       do_mobile_doctor ;;
+        mobile:setup)        do_mobile_setup ;;
+        mobile:build)        do_mobile_build ;;
+        mobile:android)      do_mobile_android ;;
+        mobile:android:release) do_mobile_android_release ;;
+        mobile:dev)          do_mobile_dev ;;
+        run-ios|mobile:ios)  do_mobile_ios ;;
         *)
             style_err "unknown command: $1"
             print_help

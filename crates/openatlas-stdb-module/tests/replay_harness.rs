@@ -92,7 +92,10 @@ fn replay_minimal_fixture_matches_row_counts() {
     let mut graph = WorldGraph::default();
 
     for step in &fixture.steps {
-        assert_eq!(step.reducer, "ingest_event", "scaffold supports ingest_event only");
+        assert_eq!(
+            step.reducer, "ingest_event",
+            "scaffold supports ingest_event only"
+        );
         let event = parse_event(&step.event);
         graph
             .ingest_event(event)

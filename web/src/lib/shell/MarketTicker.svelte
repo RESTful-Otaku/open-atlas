@@ -11,6 +11,12 @@
   import { dashboard, setSelectedDomain } from "../state.svelte";
   import { domainLabel } from "../colors";
 
+  interface Props {
+    /** Shorter ticker strip on mobile layout. */
+    compact?: boolean;
+  }
+  const { compact = false }: Props = $props();
+
   interface TickerEntry {
     readonly label: string;
     readonly value: string;
@@ -70,7 +76,7 @@
   }
 </script>
 
-<div class="ticker" role="marquee" aria-live="off">
+<div class="ticker" class:ticker--compact={compact} role="marquee" aria-live="off">
   <div class="ticker-track">
     {#each entries as entry (entry.label + entry.domain)}
       <button
@@ -92,6 +98,17 @@
 </div>
 
 <style>
+  .ticker--compact {
+    height: 22px;
+    font-size: 10px;
+  }
+  .ticker--compact .ticker-label {
+    display: none;
+  }
+  .ticker--compact .ticker-value {
+    font-size: 11px;
+  }
+
   .ticker {
     grid-area: ticker;
     overflow: hidden;

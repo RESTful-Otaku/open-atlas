@@ -18,6 +18,8 @@ Add to **qa**, **staging**, and **production** as needed:
 |--------|----------------|
 | `FRED_API_KEY` | https://fred.stlouisfed.org/docs/api/api_key.html |
 | `EIA_API_KEY` | https://www.eia.gov/opendata/register.php |
+| `OPENSKY_CLIENT_ID` | opensky-network.org → Account → API clients → `clientId` |
+| `OPENSKY_CLIENT_SECRET` | same client → `clientSecret` (both required together) |
 
 ## 3. Variables
 
