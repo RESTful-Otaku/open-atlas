@@ -74,8 +74,9 @@ Runs when rust, stdb, ingest, web, or shared paths change on `main` (or on `work
 
 Options on manual run:
 
-- **quick** — compile only (`e2e-qa.sh --quick`)
-- **verify_feeds** — live open-data adapters (`--verify-feeds`, slow, needs network)
+- **quick** (default **true**) — compile only (`e2e-qa.sh --quick`); used automatically on **push to main**
+- **stack_smoke** — start local SpacetimeDB and run sim ingest smoke (requires `quick: false` or this flag)
+- **verify_feeds** — live open-data adapters (`--verify-feeds`, slow, starts SpacetimeDB + needs network)
 
 ## Staging (`deploy-staging.yml`)
 
