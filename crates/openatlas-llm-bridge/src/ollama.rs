@@ -60,14 +60,23 @@ pub fn cuda_incompatibility_hint(raw: &str) -> Option<String> {
     )
 }
 
-fn chat_options_from_env() -> Option<ChatOptions> {
-    let num_gpu = std::env::var("OPENATLAS_OLLAMA_NUM_GPU")
-        .ok()
-        .and_then(|v| v.parse::<i32>().ok());
-    num_gpu.map(|n| ChatOptions { num_gpu: Some(n) })
+fn chat_options(cpu_only: bool) -> Option<ChatOptions> {
+    // OPENATLAS_OLLAMA_NUM_GPU env takes precedence (admin override).
+    if let Ok(v) = std::env::var("OPENATLAS_OLLAMA_NUM_GPU") {
+        if let Ok(n) = v.parse::<i32>() {
+            return Some(ChatOptions { num_gpu: Some(n) });
+        }
+    }
+    if cpu_only {
+        return Some(ChatOptions {
+            num_gpu: Some(0),
+        });
+    }
+    None
 }
 
 /// Call Ollama and return assistant text, or a structured error string.
+/// When `cpu_only` is true, requests `num_gpu: 0` (CPU-only inference).
 pub async fn chat_completion(
     client: &reqwest::Client,
     base: &str,
@@ -75,6 +84,7 @@ pub async fn chat_completion(
     system: &str,
     user: &str,
     timeout_secs: u64,
+    cpu_only: bool,
 ) -> anyhow::Result<String> {
     let url = format!("{}{}", base.trim_end_matches('/'), OPENAI_PATH);
     let body = ChatRequest {
@@ -92,7 +102,7 @@ pub async fn chat_completion(
         // Lower temperature keeps summaries grounded in the supplied
         // telemetry rather than free-associating.
         temperature: Some(0.25),
-        options: chat_options_from_env(),
+        options: chat_options(cpu_only),
         stream: false,
     };
     let resp = client
@@ -129,6 +139,21 @@ pub async fn chat_completion(
 
 /// GET `/api/tags` is not OpenAI; use it for readiness. Returns `Ok` if
 /// the server answers HTTP 2xx.
+pub async fn ping_ollama(
+    client: &reqwest::Client,
+    base: &str,
+    timeout_secs: u64,
+) -> anyhow::Result<()> {
+    let url = format!("{}/api/tags", base.trim_end_matches('/'));
+    client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::cuda_incompatibility_hint;
@@ -143,19 +168,4 @@ mod tests {
     fn cuda_hint_ignores_unrelated_errors() {
         assert!(cuda_incompatibility_hint("connection refused").is_none());
     }
-}
-
-pub async fn ping_ollama(
-    client: &reqwest::Client,
-    base: &str,
-    timeout_secs: u64,
-) -> anyhow::Result<()> {
-    let url = format!("{}/api/tags", base.trim_end_matches('/'));
-    client
-        .get(&url)
-        .timeout(std::time::Duration::from_secs(timeout_secs))
-        .send()
-        .await?
-        .error_for_status()?;
-    Ok(())
 }

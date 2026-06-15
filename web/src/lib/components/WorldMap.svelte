@@ -17,7 +17,6 @@
     buildCausalLineCollection,
     isGeoEvent,
   } from "../map/map-causal-geojson";
-  import { buildDemoMapCollection } from "../map/map-demo-geojson";
   import {
     allDomainIds,
     loadMapViewState,
@@ -38,17 +37,8 @@
     LAYER_SUN,
     LAYER_TERM,
     SRC_ADMIN,
-    SRC_CLIMATE_WEATHER,
-    SRC_NIGHT,
     LAYER_TRACKING,
     LAYER_TRACKING_PATHS,
-    layerHeatId,
-    SRC_CAUSAL,
-    SRC_DEMO,
-    SRC_EVENTS,
-    SRC_SOLAR,
-    SRC_TRACKING,
-    SRC_TRACKING_PATHS,
   } from "../map/map-constants";
   import {
     buildAllTrackingPaths,
@@ -68,14 +58,29 @@
   import { mapThemeFor } from "../theme-map";
   import { onThemeChange, readThemeFromDocument } from "../theme-events";
   import {
-    buildNightSideDisc,
-    buildSunPointFeature,
-    buildTerminatorLine,
-    subsolarPoint,
-  } from "../map/solar-geometry";
+    registerSolarLayers,
+    registerSolarSources,
+    updateSolarLayers,
+  } from "../map/register-solar-layers";
   import {
-    climateWeatherFeatureCollection,
-    climateWeatherPoints,
+    flushClimateWeatherLayers as flushWeatherLayers,
+    registerWeatherLayers,
+    registerWeatherSources,
+  } from "../map/register-weather-layers";
+  import {
+    flushTrackingLayers as flushTrackingLayerData,
+    registerTrackingLayers,
+    registerTrackingSources,
+  } from "../map/register-tracking-layers";
+  import {
+    applyMapMode,
+    flushEventAndCausalLayers as flushEventCausalData,
+    registerCausalLayer,
+    registerEventSources,
+    registerHeatLayers,
+    registerPointsLayer,
+  } from "../map/register-event-layers";
+  import {
     eventsForMapDisplay,
     mapUses7dFallback,
   } from "../map/map-sim-time";
@@ -84,7 +89,7 @@
   import { getGeoEventIndex } from "../geo-event-index";
   import { dashboard, matchesSelectedDomain } from "../state.svelte";
   import { navigate } from "../router.svelte";
-  import { DOMAIN_CATALOG, domainColor, hexToRgba } from "../colors";
+  import { DOMAIN_CATALOG, domainColor } from "../colors";
   import type { UiEvent } from "../types";
 
   import CompactNumber from "./CompactNumber.svelte";
@@ -439,35 +444,23 @@
     return trackingPathsToFeatureCollection(paths);
   });
 
-  /** Geo points actually drawn on map/globe layers (same rules as `toFeatureCollection`). */
+  /** Count of geo events actually drawn (avoids building GeoJSON just for a number). */
   const mapGeoPointCount = $derived.by(() => {
     void dashboardData.revision;
     void simUtcMs;
     void mapDomainSet;
     void dashboard.selectedDomain;
-    return toFeatureCollection(mapDisplayEvents).features.length;
+    let n = 0;
+    for (const event of mapDisplayEvents) {
+      if (!matchesSelectedDomain(event.domain)) continue;
+      if (!mapDomainSet.has(event.domain)) continue;
+      if (!isGeoEvent(event)) continue;
+      n += 1;
+    }
+    return n;
   });
   const locatedCount = $derived(mapGeoPointCount);
   const mapDomainsActiveLabel = $derived(formatMapDomainsLabel(mapDomainSet));
-
-  function heatColorRampForDomain(domainId: string): unknown[] {
-    const c = domainColor(domainId);
-    return [
-      "interpolate",
-      ["linear"],
-      ["heatmap-density"],
-      0,
-      hexToRgba(c, 0),
-      0.1,
-      hexToRgba(c, 0.16),
-      0.35,
-      hexToRgba(c, 0.45),
-      0.65,
-      hexToRgba(c, 0.68),
-      1,
-      hexToRgba(c, 0.92),
-    ];
-  }
 
   onMount(() => {
     if (!embedded && projection === "globe") {
@@ -543,133 +536,17 @@
       }
 
       inst.on("load", () => {
-        inst.addSource(SRC_EVENTS, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      inst.addSource(SRC_CAUSAL, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      inst.addSource(SRC_SOLAR, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      inst.addSource(SRC_NIGHT, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
+        registerEventSources(inst);
+      registerSolarSources(inst);
       inst.addSource(SRC_ADMIN, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
         generateId: true,
       });
-      inst.addSource(SRC_DEMO, {
-        type: "geojson",
-        data: buildDemoMapCollection(),
-      });
-      inst.addSource(SRC_CLIMATE_WEATHER, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      inst.addSource(SRC_TRACKING, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      inst.addSource(SRC_TRACKING_PATHS, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
+      registerWeatherSources(inst);
+      registerTrackingSources(inst);
 
-      for (const dom of DOMAIN_CATALOG) {
-        inst.addLayer({
-          id: layerHeatId(dom.id),
-          type: "heatmap",
-          source: SRC_EVENTS,
-          filter: ["==", ["get", "domain"], dom.id],
-          maxzoom: 14,
-          paint: {
-            "heatmap-weight": [
-              "interpolate",
-              ["linear"],
-              ["get", "w"],
-              0,
-              0.1,
-              1,
-              1.1,
-            ],
-            "heatmap-intensity": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              0,
-              0.5,
-              1,
-              0.5,
-              2,
-              0.55,
-              4,
-              0.75,
-              6,
-              0.95,
-              8,
-              1.12,
-              10,
-              1.4,
-              12,
-              1.65,
-              14,
-              1.9,
-            ],
-            "heatmap-color": heatColorRampForDomain(dom.id) as never,
-            "heatmap-radius": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              0,
-              48,
-              1,
-              44,
-              2,
-              40,
-              3,
-              32,
-              4,
-              28,
-              5,
-              24,
-              7,
-              20,
-              9,
-              16,
-              11,
-              12,
-              13,
-              9,
-              14,
-              6,
-            ],
-            "heatmap-opacity": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              0,
-              0.62,
-              2,
-              0.7,
-              5,
-              0.78,
-              9,
-              0.85,
-              12,
-              0.9,
-              14,
-              0.91,
-            ],
-          },
-        });
-      }
-
+      registerHeatLayers(inst);
       inst.addLayer({
         id: LAYER_ADMIN_FILL,
         type: "fill",
@@ -703,291 +580,14 @@
         },
       });
 
-      inst.addLayer({
-        id: LAYER_DEMO_CONTOUR,
-        type: "line",
-        source: SRC_DEMO,
-        filter: ["==", ["get", "kind"], "contour"],
-        paint: {
-          "line-color": "rgba(148, 163, 184, 0.4)",
-          "line-width": 1,
-          "line-dasharray": [3, 3],
-          "line-opacity": 0.5,
-        },
-        layout: { visibility: "none" },
-      });
-      inst.addLayer({
-        id: LAYER_CLIMATE_TEMP,
-        type: "circle",
-        source: SRC_CLIMATE_WEATHER,
-        paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0,
-            10,
-            4,
-            18,
-            8,
-            28,
-          ],
-          "circle-color": [
-            "interpolate",
-            ["linear"],
-            ["get", "temp"],
-            -20,
-            "#38bdf8",
-            5,
-            "#22d3ee",
-            15,
-            "#facc15",
-            28,
-            "#f97316",
-            38,
-            "#ef4444",
-          ],
-          "circle-opacity": 0.58,
-          "circle-blur": 0.75,
-        },
-        layout: { visibility: "none" },
-      });
-      inst.addLayer({
-        id: LAYER_DEMO_WIND,
-        type: "line",
-        source: SRC_DEMO,
-        filter: ["==", ["get", "kind"], "wind"],
-        paint: {
-          "line-color": "rgba(56, 189, 248, 0.55)",
-          "line-width": 2.5,
-          "line-opacity": [
-            "interpolate",
-            ["linear"],
-            ["get", "strength"],
-            0.4,
-            0.25,
-            1,
-            0.6,
-          ],
-        },
-        layout: { "line-cap": "round", visibility: "none" },
-      });
-      inst.addLayer({
-        id: LAYER_CAUSAL,
-        type: "line",
-        source: SRC_CAUSAL,
-        paint: {
-          "line-color": ["get", "sourceColor"],
-          "line-width": [
-            "interpolate",
-            ["linear"],
-            ["get", "influence"],
-            0,
-            0.9,
-            1,
-            2.6,
-          ],
-          "line-opacity": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0,
-            0.35,
-            1,
-            0.5,
-            2,
-            0.6,
-            4,
-            0.7,
-            7,
-            0.75,
-            10,
-            0.8,
-            14,
-            0.85,
-          ],
-          "line-blur": 0.2,
-        },
-        layout: { "line-cap": "round" },
-      });
-      inst.addLayer({
-        id: LAYER_TRACKING_PATHS,
-        type: "line",
-        source: SRC_TRACKING_PATHS,
-        paint: {
-          "line-color": ["get", "color"],
-          "line-width": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0,
-            0.6,
-            4,
-            1.2,
-            8,
-            2.0,
-            12,
-            2.8,
-          ],
-          "line-opacity": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0,
-            0.45,
-            6,
-            0.65,
-            12,
-            0.8,
-          ],
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-      });
-      inst.addLayer({
-        id: LAYER_TRACKING,
-        type: "circle",
-        source: SRC_TRACKING,
-        paint: {
-          "circle-color": ["get", "color"],
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0,
-            1.4,
-            2,
-            2.2,
-            5,
-            3.0,
-            10,
-            4.2,
-            14,
-            5.0,
-          ],
-          "circle-stroke-color": "rgba(10, 12, 18, 0.9)",
-          "circle-stroke-width": 1.0,
-          "circle-opacity": 0.9,
-        },
-        layout: { visibility: "visible" },
-      });
-      inst.addLayer({
-        id: LAYER_POINTS,
-        type: "circle",
-        source: SRC_EVENTS,
-        paint: {
-          "circle-color": ["get", "color"],
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0,
-            2,
-            2,
-            3,
-            5,
-            5,
-            8,
-            7,
-            12,
-            9,
-            14,
-            10,
-          ],
-          "circle-opacity": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0,
-            0.35,
-            1,
-            0.15,
-            2,
-            0.45,
-            3,
-            0.6,
-            4,
-            0.8,
-            6,
-            0.9,
-            10,
-            0.92,
-            14,
-            0.95,
-          ],
-          "circle-stroke-color": "rgba(255, 255, 255, 0.9)",
-          "circle-stroke-width": 2,
-        },
-      });
-      inst.addLayer({
-        id: LAYER_DEMO_TRANSPORT,
-        type: "symbol",
-        source: SRC_DEMO,
-        filter: ["==", ["get", "kind"], "transport"],
-        layout: {
-          "text-field": ["get", "glyph"],
-          "text-size": 13,
-          "text-allow-overlap": true,
-          "text-ignore-placement": true,
-          visibility: "none",
-        },
-        paint: {
-          "text-color": ["get", "color"],
-          "text-halo-color": "rgba(7, 9, 14, 0.92)",
-          "text-halo-width": 1.6,
-          "text-opacity": 0.9,
-        },
-      });
-      inst.addLayer({
-        id: LAYER_NIGHT,
-        type: "fill",
-        source: SRC_NIGHT,
-        paint: {
-          "fill-color": "rgba(6, 12, 28, 0.55)",
-          "fill-opacity": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0,
-            0.16,
-            3,
-            0.22,
-            8,
-            0.28,
-          ],
-          "fill-antialias": true,
-        },
-        layout: { visibility: "none" },
-      });
-      inst.addLayer({
-        id: LAYER_TERM,
-        type: "line",
-        source: SRC_SOLAR,
-        filter: ["==", ["get", "kind"], "terminator"],
-        paint: {
-          "line-color": "rgba(200, 220, 255, 0.4)",
-          "line-width": 2.2,
-          "line-blur": 1.2,
-          "line-opacity": 0.7,
-        },
-        layout: { "line-cap": "round" },
-      });
-      inst.addLayer({
-        id: LAYER_SUN,
-        type: "circle",
-        source: SRC_SOLAR,
-        filter: ["==", ["get", "kind"], "subsun"],
-        paint: {
-          "circle-color": "rgba(253, 224, 71, 0.95)",
-          "circle-radius": 6,
-          "circle-opacity": 0.85,
-          "circle-stroke-color": "rgba(37, 28, 6, 0.55)",
-          "circle-stroke-width": 1.5,
-          "circle-blur": 0.2,
-        },
-      });
+      registerWeatherLayers(inst);
+      registerCausalLayer(inst);
+      registerTrackingLayers(inst);
+      registerPointsLayer(inst);
+      registerSolarLayers(inst);
 
       loaded = true;
-      applyMode(inst, mode);
+      applyMapMode(inst, mode);
       flushEventAndCausalLayers();
       flushSolarLayers();
       flushClimateWeatherLayers();
@@ -1127,83 +727,28 @@
     };
   });
 
-  function applyMode(m: MapLibreMap, next: MapDisplayMode): void {
-    const heatVisible = next === "heat" || next === "both";
-    const pointVisible = next === "points" || next === "both";
-    for (const dom of DOMAIN_CATALOG) {
-      const hid = layerHeatId(dom.id);
-      if (m.getLayer(hid)) {
-        m.setLayoutProperty(
-          hid,
-          "visibility",
-          heatVisible ? "visible" : "none",
-        );
-      }
-    }
-    if (m.getLayer(LAYER_POINTS)) {
-      m.setLayoutProperty(
-        LAYER_POINTS,
-        "visibility",
-        pointVisible ? "visible" : "none",
-      );
-    }
-  }
-
   const flushEventAndCausalLayers = rafCoalesce(() => {
     const currentMap = map;
     if (!currentMap || !loaded) return;
     const events = mapDisplayEvents;
     const edges = dashboard.recentCausalEdges;
-    const eventsSrc = currentMap.getSource(SRC_EVENTS) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (eventsSrc) {
-      eventsSrc.setData(toFeatureCollection(events));
-    }
-    const causalSrc = currentMap.getSource(SRC_CAUSAL) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (causalSrc) {
-      causalSrc.setData(
-        buildCausalLineCollection(events, edges, { mapDomains: mapDomainSet }),
-      );
-    }
+    flushEventCausalData(
+      currentMap,
+      toFeatureCollection(events),
+      buildCausalLineCollection(events, edges, { mapDomains: mapDomainSet }),
+    );
   });
 
   const flushTrackingLayers = debounce(() => {
     const currentMap = map;
     if (!currentMap || !loaded) return;
-    const src = currentMap.getSource(SRC_TRACKING) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (!src) return;
-    src.setData(trackingFeatureCollection);
-    const pathSrc = currentMap.getSource(SRC_TRACKING_PATHS) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (pathSrc) pathSrc.setData(trackingPathsCollection);
+    flushTrackingLayerData(currentMap, trackingFeatureCollection, trackingPathsCollection);
   }, 250);
 
   const flushSolarLayers = rafCoalesce(() => {
     const currentMap = map;
     if (!currentMap || !loaded) return;
-    const when = new Date(simUtcMs);
-    const sub = subsolarPoint(when);
-    const f: GeoJSON.Feature[] = [buildTerminatorLine(sub)];
-    if (showSubsun) f.push(buildSunPointFeature(sub));
-    const s = currentMap.getSource(SRC_SOLAR) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (s) s.setData({ type: "FeatureCollection", features: f });
-    const nightSrc = currentMap.getSource(SRC_NIGHT) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (nightSrc) {
-      nightSrc.setData({
-        type: "FeatureCollection",
-        features: [buildNightSideDisc(sub)],
-      });
-    }
+    updateSolarLayers(currentMap, simUtcMs, showSubsun);
   });
 
   function syncMapOverlays(m: MapLibreMap): void {
@@ -1237,12 +782,7 @@
   const flushClimateWeatherLayers = debounce(() => {
     const currentMap = map;
     if (!currentMap || !loaded) return;
-    const src = currentMap.getSource(SRC_CLIMATE_WEATHER) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-    if (!src) return;
-    const pts = climateWeatherPoints(dashboard.events, simUtcMs);
-    src.setData(climateWeatherFeatureCollection(pts));
+    flushWeatherLayers(currentMap, dashboard.events, simUtcMs);
   }, 200);
 
   $effect(() => {
@@ -1268,7 +808,7 @@
   $effect(() => {
     const currentMap = map;
     if (!currentMap || !loaded) return;
-    applyMode(currentMap, mode);
+    applyMapMode(currentMap, mode);
   });
 
   $effect(() => {

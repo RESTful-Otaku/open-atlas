@@ -84,6 +84,16 @@ export function memoHubTimeline(
   return option;
 }
 
+const MAX_CACHE_ENTRIES = 48;
+
+function trimCache<K>(cache: Map<K, unknown>, max: number): void {
+  while (cache.size > max) {
+    const key = cache.keys().next();
+    if (key.done) break;
+    cache.delete(key.value);
+  }
+}
+
 /** Cache key must include matrix scope (domains); same kind differs per board. */
 export function memoMatrixChart(
   cacheKey: string,
@@ -94,6 +104,7 @@ export function memoMatrixChart(
   const prev = matrixCaches.get(cacheKey) ?? null;
   const { entry, option } = memoByRevisions(prev, revision, domainRev, build);
   matrixCaches.set(cacheKey, entry);
+  trimCache(matrixCaches, MAX_CACHE_ENTRIES);
   return option;
 }
 
@@ -107,5 +118,6 @@ export function memoDomainDeskPack<T>(cacheKey: string, build: () => T): T {
   }
   const value = build();
   domainDeskPackCaches.set(cacheKey, { revision, domainRev, value });
+  trimCache(domainDeskPackCaches, MAX_CACHE_ENTRIES);
   return value;
 }

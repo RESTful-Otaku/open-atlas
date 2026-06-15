@@ -53,8 +53,7 @@ pub fn apply_secrets_to_env(file: &FeedSecretsFile) {
         if value.is_empty() {
             continue;
         }
-        // SAFETY: single-process ingest service; feeds read env on each fetch.
-        unsafe { std::env::set_var(key, value) };
+        std::env::set_var(key, value);
     }
 }
 

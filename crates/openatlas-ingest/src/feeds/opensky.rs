@@ -41,8 +41,8 @@ pub(super) const DESCRIPTOR: FeedDescriptor = FeedDescriptor {
 };
 
 const SAMPLE_SIZE: usize = 40;
-const CRUISE_ALTITUDE_M: f64 = 12_000.0;
-const CRUISE_VELOCITY_MPS: f64 = 300.0;
+const ANOMALY_ALTITUDE_M: f64 = 20_000.0;
+const ANOMALY_VELOCITY_MPS: f64 = 500.0;
 
 /// OpenSky state vector indices (API v1).
 mod idx {
@@ -149,8 +149,8 @@ fn states_to_events(payload: Response) -> Vec<openatlas_core::WorldEvent> {
             .time_position
             .and_then(parse_epoch_secs)
             .unwrap_or(batch_time);
-        let altitude_norm = ratio_severity(s.baro_altitude, CRUISE_ALTITUDE_M);
-        let velocity_norm = ratio_severity(s.velocity, CRUISE_VELOCITY_MPS);
+        let altitude_norm = ratio_severity(s.baro_altitude, ANOMALY_ALTITUDE_M);
+        let velocity_norm = ratio_severity(s.velocity, ANOMALY_VELOCITY_MPS);
         let mut severity = (altitude_norm * 0.4 + velocity_norm * 0.6).clamp(0.0, 1.0);
         if s.on_ground {
             severity *= 0.2;

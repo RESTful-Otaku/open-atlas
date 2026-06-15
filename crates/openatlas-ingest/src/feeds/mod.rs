@@ -80,9 +80,7 @@ pub(crate) const REGISTRY: &[FeedDescriptor] = &[
     eia::DESCRIPTOR,
 ];
 
-/// Returns the descriptor for `name`, if any. Retained for tests and
-/// debug tooling (e.g. the CLI's `feeds` subcommand in the near future).
-#[allow(dead_code)]
+/// Returns the descriptor for `name`, if any.
 pub(crate) fn descriptor_for(name: &str) -> Option<&'static FeedDescriptor> {
     REGISTRY.iter().find(|descriptor| descriptor.name == name)
 }
@@ -291,6 +289,11 @@ fn spawn_feed(
                 continue;
             }
 
+            if !state.stdb.is_reachable().await {
+                debug!("{name}: STDB unreachable — skipping poll cycle");
+                continue;
+            }
+
             record_feed_poll_start(&state, name).await;
 
             match fetch(client.clone()).await {
@@ -353,17 +356,14 @@ pub(crate) fn deterministic_event_id(source: &str, key: &str) -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_URL, seed.as_bytes())
 }
 
-/// Returns the homepage/documentation URL for a registered feed, if any.
-/// Used by tests and kept on the public surface for any tool that needs
-/// to turn a feed name into a doc link.
-#[allow(dead_code)]
-pub(crate) fn source_url_for_source(source: &str) -> Option<&'static str> {
-    descriptor_for(source).map(|d| d.source_url)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Test helper: looks up the source URL for a registered feed.
+    pub(crate) fn source_url_for_source(source: &str) -> Option<&'static str> {
+        descriptor_for(source).map(|d| d.source_url)
+    }
 
     #[test]
     fn deterministic_event_id_is_stable() {

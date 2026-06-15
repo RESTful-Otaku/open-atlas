@@ -96,7 +96,13 @@ export function navigate(path: string): void {
   const prev = router.match;
   const next = matchPath(normalized);
   if (currentHashPath() === next.path && sameMatch(prev, next)) return;
-  const fragment = normalized === "/" ? "#/" : `#${normalized}`;
+  // Encode each segment so param values (e.g. event IDs with special chars)
+  // round-trip correctly through decodeURIComponent in tryMatch.
+  const encoded = normalized
+    .split("/")
+    .map((seg) => (seg ? encodeURIComponent(seg) : seg))
+    .join("/");
+  const fragment = encoded === "/" ? "#/" : `#${encoded}`;
   if (window.location.hash !== fragment) {
     window.location.hash = fragment;
   }

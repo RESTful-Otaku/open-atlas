@@ -76,6 +76,9 @@ struct InsightRequest {
     snapshot: Value,
     /// Optional operator follow-up.
     user_prompt: Option<String>,
+    /// Request CPU-only inference (num_gpu=0).
+    #[serde(default)]
+    cpu_only: bool,
 }
 
 #[derive(Serialize)]
@@ -158,6 +161,7 @@ async fn capable(State(s): State<Arc<AppState>>) -> impl IntoResponse {
         "Reply briefly.",
         "Say exactly: OK",
         s.timeout_secs.min(120),
+        false,
     )
     .await
     {
@@ -210,6 +214,7 @@ async fn insight(
         SYSTEM_PROMPT,
         &user_content,
         s.timeout_secs,
+        body.cpu_only,
     )
     .await
     {

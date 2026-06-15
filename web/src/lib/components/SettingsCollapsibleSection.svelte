@@ -28,6 +28,7 @@
     children,
   }: Props = $props();
 
+  // svelte-ignore state_referenced_locally
   let open = $state(defaultOpen);
 
   const bodyId = $derived(id ? `${id}-body` : undefined);

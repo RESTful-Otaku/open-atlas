@@ -6,10 +6,6 @@ members = [
     "crates/openatlas-stdb-module",
     "crates/openatlas-llm-bridge",
 ]
-# The historical `openatlas-ui-wasm` crate was removed in favour of a full
-# Svelte + SpacetimeDB dashboard. SpacetimeDB is now the authoritative state;
-# the browser subscribes to it directly via the TypeScript SDK.
-exclude = ["crates/openatlas-ui-wasm"]
 resolver = "2"
 
 [workspace.package]

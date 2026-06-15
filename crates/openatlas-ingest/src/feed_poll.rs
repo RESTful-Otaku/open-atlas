@@ -44,7 +44,9 @@ pub fn save_poll_config(file: &FeedPollConfigFile) -> Result<()> {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     let body = serde_json::to_string_pretty(file).context("serialize feed poll config")?;
-    fs::write(&path, body).with_context(|| format!("write {}", path.display()))?;
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, &body).with_context(|| format!("write {}", tmp.display()))?;
+    fs::rename(&tmp, &path).with_context(|| format!("rename {} -> {}", tmp.display(), path.display()))?;
     Ok(())
 }
 
@@ -126,6 +128,7 @@ pub fn merge_and_persist(
     Ok(current)
 }
 
+#[allow(dead_code)]
 pub fn interval_label(secs: u64) -> &'static str {
     match secs {
         30 => "30 seconds",

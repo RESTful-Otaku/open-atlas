@@ -181,12 +181,12 @@ impl StdbClient {
         self.call_reducer("link_causal_events", &args).await
     }
 
-    async fn call_reducer_batch(
+    /// Common transport: POST reducer args to STDB, return (status, body).
+    async fn call_reducer_raw(
         &self,
         reducer: &str,
         args: &serde_json::Value,
-        event_count: usize,
-    ) -> anyhow::Result<BatchIngestSummary> {
+    ) -> anyhow::Result<(reqwest::StatusCode, String)> {
         let url = format!(
             "{}/v1/database/{}/call/{}",
             self.uri.trim_end_matches('/'),
@@ -202,7 +202,22 @@ impl StdbClient {
             .with_context(|| format!("stdb call {reducer} failed (transport)"))?;
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        Ok((status, body))
+    }
+
+    async fn call_reducer_batch(
+        &self,
+        reducer: &str,
+        args: &serde_json::Value,
+        event_count: usize,
+    ) -> anyhow::Result<BatchIngestSummary> {
+        let (status, body) = self.call_reducer_raw(reducer, args).await?;
         if status.is_success() {
+            // The STDB module records per-event outcomes to `batch_outcome`
+            // and `ingest_audit` tables. For exact counts the caller could
+            // query those tables; for metrics we are optimistic — the
+            // accepted/duplicate split is cosmetic for feed health, and the
+            // total processed count is what matters for rate-limiting.
             debug!(reducer, count = event_count, "batch reducer accepted");
             return Ok(BatchIngestSummary {
                 accepted: event_count as u32,
@@ -226,27 +241,18 @@ impl StdbClient {
         reducer: &str,
         args: &serde_json::Value,
     ) -> anyhow::Result<IngestOutcome> {
-        let url = format!(
-            "{}/v1/database/{}/call/{}",
-            self.uri.trim_end_matches('/'),
-            self.db,
-            reducer
-        );
-        let response = self
-            .http
-            .post(&url)
-            .json(args)
-            .send()
-            .await
-            .with_context(|| format!("stdb call {reducer} failed (transport)"))?;
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+        let (status, body) = self.call_reducer_raw(reducer, args).await?;
         if status.is_success() {
             debug!(reducer, "reducer call accepted");
             return Ok(IngestOutcome::Accepted);
         }
         // SpacetimeDB returns reducer business errors as non-2xx (often 530), not always 400.
-        if body.contains("duplicate event id") {
+        // The body may be a plain error string or a JSON object like `{"error": "..."}`.
+        let error_msg = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(|s| s.to_owned()))
+            .unwrap_or_else(|| body.clone());
+        if error_msg.contains("duplicate event id") {
             debug!(reducer, "duplicate event id (idempotent)");
             return Ok(IngestOutcome::Duplicate);
         }
@@ -382,29 +388,6 @@ pub(crate) fn domain_to_u8(domain: &Domain) -> u8 {
     }
 }
 
-/// Inverse of [`domain_to_u8`]. Not used on the write path but kept for
-/// the `stdb` module's round-trip unit test and for any future consumer
-/// that reads `event.domain` back from SpacetimeDB.
-#[allow(dead_code)]
-pub(crate) fn u8_to_domain(tag: u8) -> Option<Domain> {
-    match tag {
-        0 => Some(Domain::Energy),
-        1 => Some(Domain::Finance),
-        2 => Some(Domain::Climate),
-        3 => Some(Domain::Seismic),
-        4 => Some(Domain::Transport),
-        5 => Some(Domain::Health),
-        6 => Some(Domain::Geospatial),
-        7 => Some(Domain::Economy),
-        8 => Some(Domain::Geopolitics),
-        9 => Some(Domain::Cyber),
-        10 => Some(Domain::Space),
-        11 => Some(Domain::Demographics),
-        12 => Some(Domain::Infrastructure),
-        _ => None,
-    }
-}
-
 fn timestamp_micros(ts: DateTime<Utc>) -> i64 {
     ts.timestamp_micros()
 }
@@ -424,6 +407,27 @@ mod tests {
     use openatlas_core::{Domain, Location, WorldEvent};
     use serde_json::json;
     use uuid::Uuid;
+
+    /// Inverse of [`domain_to_u8`]. Test-only — on the write path we
+    /// never need to decode the tag back into a domain variant.
+    fn u8_to_domain(tag: u8) -> Option<Domain> {
+        match tag {
+            0 => Some(Domain::Energy),
+            1 => Some(Domain::Finance),
+            2 => Some(Domain::Climate),
+            3 => Some(Domain::Seismic),
+            4 => Some(Domain::Transport),
+            5 => Some(Domain::Health),
+            6 => Some(Domain::Geospatial),
+            7 => Some(Domain::Economy),
+            8 => Some(Domain::Geopolitics),
+            9 => Some(Domain::Cyber),
+            10 => Some(Domain::Space),
+            11 => Some(Domain::Demographics),
+            12 => Some(Domain::Infrastructure),
+            _ => None,
+        }
+    }
 
     fn sample_event() -> WorldEvent {
         WorldEvent {

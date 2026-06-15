@@ -124,7 +124,7 @@ of truth for event detail.
 | 3 | **`openatlas-llm-bridge`** on `:3847` — auto-started when `OPENATLAS_START_LLM=1` |
 | 4 | Vite proxies `/api/llm` → bridge |
 
-Manual: `./dev.sh ollama:start`, `./dev.sh llm:start`, or `./dev.sh ollama:cpu` (GTX 10xx CUDA errors).
+Manual: `./dev.sh ollama:start`, `./dev.sh llm:start`, or `./dev.sh ollama:cpu` (CPU-only default; GPU re-enable: `OPENATLAS_OLLAMA_CPU=0`).
 
 Set `OPENATLAS_START_LLM=0` or `OPENATLAS_START_OLLAMA=0` in `.env` to skip either service.
 
@@ -145,7 +145,7 @@ and clears when the tab session ends.
 | `OPENATLAS_OLLAMA_TIMEOUT_SECS` | `120` | Upstream chat timeout |
 | `OPENATLAS_START_OLLAMA` | `1` | `0` skips auto-starting Ollama in `./dev.sh up` |
 | `OPENATLAS_OLLAMA_AUTO_PULL` | `1` | `0` skips `ollama pull` when the model is missing |
-| `OPENATLAS_OLLAMA_CPU` | `0` | `1` starts Ollama with `CUDA_VISIBLE_DEVICES=""` (GTX 10xx) |
+| `OPENATLAS_OLLAMA_CPU` | `1` | `0` to re-enable GPU (Ollama must be restarted) |
 | `OPENATLAS_OLLAMA_NUM_GPU` | unset | Pass `0` to request CPU layers (restart Ollama for GTX 10xx CUDA errors) |
 | `VITE_LLM_BASE` | unset (`/api/llm` in dev) | Production build: public bridge URL |
 | `VITE_LLM_INSIGHT_TIMEOUT_MS` | `120000` | Browser abort for `POST /v1/insight` |

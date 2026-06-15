@@ -8,8 +8,6 @@
 
   import { useNarrativeSubscription } from "../narrative-subscription";
   import { dashboard } from "../state.svelte";
-
-  useNarrativeSubscription();
   import { buildHubTiles, computeThreatIndex } from "../hub";
   import { llmSnapshotCounts } from "../llm-snapshot";
   import { buildDeterministicBriefing } from "../briefing-fallback";
@@ -31,6 +29,8 @@
   import HubTile from "./HubTile.svelte";
   import HubOverviewCharts from "./HubOverviewCharts.svelte";
   import DataPipelineBanner from "../components/DataPipelineBanner.svelte";
+
+  useNarrativeSubscription();
 
   const tiles = $derived(
     buildHubTiles(
@@ -56,6 +56,7 @@
   let briefingModel = $state<string | null>(null);
   let briefingUserFocus = $state("");
   let briefingUsedFallback = $state(false);
+  let briefingFallbackText = $state<string | null>(null);
 
   const llmCtx = $derived({
     dataMode: dashboard.dataMode,
@@ -91,7 +92,7 @@
   const briefingDisplay = $derived(
     briefingLlmText ??
       (briefingUsedFallback
-        ? buildDeterministicBriefing(llmCtx.snapshot)
+        ? (briefingFallbackText ??= buildDeterministicBriefing(llmCtx.snapshot))
         : null),
   );
 

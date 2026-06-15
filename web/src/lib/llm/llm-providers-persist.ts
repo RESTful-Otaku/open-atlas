@@ -14,6 +14,8 @@ export interface LlmProviderSettings {
   openaiBaseUrl: string;
   openaiApiKey: string;
   openaiModel: string;
+  /** Force CPU-only inference on the Ollama bridge (num_gpu: 0). */
+  cpuOnly: boolean;
 }
 
 const KEY = "openatlas-llm-providers";
@@ -25,6 +27,7 @@ export const DEFAULT_LLM_PROVIDER_SETTINGS: LlmProviderSettings = {
   openaiBaseUrl: "https://api.openai.com/v1",
   openaiApiKey: "",
   openaiModel: "gpt-4o-mini",
+  cpuOnly: true,
 };
 
 function capacitorPlatform(): string | undefined {

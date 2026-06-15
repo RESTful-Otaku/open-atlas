@@ -254,6 +254,19 @@ pub struct IngestAudit {
     pub detail: String,
 }
 
+/// Most recent batch ingest outcome counts. Single row (id=0) overwritten
+/// on every call to [`ingest_events_batch`]. Subscribers (ingest metrics, UI)
+/// query this table for accurate per-batch counts instead of assuming every
+/// event in the batch was accepted.
+#[spacetimedb::table(name = "batch_outcome", accessor = batch_outcome)]
+pub struct BatchOutcome {
+    #[primary_key]
+    pub id: u8,
+    pub accepted: u32,
+    pub duplicates: u32,
+    pub rejected: u32,
+}
+
 // ---------------------------------------------------------------------------
 // Reducers
 // ---------------------------------------------------------------------------
@@ -304,6 +317,10 @@ pub fn ingest_event(
 /// Batch ingest for one feed cycle — one transaction, one prune pass, domain
 /// insights rebuilt once per touched domain. Per-event failures are recorded
 /// in [`IngestAudit`] without aborting the whole batch (at-least-once edge).
+///
+/// Outcome counts are recorded to [`BatchOutcome`] (single-row table) so the
+/// caller can retrieve actual accepted/duplicate/rejected counts by querying
+/// that table after the call (e.g. via STDB SQL).
 #[reducer]
 pub fn ingest_events_batch(
     ctx: &ReducerContext,
@@ -319,13 +336,15 @@ pub fn ingest_events_batch(
         ));
     }
 
-    let mut touched_domains: Vec<u8> = Vec::new();
+    let mut touched_domains: std::collections::HashSet<u8> = std::collections::HashSet::new();
+    let mut accepted = 0u32;
+    let mut duplicates = 0u32;
+    let mut rejected = 0u32;
     for input in &events {
         match try_ingest_one(ctx, input, &source_label, &source_url, true) {
             Ok(IngestOneOutcome::Accepted) => {
-                if !touched_domains.contains(&input.domain) {
-                    touched_domains.push(input.domain);
-                }
+                accepted += 1;
+                touched_domains.insert(input.domain);
                 record_ingest_audit(
                     ctx,
                     input.id,
@@ -336,6 +355,7 @@ pub fn ingest_events_batch(
                 );
             }
             Ok(IngestOneOutcome::Duplicate) => {
+                duplicates += 1;
                 record_ingest_audit(
                     ctx,
                     input.id,
@@ -346,6 +366,7 @@ pub fn ingest_events_batch(
                 );
             }
             Err(reason) => {
+                rejected += 1;
                 record_ingest_audit(
                     ctx,
                     input.id,
@@ -357,6 +378,16 @@ pub fn ingest_events_batch(
             }
         }
     }
+
+    // Write outcome counts so subscribers (ingest metrics, UI) can retrieve
+    // accurate per-batch counts without having to query the append-only audit log.
+    // `.insert()` on a table with a primary key upserts (insert-or-replace).
+    ctx.db.batch_outcome().insert(BatchOutcome {
+        id: 0,
+        accepted,
+        duplicates,
+        rejected,
+    });
 
     let insight_ts = ctx.timestamp;
     for domain in touched_domains {
@@ -801,6 +832,26 @@ fn delete_event_row(ctx: &ReducerContext, id: u64) {
     if ctx.db.event_narrative().event_id().find(id).is_some() {
         ctx.db.event_narrative().event_id().delete(id);
     }
+    let stale_signals: Vec<u64> = ctx
+        .db
+        .signal()
+        .iter()
+        .filter(|s| s.event_id == id)
+        .map(|s| s.id)
+        .collect();
+    for sid in stale_signals {
+        ctx.db.signal().id().delete(sid);
+    }
+    let stale_causal: Vec<u64> = ctx
+        .db
+        .causal_edge()
+        .iter()
+        .filter(|e| e.source_event_id == id || e.target_event_id == id)
+        .map(|e| e.id)
+        .collect();
+    for cid in stale_causal {
+        ctx.db.causal_edge().id().delete(cid);
+    }
     ctx.db.event().id().delete(id);
 }
 
@@ -931,10 +982,10 @@ mod ingest_rules_tests {
 
     #[test]
     fn ring_sizes_are_positive_and_ordered() {
-        assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE);
-        assert!(SIGNAL_RING_SIZE > 0);
-        assert!(CAUSAL_EDGE_RING_SIZE > 0);
-        assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE);
+        const { assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE); }
+        const { assert!(SIGNAL_RING_SIZE > 0); }
+        const { assert!(CAUSAL_EDGE_RING_SIZE > 0); }
+        const { assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE); }
     }
 
     #[test]

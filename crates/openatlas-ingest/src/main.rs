@@ -1,6 +1,6 @@
 //! OpenAtlas ingest service binary.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, panic, sync::Arc};
 
 use anyhow::Context;
 use chrono::Utc;
@@ -24,6 +24,18 @@ use tracing::{info, warn};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     logging::init_tracing();
+
+    // Log any panics through tracing so they appear in the log output instead
+    // of only stderr. The feed worker loops are outside catch_unwind scope, so
+    // a panic in the loop body will still terminate that task, but at least the
+    // error surface is visible in the ops console.
+    {
+        let orig = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            tracing::error!("panic: {info}");
+            orig(info);
+        }));
+    }
 
     // Load .env before StdbClient::from_env (local or cloud URI comes from here or the shell).
     local_env::load_gitignored_env_files();
@@ -90,5 +102,17 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(bind_addr)
         .await
         .context("bind failed")?;
-    axum::serve(listener, app).await.context("server failed")
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("failed to install SIGINT handler");
+            info!("received SIGINT — shutting down gracefully");
+        })
+        .await
+        .context("server failed")?;
+
+    info!("openatlas-ingest stopped");
+    Ok(())
 }

@@ -36,11 +36,8 @@ import { domainIdFromTag } from "./domain";
 import { notifyError } from "./notify/notify";
 import { NOTIFY_CODES } from "./notify/notify-codes";
 import {
-  MAX_CAUSAL_EDGES,
   MAX_EVENT_NARRATIVES,
-  MAX_EVENTS_HARD_CEILING,
   MAX_SEVERITY_HISTORY,
-  MAX_SIGNALS,
 } from "./data-limits";
 import { DOMAIN_CATALOG } from "./colors";
 import {
@@ -370,7 +367,6 @@ export function endDashboardBatch(): void {
     batchDomainInsights = null;
   }
   flushPendingSeverityUpdates();
-  rebuildEventIdIndex();
 }
 
 const eventIdToIndex = new Map<string, number>();
@@ -414,133 +410,82 @@ export type PendingDashboardFlush = {
   domainsDirty: boolean;
 };
 
+function flushPendingTrackableList<T extends { id: string }>(
+  deletes: Set<string>,
+  pending: Map<string, T>,
+  idIndex: Map<string, number>,
+  getList: () => T[],
+  setList: (list: T[]) => void,
+  rebuildIndex: () => void,
+): boolean {
+  let dirty = false;
+
+  if (deletes.size > 0) {
+    setList(getList().filter((e) => !deletes.has(e.id)));
+    deletes.clear();
+    idIndex.clear();
+    dirty = true;
+  }
+
+  if (pending.size > 0) {
+    if (idIndex.size === 0 && getList().length > 0) {
+      rebuildIndex();
+    }
+    let buf = getList();
+    let mutated = false;
+    for (const next of pending.values()) {
+      const idx = idIndex.get(next.id);
+      if (idx !== undefined) {
+        if (buf[idx] !== next) {
+          if (!mutated) {
+            buf = buf.slice();
+            mutated = true;
+          }
+          buf[idx] = next;
+        }
+      } else {
+        if (!mutated) {
+          buf = buf.slice();
+          mutated = true;
+        }
+        buf.push(next);
+      }
+    }
+    pending.clear();
+    if (mutated) {
+      setList(buf);
+      dirty = true;
+    }
+  }
+
+  return dirty;
+}
+
 /** Merge pending patches then trim — called from `sortAndTrimDashboardBuffers`. */
 export function flushPendingDashboardPatches(): PendingDashboardFlush {
   let domainsDirty = false;
   let streamDirty = false;
 
-  if (pendingEventDeletes.size > 0) {
-    dashboard.events = dashboard.events.filter(
-      (e) => !pendingEventDeletes.has(e.id),
-    );
-    pendingEventDeletes.clear();
-    eventIdToIndex.clear();
-    streamDirty = true;
-  }
+  streamDirty = flushPendingTrackableList(
+    pendingEventDeletes, pendingEvents, eventIdToIndex,
+    () => dashboard.events,
+    (l) => { dashboard.events = l; },
+    rebuildEventIdIndex,
+  ) || streamDirty;
 
-  if (pendingEvents.size > 0) {
-    if (eventIdToIndex.size === 0 && dashboard.events.length > 0) {
-      rebuildEventIdIndex();
-    }
-    let buf = dashboard.events;
-    let mutated = false;
-    for (const next of pendingEvents.values()) {
-      const idx = eventIdToIndex.get(next.id);
-      if (idx !== undefined) {
-        if (buf[idx] !== next) {
-          if (!mutated) {
-            buf = buf.slice();
-            mutated = true;
-          }
-          buf[idx] = next;
-        }
-      } else {
-        if (!mutated) {
-          buf = buf.slice();
-          mutated = true;
-        }
-        buf.push(next);
-      }
-    }
-    pendingEvents.clear();
-    if (mutated) {
-      dashboard.events = buf;
-      rebuildEventIdIndex();
-      streamDirty = true;
-    }
-  }
+  streamDirty = flushPendingTrackableList(
+    pendingSignalDeletes, pendingSignals, signalIdToIndex,
+    () => dashboard.recentSignals,
+    (l) => { dashboard.recentSignals = l; },
+    rebuildSignalIdIndex,
+  ) || streamDirty;
 
-  if (pendingSignalDeletes.size > 0) {
-    dashboard.recentSignals = dashboard.recentSignals.filter(
-      (s) => !pendingSignalDeletes.has(s.id),
-    );
-    pendingSignalDeletes.clear();
-    rebuildSignalIdIndex();
-    streamDirty = true;
-  }
-
-  if (pendingSignals.size > 0) {
-    if (signalIdToIndex.size === 0 && dashboard.recentSignals.length > 0) {
-      rebuildSignalIdIndex();
-    }
-    let buf = dashboard.recentSignals;
-    let mutated = false;
-    for (const next of pendingSignals.values()) {
-      const idx = signalIdToIndex.get(next.id);
-      if (idx !== undefined) {
-        if (buf[idx] !== next) {
-          if (!mutated) {
-            buf = buf.slice();
-            mutated = true;
-          }
-          buf[idx] = next;
-        }
-      } else {
-        if (!mutated) {
-          buf = buf.slice();
-          mutated = true;
-        }
-        buf.push(next);
-      }
-    }
-    pendingSignals.clear();
-    if (mutated) {
-      dashboard.recentSignals = buf;
-      rebuildSignalIdIndex();
-      streamDirty = true;
-    }
-  }
-
-  if (pendingCausalDeletes.size > 0) {
-    dashboard.recentCausalEdges = dashboard.recentCausalEdges.filter(
-      (e) => !pendingCausalDeletes.has(e.id),
-    );
-    pendingCausalDeletes.clear();
-    rebuildCausalIdIndex();
-    streamDirty = true;
-  }
-
-  if (pendingCausalEdges.size > 0) {
-    if (causalIdToIndex.size === 0 && dashboard.recentCausalEdges.length > 0) {
-      rebuildCausalIdIndex();
-    }
-    let buf = dashboard.recentCausalEdges;
-    let mutated = false;
-    for (const next of pendingCausalEdges.values()) {
-      const idx = causalIdToIndex.get(next.id);
-      if (idx !== undefined) {
-        if (buf[idx] !== next) {
-          if (!mutated) {
-            buf = buf.slice();
-            mutated = true;
-          }
-          buf[idx] = next;
-        }
-      } else {
-        if (!mutated) {
-          buf = buf.slice();
-          mutated = true;
-        }
-        buf.push(next);
-      }
-    }
-    pendingCausalEdges.clear();
-    if (mutated) {
-      dashboard.recentCausalEdges = buf;
-      rebuildCausalIdIndex();
-      streamDirty = true;
-    }
-  }
+  streamDirty = flushPendingTrackableList(
+    pendingCausalDeletes, pendingCausalEdges, causalIdToIndex,
+    () => dashboard.recentCausalEdges,
+    (l) => { dashboard.recentCausalEdges = l; },
+    rebuildCausalIdIndex,
+  ) || streamDirty;
 
   if (pendingNarratives.size > 0) {
     const merged = { ...dashboard.eventNarratives };
@@ -575,29 +520,17 @@ export function flushPendingDashboardPatches(): PendingDashboardFlush {
   return { streamDirty, domainsDirty };
 }
 
-function commitEventsBuffer(buf: UiEvent[]): void {
-  if (batchEvents !== null) {
-    batchEvents = buf;
-  } else {
-    dashboard.events = buf;
-    eventIdToIndex.clear();
+function appendToSeverityHistory(
+  hist: Record<string, number[]>,
+  domain: string,
+  score: number,
+): void {
+  let arr = hist[domain] ?? [];
+  arr = arr.concat(score);
+  if (arr.length > MAX_SEVERITY_HISTORY) {
+    arr = arr.slice(arr.length - MAX_SEVERITY_HISTORY);
   }
-}
-
-function commitSignalsBuffer(buf: UiSignal[]): void {
-  if (batchSignals !== null) batchSignals = buf;
-  else {
-    dashboard.recentSignals = buf;
-    rebuildSignalIdIndex();
-  }
-}
-
-function commitCausalBuffer(buf: UiCausalEdge[]): void {
-  if (batchCausalEdges !== null) batchCausalEdges = buf;
-  else {
-    dashboard.recentCausalEdges = buf;
-    rebuildCausalIdIndex();
-  }
+  hist[domain] = arr;
 }
 
 const pendingSeverityByDomain = new Map<string, number[]>();
@@ -617,42 +550,32 @@ function queueSeverity(event: UiEvent): void {
 
 /** Called from `sortAndTrimDashboardBuffers` (debounced per frame). */
 export function flushPendingSeverityUpdates(): boolean {
-  if (batchSeverityEvents.length > 0) {
-    const nextHist = { ...dashboard.domainSeverityHistory };
-    for (const event of batchSeverityEvents) {
-      let hist = nextHist[event.domain] ?? [];
-      hist = hist.concat(event.severity_score);
-      if (hist.length > MAX_SEVERITY_HISTORY) {
-        hist = hist.slice(hist.length - MAX_SEVERITY_HISTORY);
-      }
-      nextHist[event.domain] = hist;
-    }
-    batchSeverityEvents.length = 0;
-    dashboard.domainSeverityHistory = nextHist;
-    return true;
-  }
-  if (pendingSeverityByDomain.size === 0) return false;
   const nextHist = { ...dashboard.domainSeverityHistory };
+  let dirty = false;
+
+  for (const event of batchSeverityEvents) {
+    appendToSeverityHistory(nextHist, event.domain, event.severity_score);
+    dirty = true;
+  }
+  batchSeverityEvents.length = 0;
+
   for (const [domain, scores] of pendingSeverityByDomain) {
-    let hist = nextHist[domain] ?? [];
     for (const score of scores) {
-      hist = hist.concat(score);
-      if (hist.length > MAX_SEVERITY_HISTORY) {
-        hist = hist.slice(hist.length - MAX_SEVERITY_HISTORY);
-      }
+      appendToSeverityHistory(nextHist, domain, score);
+      dirty = true;
     }
-    nextHist[domain] = hist;
   }
   pendingSeverityByDomain.clear();
-  dashboard.domainSeverityHistory = nextHist;
-  return true;
+
+  if (dirty) {
+    dashboard.domainSeverityHistory = nextHist;
+  }
+  return dirty;
 }
 
 function mergeEventInPlace(next: UiEvent): void {
   if (batchEvents !== null) {
-    commitEventsBuffer(
-      mergeOrAppendById(batchEvents, next, MAX_EVENTS_HARD_CEILING),
-    );
+    batchEvents.push(next);
     return;
   }
   pendingEvents.set(next.id, next);
@@ -705,7 +628,7 @@ export function removeEvent(id: bigint): void {
 export function applySignal(row: Signal): void {
   const next = projectSignal(row);
   if (batchSignals !== null) {
-    commitSignalsBuffer(mergeOrAppendById(batchSignals, next, MAX_SIGNALS * 2));
+    batchSignals.push(next);
     return;
   }
   pendingSignals.set(next.id, next);
@@ -724,9 +647,7 @@ export function removeSignal(id: bigint): void {
 export function applyCausalEdge(row: CausalEdge): void {
   const next = projectCausalEdge(row);
   if (batchCausalEdges !== null) {
-    commitCausalBuffer(
-      mergeOrAppendById(batchCausalEdges, next, MAX_CAUSAL_EDGES * 2),
-    );
+    batchCausalEdges.push(next);
     return;
   }
   pendingCausalEdges.set(next.id, next);
@@ -790,11 +711,12 @@ function evictOldestNarratives(
   const keys = Object.keys(bucket);
   if (keys.length <= max) return;
   keys
-    .sort(
-      (a, b) =>
-        Date.parse(bucket[a]!.updated_at) - Date.parse(bucket[b]!.updated_at),
-    )
-    .slice(0, keys.length - max)
+    .sort((a, b) => {
+      const da = bucket[a] ? Date.parse(bucket[a].updated_at) : 0;
+      const db = bucket[b] ? Date.parse(bucket[b].updated_at) : 0;
+      return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
+    })
+    .slice(max)
     .forEach((key) => {
       delete bucket[key];
     });
@@ -803,28 +725,4 @@ function evictOldestNarratives(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Insert-or-replace a row by id, cap the buffer at `max`. This is the
- * inverse of a "prepend-then-dedupe" — new rows land at the tail so
- * ordinal-ordered queries stay monotonically increasing.
- */
-function mergeOrAppendById<T extends { id: string }>(
-  buffer: readonly T[],
-  next: T,
-  max: number,
-): T[] {
-  const existingIdx = buffer.findIndex((row) => row.id === next.id);
-  let out: T[];
-  if (existingIdx >= 0) {
-    out = buffer.slice();
-    out[existingIdx] = next;
-  } else {
-    out = buffer.concat(next);
-  }
-  if (out.length > max) {
-    out.splice(0, out.length - max);
-  }
-  return out;
-}
 

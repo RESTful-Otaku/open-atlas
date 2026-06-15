@@ -69,7 +69,12 @@
     }
     loadError = null;
 
-    void loadViewForPattern(pattern)
+    const loadPromise = loadViewForPattern(pattern);
+    const timeoutMs = 15_000;
+    const timedOut = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`View load timed out after ${timeoutMs}ms`)), timeoutMs);
+    });
+    void Promise.race([loadPromise, timedOut])
       .then((component) => {
         if (gen !== loadGen) return;
         View = component;

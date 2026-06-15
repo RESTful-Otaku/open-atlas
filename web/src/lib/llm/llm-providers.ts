@@ -1,10 +1,12 @@
 import { requestGeminiInsight } from "./gemini-client";
+import { LLM_SYSTEM_PROMPT, parseApiError } from "./llm-shared";
 import {
   loadLlmProviderSettings,
   type LlmProviderId,
   type LlmProviderSettings,
 } from "./llm-providers-persist";
 import { llmBaseUrl, llmServiceConfigured, shouldProbeLlm } from "../native-config";
+import { probeFetch } from "../probe-fetch";
 import type { LlmInsightResponse } from "../llm";
 
 export { loadLlmProviderSettings, saveLlmProviderSettings, DEFAULT_LLM_PROVIDER_SETTINGS } from "./llm-providers-persist";
@@ -37,7 +39,7 @@ export async function checkLlmProviderReady(
   }
   if (!shouldProbeLlm()) return false;
   try {
-    const r = await fetch(`${llmBaseUrl()}/v1/ready`, { method: "GET" });
+    const r = await probeFetch(`${llmBaseUrl()}/v1/ready`, { method: "GET" }, 8_000);
     return r.ok;
   } catch {
     return false;
@@ -64,11 +66,7 @@ async function requestOpenAiCompatInsight(
       model,
       temperature: 0.35,
       messages: [
-        {
-          role: "system",
-          content:
-            "You are an operations analyst for OpenAtlas. Ground claims in the user JSON only.",
-        },
+        { role: "system", content: LLM_SYSTEM_PROMPT },
         {
           role: "user",
           content:
@@ -80,13 +78,7 @@ async function requestOpenAiCompatInsight(
   });
 
   if (!r.ok) {
-    let detail = r.statusText;
-    try {
-      const err = (await r.json()) as { error?: { message?: string } };
-      if (err.error?.message) detail = err.error.message;
-    } catch {
-      /* */
-    }
+    const detail = await parseApiError(r);
     throw new Error(`OpenAI API ${r.status}: ${detail}`);
   }
 
@@ -102,6 +94,7 @@ async function requestOpenAiCompatInsight(
 async function requestBridgeInsight(
   snapshot: Record<string, unknown>,
   userPrompt?: string,
+  settings = loadLlmProviderSettings(),
 ): Promise<LlmInsightResponse> {
   const url = `${llmBaseUrl()}/v1/insight`;
   const r = await fetch(url, {
@@ -110,16 +103,11 @@ async function requestBridgeInsight(
     body: JSON.stringify({
       snapshot,
       user_prompt: userPrompt?.trim() || undefined,
+      cpu_only: settings.cpuOnly || undefined,
     }),
   });
   if (!r.ok) {
-    let msg = r.statusText;
-    try {
-      const body = (await r.json()) as { error?: string };
-      if (body.error) msg = body.error;
-    } catch {
-      /* */
-    }
+    const msg = await parseApiError(r);
     throw new Error(msg);
   }
   return (await r.json()) as LlmInsightResponse;
@@ -143,7 +131,7 @@ export async function requestProviderLlmInsight(
     case "openai_compat":
       return await requestOpenAiCompatInsight(settings, snapshot, userPrompt);
     default:
-      return await requestBridgeInsight(snapshot, userPrompt);
+      return await requestBridgeInsight(snapshot, userPrompt, settings);
   }
 }
 

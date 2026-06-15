@@ -88,8 +88,23 @@
         detailTrackOpen = false;
       }
     });
-    return unsubLayout;
+    return () => {
+      unsubLayout();
+    };
   });
+
+  const sectionTimers: number[] = [];
+
+  function clearSectionTimers() {
+    for (const t of sectionTimers) {
+      clearTimeout(t);
+    }
+    sectionTimers.length = 0;
+  }
+
+  function setTimeoutId(fn: () => void, ms: number): void {
+    sectionTimers.push(window.setTimeout(fn, ms));
+  }
 
   function openSection(id: SettingsSectionId): void {
     activeSection = id;
@@ -98,7 +113,7 @@
     requestAnimationFrame(() => {
       detailTrackOpen = true;
       if (id === "ops") {
-        window.setTimeout(() => {
+        setTimeoutId(() => {
           opsConsoleReady = true;
         }, 480);
       }
@@ -107,6 +122,7 @@
 
   function closeSection(): void {
     if (!detailTrackOpen) return;
+    clearSectionTimers();
     opsConsoleReady = false;
     detailTrackOpen = false;
     if (typeof window === "undefined") {
@@ -128,7 +144,7 @@
       if (!detailTrackOpen) activeSection = null;
     };
     el.addEventListener("transitionend", onEnd);
-    window.setTimeout(() => {
+    setTimeoutId(() => {
       el.removeEventListener("transitionend", onEnd);
       if (!detailTrackOpen) activeSection = null;
     }, 400);
@@ -404,6 +420,7 @@
       class="settings-mobile-stack"
       class:is-detail={detailTrackOpen}
     >
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="settings-mobile-pane settings-mobile-pane--list"
         data-settings-menu
