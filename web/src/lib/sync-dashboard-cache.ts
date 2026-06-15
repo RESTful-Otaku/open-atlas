@@ -62,9 +62,7 @@ function topNarratives(rows: Iterable<EventNarrative>, limit: number): EventNarr
   for (const row of rows) {
     buf.push(row);
   }
-  buf.sort((a, b) =>
-    b.updatedAt.toISOString().localeCompare(a.updatedAt.toISOString()),
-  );
+  buf.sort((a, b) => Number(b.updatedAt.microsSinceUnixEpoch) - Number(a.updatedAt.microsSinceUnixEpoch));
   return buf.slice(0, limit);
 }
 
@@ -162,10 +160,11 @@ export function sortAndTrimDashboardBuffers(options?: {
   }
 
   const narratives = Object.values(dashboard.eventNarratives)
-    .sort(
-      (a, b) =>
-        Date.parse(b.updated_at) - Date.parse(a.updated_at),
-    )
+    .sort((a, b) => {
+      const da = Date.parse(a.updated_at);
+      const db = Date.parse(b.updated_at);
+      return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
+    })
     .slice(0, MAX_EVENT_NARRATIVES);
   const nextNarratives = Object.fromEntries(
     narratives.map((n) => [n.event_id, n]),

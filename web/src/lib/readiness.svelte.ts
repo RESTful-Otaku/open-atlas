@@ -159,12 +159,13 @@ export async function refreshRemoteReadiness(): Promise<void> {
         }),
       );
       if (llm !== null && shouldProbeLlm()) {
-        const llmDetail = await fetchLlmHealth();
-        appendOpsLog(
-          llmDetail.ready ? "ok" : llmDetail.configured ? "warn" : "info",
-          "llm",
-          formatLlmProbeLog(llmDetail),
-        );
+        fetchLlmHealth().then((llmDetail) => {
+          appendOpsLog(
+            llmDetail.ready ? "ok" : llmDetail.configured ? "warn" : "info",
+            "llm",
+            formatLlmProbeLog(llmDetail),
+          );
+        });
       } else if (usesClientSideLlm()) {
         appendOpsLog(
           readiness.llmReady ? "ok" : "warn",

@@ -1,20 +1,38 @@
-//! Per-feed circuit breaker — stops polling upstream after repeated failures
-//! (industry pattern: fail fast, manual recovery via Settings reconnect).
+//! Per-feed circuit breaker — stops polling upstream after repeated failures,
+//! auto-recovers after a cooldown period (half-open → probe → close or re-open).
+
+use chrono::Utc;
+use tracing::warn;
 
 use crate::{health, state::AppState};
 
 /// Open the circuit after this many consecutive failed poll cycles.
 pub const CIRCUIT_FAILURE_THRESHOLD: u32 = 5;
 
+/// After the circuit opens, wait this long before allowing a probe attempt.
+const AUTO_RECOVERY_DURATION_MINUTES: i64 = 5;
+
 pub async fn is_circuit_open(state: &AppState, feed: &str) -> bool {
     let feeds = state.feed_runtime.read().await;
-    feeds.get(feed).is_some_and(|h| h.circuit_open)
+    let Some(h) = feeds.get(feed) else {
+        return false;
+    };
+    if !h.circuit_open {
+        return false;
+    }
+    if let Some(since) = h.circuit_opened_since {
+        if Utc::now().signed_duration_since(since).num_minutes() >= AUTO_RECOVERY_DURATION_MINUTES {
+            return false;
+        }
+    }
+    true
 }
 
 pub async fn on_poll_success(state: &AppState, feed: &str) {
     let mut feeds = state.feed_runtime.write().await;
     if let Some(h) = feeds.get_mut(feed) {
         h.circuit_open = false;
+        h.circuit_opened_since = None;
     }
 }
 
@@ -22,7 +40,14 @@ pub async fn on_poll_failure(state: &AppState, feed: &str) {
     let mut feeds = state.feed_runtime.write().await;
     if let Some(h) = feeds.get_mut(feed) {
         if h.consecutive_failures >= CIRCUIT_FAILURE_THRESHOLD {
+            if !h.circuit_open {
+                warn!(
+                    "{feed}: circuit breaker opened after {threshold} consecutive failures",
+                    threshold = CIRCUIT_FAILURE_THRESHOLD,
+                );
+            }
             h.circuit_open = true;
+            h.circuit_opened_since = Some(Utc::now());
         }
     }
 }
@@ -32,6 +57,7 @@ pub async fn reset_circuit(state: &AppState, feed: &str) {
     let mut feeds = state.feed_runtime.write().await;
     if let Some(h) = feeds.get_mut(feed) {
         h.circuit_open = false;
+        h.circuit_opened_since = None;
         h.consecutive_failures = 0;
     }
 }

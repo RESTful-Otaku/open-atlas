@@ -21,9 +21,11 @@ export async function refreshFeedLive(): Promise<void> {
   if (dashboard.dataMode === "demo" || !shouldProbeIngest()) {
     feedLive.catalog = null;
     feedLive.error = null;
+    feedLive.loading = false;
     return;
   }
-  feedLive.loading = feedLive.catalog === null;
+  if (feedLive.loading) return;
+  feedLive.loading = true;
   const t0 = performance.now();
   try {
     feedLive.catalog = await fetchFeedCatalog();

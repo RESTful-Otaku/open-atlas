@@ -91,12 +91,14 @@ const SIMULATORS: &[Simulator] = &[
 ];
 
 pub fn spawn_simulators(state: AppState) {
-    for sim in SIMULATORS.iter() {
+    for (i, sim) in SIMULATORS.iter().enumerate() {
         let state = state.clone();
         let source = sim.source;
         let domain = sim.domain.clone();
         let tick_ms = sim.tick_ms;
         tokio::spawn(async move {
+            let jitter = Duration::from_millis(tick_ms / 4 * i as u64);
+            tokio::time::sleep(jitter).await;
             let mut interval = tokio::time::interval(Duration::from_millis(tick_ms));
             loop {
                 interval.tick().await;

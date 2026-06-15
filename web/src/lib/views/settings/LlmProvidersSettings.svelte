@@ -151,6 +151,19 @@
       Uses <code>{import.meta.env.VITE_LLM_BASE || "/api/llm"}</code> → local
       <code>openatlas-llm-bridge</code> and Ollama on your machine.
     </p>
+    <label class="field row">
+      <input
+        type="checkbox"
+        bind:checked={settings.cpuOnly}
+        onchange={persist}
+      />
+      <span>CPU-only mode
+        <span class="muted">
+          (use <code>num_gpu=0</code>; requires restarting Ollama with
+          <code>CUDA_VISIBLE_DEVICES=""</code> for full effect)
+        </span>
+      </span>
+    </label>
   {/if}
 
   <p class="settings-actions">

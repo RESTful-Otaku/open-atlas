@@ -97,10 +97,10 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
         let Some(current) = payload.current else {
             continue;
         };
-        let timestamp = NaiveDateTime::parse_from_str(&current.time, "%Y-%m-%dT%H:%M")
-            .ok()
-            .map(|naive| DateTime::from_naive_utc_and_offset(naive, Utc))
-            .unwrap_or_else(Utc::now);
+        let Ok(naive) = NaiveDateTime::parse_from_str(&current.time, "%Y-%m-%dT%H:%M") else {
+            continue;
+        };
+        let timestamp = DateTime::from_naive_utc_and_offset(naive, Utc);
         let wind = current.wind_speed_10m.unwrap_or(0.0);
         let precipitation = current.precipitation.unwrap_or(0.0);
         let severity_score = (ratio_severity(wind, WIND_SATURATION_KMH)

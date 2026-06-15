@@ -11,11 +11,14 @@ use tower::ServiceExt;
 /// Serializes env mutation — parallel tests would race on `OPENATLAS_API_KEY`.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+#[allow(clippy::await_holding_lock)]
 async fn with_env<F, Fut>(key: &str, value: Option<&str>, f: F)
 where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
+    // Lock must be held across the await to prevent other test binaries
+    // (running in parallel) from modifying the same env var.
     let _guard = ENV_LOCK.lock().expect("env lock");
     let prior = std::env::var(key).ok();
     match value {

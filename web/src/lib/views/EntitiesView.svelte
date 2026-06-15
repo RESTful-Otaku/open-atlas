@@ -212,7 +212,7 @@
               <td>
                 <span class="dom">{ev.domain}</span>
               </td>
-              <td class="mono">{ev.severity_score.toFixed(3)}</td>
+              <td class="mono">{Number.isFinite(ev.severity_score) ? ev.severity_score.toFixed(3) : "—"}</td>
               <td class="mono loc">
                 {#if ev.location}
                   {ev.location.lat.toFixed(2)}, {ev.location.lon.toFixed(2)}

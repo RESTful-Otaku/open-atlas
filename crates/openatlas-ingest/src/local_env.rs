@@ -23,8 +23,7 @@ fn load_env_file(path: &str) {
     for line in raw.lines() {
         if let Some((key, value)) = parse_env_line(line) {
             if std::env::var(&key).is_err() {
-                // SAFETY: single-process ingest; only sets unset keys from local files.
-                unsafe { std::env::set_var(key, value) };
+                std::env::set_var(key, value);
             }
         }
     }

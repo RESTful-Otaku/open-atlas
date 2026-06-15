@@ -85,14 +85,11 @@
   );
 
   $effect(() => {
-    if (!catalog) {
+    if (catalog) {
+      setSelectedDomain(catalog.id);
+    } else {
       setSelectedDomain(null);
-      return;
     }
-    setSelectedDomain(catalog.id);
-    return () => {
-      setSelectedDomain(null);
-    };
   });
 
   function sortEventsForDomain(rows: readonly UiEvent[]): UiEvent[] {
@@ -357,7 +354,7 @@
                         type="button"
                         class="cell-btn mono"
                         onclick={() => openEvent(e.id)}
-                      >{e.severity_score.toFixed(2)}</button>
+                      >{Number.isFinite(e.severity_score) ? e.severity_score.toFixed(2) : "—"}</button>
                     </td>
                   </tr>
                 {/each}

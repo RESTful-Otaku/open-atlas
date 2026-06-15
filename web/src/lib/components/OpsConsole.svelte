@@ -67,6 +67,7 @@
     return true;
   }
 
+  // svelte-ignore state_referenced_locally
   let expanded = $state(mobilePanel ? true : readExpandedDefault());
 
   $effect(() => {

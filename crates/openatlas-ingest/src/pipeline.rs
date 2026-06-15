@@ -103,6 +103,30 @@ pub async fn push_events_via_state(
     .await
 }
 
+async fn push_events_single(
+    stdb: &StdbClient,
+    events: &[WorldEvent],
+    source_label: &str,
+    source_url: &str,
+) -> BatchPushResult {
+    let mut result = BatchPushResult::default();
+    for event in events {
+        match stdb.ingest_event(event, source_label, source_url).await {
+            Ok(IngestOutcome::Accepted) => result.accepted += 1,
+            Ok(IngestOutcome::Duplicate) => result.duplicates += 1,
+            Err(error) => {
+                let msg = error.to_string();
+                if msg.contains("failed pre-flight validation") {
+                    result.rejected += 1;
+                } else {
+                    result.transport_errors += 1;
+                }
+            }
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,33 +166,7 @@ mod tests {
 
     #[test]
     fn stdb_batch_chunk_within_module_max() {
-        assert!(STDB_BATCH_CHUNK <= 128);
-        assert!(STDB_BATCH_CHUNK > 0);
+        const { assert!(STDB_BATCH_CHUNK <= 128); }
+        const { assert!(STDB_BATCH_CHUNK > 0); }
     }
-}
-
-async fn push_events_single(
-    stdb: &StdbClient,
-    events: &[WorldEvent],
-    source_label: &str,
-    source_url: &str,
-) -> BatchPushResult {
-    let mut result = BatchPushResult::default();
-    for event in events {
-        match stdb.ingest_event(event, source_label, source_url).await {
-            Ok(IngestOutcome::Accepted) => result.accepted += 1,
-            Ok(IngestOutcome::Duplicate) => result.duplicates += 1,
-            Err(error) => {
-                let msg = error.to_string();
-                if msg.contains("duplicate event id") {
-                    result.duplicates += 1;
-                } else if msg.contains("failed pre-flight validation") {
-                    result.rejected += 1;
-                } else {
-                    result.transport_errors += 1;
-                }
-            }
-        }
-    }
-    result
 }

@@ -47,12 +47,14 @@ pub struct WorldGraph {
     domain_aggregates: HashMap<Domain, DomainAggregate>,
     recent_by_domain: HashMap<Domain, VecDeque<Uuid>>,
     recent_window_size: usize,
+    signal_ring_size: usize,
+    causal_edge_ring_size: usize,
     inference: Box<dyn InferenceEngine>,
 }
 
 impl Default for WorldGraph {
     fn default() -> Self {
-        Self::new(Box::<ThresholdInferenceEngine>::default(), 256)
+        Self::new(Box::<ThresholdInferenceEngine>::default(), 256, 400, 600)
     }
 }
 
@@ -60,7 +62,13 @@ impl WorldGraph {
     /// Construct a graph with an explicit inference backend and recent-event
     /// window size. The window is a hard bound; anomaly detection only ever
     /// inspects the last `recent_window_size` events per domain.
-    pub fn new(inference: Box<dyn InferenceEngine>, recent_window_size: usize) -> Self {
+    /// `signal_ring_size` and `causal_edge_ring_size` cap derivative data growth.
+    pub fn new(
+        inference: Box<dyn InferenceEngine>,
+        recent_window_size: usize,
+        signal_ring_size: usize,
+        causal_edge_ring_size: usize,
+    ) -> Self {
         assert!(recent_window_size > 0, "recent_window_size must be > 0");
         Self {
             events: HashMap::new(),
@@ -71,6 +79,8 @@ impl WorldGraph {
             domain_aggregates: HashMap::new(),
             recent_by_domain: HashMap::new(),
             recent_window_size,
+            signal_ring_size,
+            causal_edge_ring_size,
             inference,
         }
     }
@@ -91,6 +101,7 @@ impl WorldGraph {
         let domain = event.domain.clone();
         let event_id = event.id;
         let event_ts = event.timestamp;
+        let location = event.location.clone();
         self.update_domain_aggregate(&domain, event.severity_score);
         self.events.insert(event_id, event);
         self.track_recent_event(domain.clone(), event_id);
@@ -99,6 +110,19 @@ impl WorldGraph {
         let recent_events = self.recent_events_for_domain(&domain);
         let new_signals = self.inference.detect_anomaly(&recent_events);
         self.signals.extend(new_signals.clone());
+        self.prune_signals();
+        self.prune_causal_edges();
+        if let Some(ref loc) = location {
+            self.entity_nodes.insert(
+                event_id,
+                EntityNode {
+                    id: event_id,
+                    label: format!("{:?}:{}:{}", domain, loc.lat, loc.lon),
+                    domain: domain.clone(),
+                    metadata: serde_json::json!({}),
+                },
+            );
+        }
         Ok(new_signals)
     }
 
@@ -170,6 +194,20 @@ impl WorldGraph {
             .filter(|event| match_filters(event, filters))
             .cloned()
             .collect()
+    }
+
+    fn prune_signals(&mut self) {
+        let excess = self.signals.len().saturating_sub(self.signal_ring_size);
+        if excess > 0 {
+            self.signals.drain(..excess);
+        }
+    }
+
+    fn prune_causal_edges(&mut self) {
+        let excess = self.causal_edges.len().saturating_sub(self.causal_edge_ring_size);
+        if excess > 0 {
+            self.causal_edges.drain(..excess);
+        }
     }
 
     fn track_recent_event(&mut self, domain: Domain, event_id: Uuid) {

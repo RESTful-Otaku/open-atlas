@@ -61,7 +61,7 @@ source "${SCRIPT_DIR}/scripts/load-local-env.sh"
 # Set OPENATLAS_START_LLM=0 to skip auto-starting the bridge (Settings hub AI
 # analysis will be unavailable until you run it manually).
 # Set OPENATLAS_START_OLLAMA=0 to skip auto-starting Ollama (bridge still starts).
-# Set OPENATLAS_OLLAMA_CPU=1 to force CPU-only Ollama (GTX 10xx CUDA errors).
+# CPU-only Ollama (default; set OPENATLAS_OLLAMA_CPU=0 to re-enable GPU).
 : "${LLM_LISTEN_ADDR:=127.0.0.1:3847}"
 : "${LLM_PID_FILE:=${DEV_DIR}/llm-bridge.pid}"
 : "${LLM_LOG_FILE:=${DEV_DIR}/llm-bridge.log}"
@@ -69,7 +69,7 @@ source "${SCRIPT_DIR}/scripts/load-local-env.sh"
 : "${LLM_READY_TIMEOUT_SECS:=90}"
 : "${OPENATLAS_START_OLLAMA:=1}"
 : "${OPENATLAS_OLLAMA_AUTO_PULL:=1}"
-: "${OPENATLAS_OLLAMA_CPU:=0}"
+: "${OPENATLAS_OLLAMA_CPU:=1}"
 : "${OLLAMA_PID_FILE:=${DEV_DIR}/ollama.pid}"
 : "${OLLAMA_LOG_FILE:=${DEV_DIR}/ollama.log}"
 : "${OLLAMA_READY_TIMEOUT_SECS:=60}"
@@ -1177,7 +1177,7 @@ ensure_ollama_running() {
 
     if ! wait_for_ollama_api "$host"; then
         style_err "Ollama did not become ready within ${OLLAMA_READY_TIMEOUT_SECS}s"
-        style_muted "GPU/CUDA errors: OPENATLAS_OLLAMA_CPU=1 ./dev.sh up  or  ./dev.sh ollama:cpu"
+        style_muted "GPU/CUDA errors (unlikely with CPU default): OPENATLAS_OLLAMA_CPU=1 ./dev.sh up  →  GPU re-enable: OPENATLAS_OLLAMA_CPU=0"
         return 1
     fi
     style_ok "Ollama API ready at http://${host}"
@@ -1271,7 +1271,7 @@ wait_for_llm_bridge_healthy() {
 }
 
 do_ollama_start() {
-    OPENATLAS_OLLAMA_CPU="${OPENATLAS_OLLAMA_CPU:-0}"
+    OPENATLAS_OLLAMA_CPU="${OPENATLAS_OLLAMA_CPU:-1}"
     ensure_ollama_running
 }
 

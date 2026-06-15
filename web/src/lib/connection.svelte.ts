@@ -29,14 +29,6 @@
  */
 
 import { DbConnection, type EventContext } from "./stdb";
-import type {
-  CausalEdge,
-  DomainInsight,
-  Event,
-  EventNarrative,
-  Signal,
-  WorldStateRow,
-} from "./stdb/types";
 import {
   applyCausalEdge,
   applyDomainInsight,
@@ -79,12 +71,15 @@ const DEFAULT_MODULE = "openatlas";
 let activeConnection: DbConnection | null = null;
 let shuttingDown = false;
 let connectionOpening = false;
+let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectAttempts = 0;
 const MAX_AUTO_RECONNECT_ATTEMPTS = 8;
 const RECONNECT_BASE_MS = 2_000;
+const CONNECTION_TIMEOUT_MS = 15_000;
 let narrativeHandlersInstalled = false;
 let narrativeSubscriptionActive = false;
+let narrativeSubscriptionHandle: { unsubscribe: () => void } | null = null;
 /** Views that need narrative rows (Hub, event detail, map with hover). */
 let narrativeConsumerCount = 0;
 
@@ -104,6 +99,13 @@ function clearReconnectTimer(): void {
     reconnectTimer = undefined;
   }
   syncReconnectUi();
+}
+
+function clearConnectionTimer(): void {
+  if (connectionTimer !== undefined) {
+    clearTimeout(connectionTimer);
+    connectionTimer = undefined;
+  }
 }
 
 function scheduleAutoReconnect(): void {
@@ -232,9 +234,20 @@ function openConnection(): void {
   if (activeConnection) return;
 
   clearReconnectTimer();
+  clearConnectionTimer();
   connectionOpening = true;
   setConnection("connecting");
   logStdbConnecting();
+  connectionTimer = setTimeout(() => {
+    connectionTimer = undefined;
+    if (activeConnection) {
+      try { activeConnection.disconnect(); } catch { /* */ }
+    }
+    activeConnection = null;
+    connectionOpening = false;
+    setConnectionLastError("Connection timed out");
+    handleLostConnection();
+  }, CONNECTION_TIMEOUT_MS);
   const uri = resolveStdbWebSocketUri();
   const db = stdbDatabaseName() || DEFAULT_MODULE;
   if (import.meta.env.DEV) {
@@ -288,6 +301,8 @@ function openConnection(): void {
 }
 
 function onConnected(connection: DbConnection): void {
+  clearConnectionTimer();
+  if (connection !== activeConnection) return;
   connectionOpening = false;
   reconnectAttempts = 0;
   dashboard.autoReconnectAttempt = 0;
@@ -314,63 +329,48 @@ function withRowMutation(fn: () => void): void {
   }
 }
 
+function onInsert<T>(apply: (row: T) => void) {
+  return (_ctx: EventContext, row: T) => withRowMutation(() => apply(row));
+}
+
+function onUpdate<T>(apply: (row: T) => void) {
+  return (_ctx: EventContext, _old: T, row: T) => withRowMutation(() => apply(row));
+}
+
+function onDelete(remove: (id: bigint) => void) {
+  return (_ctx: EventContext, row: { id: bigint }) =>
+    withRowMutation(() => remove(row.id));
+}
+
 function installRowHandlers(connection: DbConnection): void {
   const db = connection.db;
 
-  db.event.onInsert((_ctx: EventContext, row: Event) =>
-    withRowMutation(() => applyEvent(row)),
-  );
-  db.event.onUpdate((_ctx: EventContext, _old: Event, row: Event) =>
-    withRowMutation(() => applyEvent(row)),
-  );
-  db.event.onDelete((_ctx: EventContext, row: Event) =>
-    withRowMutation(() => removeEvent(row.id)),
-  );
+  db.event.onInsert(onInsert(applyEvent));
+  db.event.onUpdate(onUpdate(applyEvent));
+  db.event.onDelete(onDelete(removeEvent));
 
-  db.signal.onInsert((_ctx: EventContext, row: Signal) =>
-    withRowMutation(() => applySignal(row)),
-  );
-  db.signal.onDelete((_ctx: EventContext, row: Signal) =>
-    withRowMutation(() => removeSignal(row.id)),
-  );
+  db.signal.onInsert(onInsert(applySignal));
+  db.signal.onDelete(onDelete(removeSignal));
 
-  db.causal_edge.onInsert((_ctx: EventContext, row: CausalEdge) =>
-    withRowMutation(() => applyCausalEdge(row)),
-  );
-  db.causal_edge.onDelete((_ctx: EventContext, row: CausalEdge) =>
-    withRowMutation(() => removeCausalEdge(row.id)),
-  );
+  db.causal_edge.onInsert(onInsert(applyCausalEdge));
+  db.causal_edge.onDelete(onDelete(removeCausalEdge));
 
-  db.world_state.onInsert((_ctx: EventContext, row: WorldStateRow) =>
-    withRowMutation(() => applyWorldState(row)),
-  );
-  db.world_state.onUpdate(
-    (_ctx: EventContext, _old: WorldStateRow, row: WorldStateRow) =>
-      withRowMutation(() => applyWorldState(row)),
-  );
+  db.world_state.onInsert(onInsert(applyWorldState));
+  db.world_state.onUpdate(onUpdate(applyWorldState));
 
-  db.domain_insight.onInsert((_ctx: EventContext, row: DomainInsight) =>
-    withRowMutation(() => applyDomainInsight(row)),
-  );
-  db.domain_insight.onUpdate(
-    (_ctx: EventContext, _old: DomainInsight, row: DomainInsight) =>
-      withRowMutation(() => applyDomainInsight(row)),
-  );
+  db.domain_insight.onInsert(onInsert(applyDomainInsight));
+  db.domain_insight.onUpdate(onUpdate(applyDomainInsight));
 }
 
 function installNarrativeRowHandlers(connection: DbConnection): void {
   if (narrativeHandlersInstalled) return;
   narrativeHandlersInstalled = true;
   const db = connection.db;
-  db.event_narrative.onInsert((_ctx: EventContext, row: EventNarrative) =>
-    withRowMutation(() => applyEventNarrative(row)),
-  );
-  db.event_narrative.onUpdate(
-    (_ctx: EventContext, _old: EventNarrative, row: EventNarrative) =>
-      withRowMutation(() => applyEventNarrative(row)),
-  );
-  db.event_narrative.onDelete((_ctx: EventContext, row: EventNarrative) =>
-    withRowMutation(() => removeEventNarrative(row.eventId)),
+  db.event_narrative.onInsert(onInsert(applyEventNarrative));
+  db.event_narrative.onUpdate(onUpdate(applyEventNarrative));
+  db.event_narrative.onDelete(
+    (_ctx: EventContext, row: { eventId: bigint }) =>
+      withRowMutation(() => removeEventNarrative(row.eventId)),
   );
 }
 
@@ -384,7 +384,7 @@ export function ensureNarrativeSubscription(): void {
   if (!connection || narrativeSubscriptionActive) return;
   narrativeSubscriptionActive = true;
   installNarrativeRowHandlers(connection);
-  connection
+  const handle = connection
     .subscriptionBuilder()
     .onApplied(() => {
       hydrateNarrativesFromConnection(connection);
@@ -393,6 +393,7 @@ export function ensureNarrativeSubscription(): void {
       console.warn("event_narrative subscription error", ctx);
     })
     .subscribe([...NARRATIVE_SUBSCRIPTION_QUERIES]);
+  narrativeSubscriptionHandle = handle;
 }
 
 /**
@@ -405,6 +406,15 @@ export function acquireNarrativeSubscription(): () => void {
   ensureNarrativeSubscription();
   return () => {
     narrativeConsumerCount = Math.max(0, narrativeConsumerCount - 1);
+    if (narrativeConsumerCount === 0 && narrativeSubscriptionHandle) {
+      try {
+        narrativeSubscriptionHandle.unsubscribe();
+      } catch {
+        /* already torn down */
+      }
+      narrativeSubscriptionHandle = null;
+      narrativeSubscriptionActive = false;
+    }
   };
 }
 
@@ -414,7 +424,6 @@ export function acquireNarrativeSubscription(): () => void {
  * SQL rejects ORDER BY and LIMIT on some tables (e.g. event_narrative).
  */
 function subscribeDashboardQueries(connection: DbConnection): void {
-  installNarrativeRowHandlers(connection);
   connection
     .subscriptionBuilder()
     .onApplied(() => {
@@ -451,9 +460,11 @@ function formatSubscriptionError(err: unknown): string {
 }
 
 function handleLostConnection(): void {
+  clearConnectionTimer();
   connectionOpening = false;
   narrativeHandlersInstalled = false;
   narrativeSubscriptionActive = false;
+  narrativeSubscriptionHandle = null;
   const prev = activeConnection;
   activeConnection = null;
   if (prev) {

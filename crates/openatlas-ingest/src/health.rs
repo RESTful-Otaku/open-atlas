@@ -36,6 +36,8 @@ pub struct FeedHealth {
     pub(crate) next_poll_at: Option<DateTime<Utc>>,
     /// When true, the supervisor skips upstream fetch until manual reconnect.
     pub(crate) circuit_open: bool,
+    /// When the circuit was opened (for auto-recovery cooldown).
+    pub(crate) circuit_opened_since: Option<DateTime<Utc>>,
 }
 
 /// `/status` response body. The ingest service no longer owns the world
@@ -94,6 +96,7 @@ pub async fn initialize_feed_runtime(state: &AppState, mode: IngestMode) {
                 last_poll_at: None,
                 next_poll_at: None,
                 circuit_open: false,
+                circuit_opened_since: None,
             },
         );
     }
@@ -161,20 +164,6 @@ pub(crate) async fn sync_poll_intervals_from_config(state: &AppState) {
     }
 }
 
-/// Exponential backoff with a fixed ceiling. Doubling keeps the math simple
-/// and deterministic; the 5-minute cap prevents runaway delay after long
-/// outages.
-#[allow(dead_code)]
-pub(crate) fn next_backoff(current: Duration) -> Duration {
-    const MAX_BACKOFF: Duration = Duration::from_secs(300);
-    let next = current.saturating_mul(2);
-    if next > MAX_BACKOFF {
-        MAX_BACKOFF
-    } else {
-        next
-    }
-}
-
 pub(crate) async fn record_feed_test(
     state: &AppState,
     feed_name: &str,
@@ -220,17 +209,4 @@ pub(crate) async fn clear_feed_backoff(state: &AppState, feed_name: &str) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn backoff_doubles_until_cap() {
-        let a = next_backoff(Duration::from_secs(30));
-        assert_eq!(a, Duration::from_secs(60));
-        let b = next_backoff(Duration::from_secs(180));
-        assert_eq!(b, Duration::from_secs(300));
-        let c = next_backoff(Duration::from_secs(600));
-        assert_eq!(c, Duration::from_secs(300));
-    }
-}
