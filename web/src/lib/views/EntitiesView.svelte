@@ -184,26 +184,34 @@
       </thead>
       <tbody>
         {#if rows.length === 0}
-          <tr>
-            <td class="td-empty" colspan="6">
-              {#if dashboard.dataMode === "demo"}
+          {#if dashboard.dataMode === "demo"}
+            <tr>
+              <td class="td-empty" colspan="6">
                 No events match the current filter. Demo mode should show hundreds
                 of rows — try Settings → Re-seed demo data.
-              {:else if dashboard.connection !== "live"}
-                Not connected to SpacetimeDB ({dashboard.connection}).
-                {#if dashboard.connectionLastError}
-                  {dashboard.connectionLastError}
-                {/if}
-                Use Reconnect in the status pill or ./dev.sh up then ./dev.sh web.
-              {:else if dashboard.events.length === 0}
+              </td>
+            </tr>
+          {:else if dashboard.connection !== "live"}
+            {#each Array(6) as _}
+              <tr>
+                <td colspan="6"><div class="skel-row"><div class="skel-cell w-8"></div><div class="skel-cell w-30"></div><div class="skel-cell w-12"></div><div class="skel-cell w-10"></div><div class="skel-cell w-20"></div><div class="skel-cell w-16"></div></div></td>
+              </tr>
+            {/each}
+          {:else if dashboard.events.length === 0}
+            <tr>
+              <td class="td-empty" colspan="6">
                 Connected but the event buffer is empty. Start ingest with
                 <code>./dev.sh up</code> (hybrid recommended) and wait a few seconds.
-              {:else}
+              </td>
+            </tr>
+          {:else}
+            <tr>
+              <td class="td-empty" colspan="6">
                 No events match the domain or search filter. Clear the domain
                 chip above or widen your search.
-              {/if}
-            </td>
-          </tr>
+              </td>
+            </tr>
+          {/if}
         {:else}
           {#each rows as ev (ev.id)}
             <tr ondblclick={() => goGlobeFor(ev)}>
@@ -421,5 +429,31 @@
     margin-top: var(--space-3);
     font-size: 12px;
     color: var(--text-3);
+  }
+
+  .skel-row {
+    display: flex;
+    gap: 12px;
+    padding: 4px 0;
+    align-items: center;
+  }
+
+  .skel-cell {
+    height: 10px;
+    background: var(--bg-3);
+    border-radius: 4px;
+    animation: skel-pulse 1.8s ease-in-out infinite;
+  }
+
+  .skel-cell.w-8 { width: 8%; }
+  .skel-cell.w-10 { width: 10%; }
+  .skel-cell.w-12 { width: 12%; }
+  .skel-cell.w-16 { width: 16%; }
+  .skel-cell.w-20 { width: 20%; }
+  .skel-cell.w-30 { width: 30%; }
+
+  @keyframes skel-pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 0.6; }
   }
 </style>

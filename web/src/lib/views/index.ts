@@ -12,6 +12,7 @@
 
 import type { Icon as IconComponent } from "@lucide/svelte";
 import {
+  Activity,
   Boxes,
   ChartSpline,
   FileText,
@@ -118,6 +119,14 @@ export const VIEW_CATALOG: readonly ViewCatalogEntry[] = [
     title: "Event Detail",
     icon: FileText,
     nav: false,
+  },
+  {
+    id: "health",
+    pattern: "/health",
+    title: "System Health",
+    navDescription: "STDB, LLM, feed health, circuit states, and metrics",
+    icon: Activity,
+    nav: true,
   },
   {
     id: "settings",

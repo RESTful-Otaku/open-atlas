@@ -22,7 +22,7 @@
   import BriefingMarkdown from "../components/BriefingMarkdown.svelte";
   import { NumericIndexBadge } from "../primitives";
   import { META_ICONS } from "../domain-icons";
-  import { domainLabel } from "../colors";
+
   import { navigate } from "../router.svelte";
 
   import CompactNumber from "../components/CompactNumber.svelte";
@@ -291,8 +291,19 @@
 
   {#if tiles.length === 0}
     <div class="hub-empty">
-      <span>Waiting for the first event ring…</span>
-      <small>The hub populates as soon as {domainLabel("energy")} and peers report in.</small>
+      <div class="skeleton-grid">
+        {#each Array(8) as _}
+          <div class="skeleton-card">
+            <div class="skeleton-line w-40"></div>
+            <div class="skeleton-line w-25"></div>
+            <div class="skeleton-line w-60 skeleton-metric"></div>
+            <div class="skeleton-row">
+              <div class="skeleton-line w-20 pill"></div>
+              <div class="skeleton-line w-30 pill"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
     </div>
   {/if}
 </section>
@@ -475,18 +486,58 @@
     cursor: pointer;
   }
   .hub-empty {
+    padding-top: 8px;
+  }
+
+  .skeleton-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .skeleton-card {
+    padding: 18px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-1);
+    border-radius: var(--radius-md);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    padding: var(--space-10);
-    border: 1px dashed var(--border-2);
-    border-radius: var(--radius-lg);
-    color: var(--text-2);
+    gap: 10px;
   }
-  .hub-empty small {
-    color: var(--text-3);
+
+  .skeleton-line {
+    height: 12px;
+    background: var(--bg-3);
+    border-radius: 6px;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+
+  .skeleton-line.pill {
+    width: 50px;
+    height: 18px;
+    border-radius: 999px;
+  }
+
+  .skeleton-line.w-40 { width: 40%; }
+  .skeleton-line.w-25 { width: 25%; }
+  .skeleton-line.w-60 { width: 60%; }
+  .skeleton-line.w-20 { width: 20%; }
+  .skeleton-line.w-30 { width: 30%; }
+
+  .skeleton-metric {
+    height: 24px;
+    margin-top: 4px;
+  }
+
+  .skeleton-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.7; }
   }
 
   @media (max-width: 1200px) {
