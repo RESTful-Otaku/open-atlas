@@ -20,6 +20,7 @@ const LOADERS: Record<string, () => Promise<ViewModule>> = {
   "/matrix/:id": () => import("./views/MatrixHostView.svelte"),
   "/entities": () => import("./views/EntitiesView.svelte"),
   "/legacy": () => import("./views/LegacyView.svelte"),
+  "/health": () => import("./views/HealthView.svelte"),
   "/settings": () => import("./views/SettingsView.svelte"),
   "/events/:id": () => import("./views/EventDetailView.svelte"),
 };

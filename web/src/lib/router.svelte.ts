@@ -48,6 +48,7 @@ export const ROUTE_TABLE = [
   ...DOMAIN_VIEW_PATHS,
   "/entities",
   "/events/:id",
+  "/health",
   "/settings",
   "/legacy",
 ] as const;
