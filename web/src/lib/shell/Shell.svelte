@@ -52,14 +52,14 @@
     const startBackgroundPolls = (): void => {
       if (readinessPoll !== undefined) return;
       if (dashboard.dataMode !== "demo") {
-        void refreshRemoteReadiness();
+        void refreshRemoteReadiness().catch(() => {});
       }
-      void refreshFeedLive();
+      void refreshFeedLive().catch(() => {});
       readinessPoll = window.setInterval(
-        () => void refreshRemoteReadiness(),
+        () => void refreshRemoteReadiness().catch(() => {}),
         60_000,
       );
-      feedPoll = window.setInterval(() => void refreshFeedLive(), 60_000);
+      feedPoll = window.setInterval(() => void refreshFeedLive().catch(() => {}), 60_000);
     };
 
     const stopBackgroundPolls = (): void => {

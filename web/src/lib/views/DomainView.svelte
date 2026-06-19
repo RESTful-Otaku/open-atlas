@@ -699,8 +699,7 @@
     max-width: 100%;
   }
   .data-table {
-    width: max-content;
-    min-width: 100%;
+    width: 100%;
     border-collapse: collapse;
     font-size: 0.78rem;
   }

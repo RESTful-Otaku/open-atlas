@@ -34,8 +34,20 @@ pub fn load_poll_config() -> FeedPollConfigFile {
     if !path.exists() {
         return FeedPollConfigFile::default();
     }
-    let raw = fs::read_to_string(&path).unwrap_or_default();
-    serde_json::from_str(&raw).unwrap_or_default()
+    let raw = match fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("failed to read feed poll config {:?}: {e}", path);
+            return FeedPollConfigFile::default();
+        }
+    };
+    match serde_json::from_str(&raw) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            tracing::warn!("feed poll config {:?} has invalid JSON: {e}", path);
+            FeedPollConfigFile::default()
+        }
+    }
 }
 
 pub fn save_poll_config(file: &FeedPollConfigFile) -> Result<()> {
@@ -84,12 +96,22 @@ pub fn effective_interval(feed: &str, default: Duration) -> Duration {
     Duration::from_secs(effective_interval_secs(feed, default.as_secs()))
 }
 
+fn is_known_default(interval_secs: u64, feed: &str) -> bool {
+    match feed {
+        "usgs" => interval_secs == 45,
+        "coingecko" => interval_secs == 90,
+        "nasa-eonet" => interval_secs == 180,
+        "open-meteo" => interval_secs == 60,
+        _ => false,
+    }
+}
+
 pub fn validate_poll_intervals(updates: &HashMap<String, u64>) -> Result<()> {
     for (feed, secs) in updates {
         let Some(descriptor) = feeds::descriptor_for(feed) else {
             anyhow::bail!("unknown feed '{feed}'");
         };
-        if !POLL_INTERVAL_OPTIONS_SECS.contains(secs) {
+        if !POLL_INTERVAL_OPTIONS_SECS.contains(secs) && !is_known_default(*secs, feed) {
             anyhow::bail!(
                 "invalid poll interval {secs}s for {feed} — choose one of: {}",
                 POLL_INTERVAL_OPTIONS_SECS
@@ -151,8 +173,13 @@ mod tests {
         ok.insert("usgs".to_owned(), 60);
         assert!(validate_poll_intervals(&ok).is_ok());
 
+        // Known defaults (e.g. 45s for USGS) are also accepted
+        let mut default_ok = HashMap::new();
+        default_ok.insert("usgs".to_owned(), 45);
+        assert!(validate_poll_intervals(&default_ok).is_ok());
+
         let mut bad = HashMap::new();
-        bad.insert("usgs".to_owned(), 45);
+        bad.insert("usgs".to_owned(), 42);
         assert!(validate_poll_intervals(&bad).is_err());
     }
 }

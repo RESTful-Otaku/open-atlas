@@ -7,7 +7,7 @@ use web_sys::Document;
 
 use crate::{layout::domain_color, state::UiState};
 
-use super::require_element;
+use super::{escape_html, require_element};
 
 pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue> {
     let panel = require_element(document, "insight-panels")?;
@@ -38,10 +38,17 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
             .as_ref()
             .map(|link| {
                 format!(
-                    r#"<a href="{link}" target="_blank" rel="noopener noreferrer">{source_label}</a>"#,
+                    r#"<a href="{link}" target="_blank" rel="noopener noreferrer">{label}</a>"#,
+                    link = escape_html(link),
+                    label = escape_html(&source_label),
                 )
             })
-            .unwrap_or(source_label);
+            .unwrap_or_else(|| escape_html(&source_label));
+
+        let domain = escape_html(&insight.domain);
+        let trend = escape_html(&insight.trend);
+        let narrative = escape_html(&insight.narrative);
+        let updated_at = escape_html(&insight.updated_at);
 
         let _ = std::fmt::Write::write_fmt(
             &mut html,
@@ -64,12 +71,7 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
                   </div>
                 </article>"#,
                 color = color,
-                domain = insight.domain,
-                trend = insight.trend,
-                narrative = insight.narrative,
                 anomalies = insight.anomaly_count_recent,
-                source_html = source_html,
-                updated_at = insight.updated_at,
             ),
         );
     }
@@ -84,4 +86,24 @@ fn empty_state() -> String {
       Narratives appear as the inference layer finds patterns.
     </div>"#
         .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::empty_state;
+
+    #[test]
+    fn empty_state_contains_message() {
+        let html = empty_state();
+        assert!(html.contains("No insights yet"));
+        assert!(html.contains("empty-state"));
+        assert!(html.contains("Narratives"));
+    }
+
+    #[test]
+    fn empty_state_is_div() {
+        let html = empty_state();
+        assert!(html.starts_with(r#"<div class="empty-state""#));
+        assert!(html.ends_with("</div>"));
+    }
 }

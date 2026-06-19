@@ -1,0 +1,1237 @@
+/* =========================================================================
+   OpenAtlas — Design system + global styles.
+   Minimalist, dark-first, token-driven. Every component reads from
+   these custom properties so the product identity (cyan → violet
+   gradient + per-domain colour pops) stays consistent.
+   ========================================================================= */
+
+:root {
+  color-scheme: dark;
+
+  /* Surface hierarchy. */
+  --bg-0: #09090b;
+  --bg-1: #101013;
+  --bg-2: #17171b;
+  --bg-3: #1f1f24;
+  --bg-glass: rgba(17, 17, 20, 0.72);
+
+  /* Borders. */
+  --border-1: rgba(255, 255, 255, 0.06);
+  --border-2: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --overlay-weak: rgba(255, 255, 255, 0.03);
+  --overlay: rgba(255, 255, 255, 0.05);
+
+  /* Text. */
+  --text-1: #f4f4f5;
+  --text-2: #a1a1aa;
+  --text-3: #71717a;
+  --text-muted: #52525b;
+
+  /* Brand identity. */
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, 0.14);
+  --accent-strong: #06b6d4;
+  --accent-violet: #a78bfa;
+  --accent-violet-soft: rgba(167, 139, 250, 0.14);
+
+  /* Severity scale. */
+  --sev-low: #22c55e;
+  --sev-mid: #f59e0b;
+  --sev-high: #ef4444;
+  --sev-critical: #f43f5e;
+
+  /* Status. */
+  --status-ok: #22c55e;
+  --status-warn: #f59e0b;
+  --status-err: #ef4444;
+
+  /* Domain palette (mirror DOMAIN_CATALOG in lib/colors.ts). */
+  --domain-energy: #f59e0b;
+  --domain-finance: #22c55e;
+  --domain-climate: #3b82f6;
+  --domain-seismic: #ef4444;
+  --domain-transport: #14b8a6;
+  --domain-health: #e11d48;
+  --domain-geospatial: #a855f7;
+  --domain-economy: #84cc16;
+  --domain-geopolitics: #f97316;
+  --domain-cyber: #ec4899;
+  --domain-space: #6366f1;
+  --domain-demographics: #fb7185;
+  --domain-infrastructure: #0ea5e9;
+
+  /* Typography. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo,
+    Consolas, monospace;
+
+  /* Radius. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Spacing (4px grid). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Shadows. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow:
+    0 0 0 1px var(--border-1), 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 24px -4px rgba(34, 211, 238, 0.35);
+
+  /* Motion. */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-fast: 120ms;
+  --motion-med: 220ms;
+
+  /* Charts (ECharts reads these via chart-theme.ts). */
+  --chart-tooltip-bg: #101013;
+  --chart-tooltip-border: rgba(255, 255, 255, 0.1);
+  --chart-tooltip-text: #f4f4f5;
+  --chart-axis: rgba(148, 163, 184, 0.35);
+  --chart-split: rgba(148, 163, 184, 0.12);
+  --chart-item-border: rgba(9, 9, 11, 0.92);
+
+  /* Map / globe chrome (MapLibre + globe.gl). */
+  --map-canvas-bg: #0a1524;
+  --map-attrib-bg: rgba(9, 9, 11, 0.55);
+  --map-swatch-ring: rgba(0, 0, 0, 0.4);
+  --map-ctrl-icon: var(--text-2);
+  --globe-attrib: rgba(200, 210, 220, 0.55);
+  --globe-overlay-from: rgba(6, 14, 28, 0.55);
+  --globe-overlay-mid: rgba(4, 10, 20, 0.92);
+  --globe-overlay-to: rgba(2, 6, 14, 0.97);
+}
+
+/* Dim — between dark and light: lifted surfaces, muted glow. */
+html[data-theme="dim"] {
+  color-scheme: dark;
+  --bg-0: #121218;
+  --bg-1: #1a1a22;
+  --bg-2: #22222c;
+  --bg-3: #2c2c38;
+  --bg-glass: rgba(26, 26, 34, 0.78);
+  --border-1: rgba(255, 255, 255, 0.08);
+  --border-2: rgba(255, 255, 255, 0.12);
+  --text-1: #ececf1;
+  --text-2: #b4b4be;
+  --text-3: #8b8b96;
+  --accent-soft: rgba(34, 211, 238, 0.12);
+  --chart-tooltip-bg: #1a1a22;
+  --chart-tooltip-border: rgba(255, 255, 255, 0.12);
+  --map-canvas-bg: #101828;
+  --map-attrib-bg: rgba(18, 18, 24, 0.72);
+}
+
+/* Light — presentations and daylight use. */
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg-0: #f4f4f5;
+  --bg-1: #ffffff;
+  --bg-2: #f0f0f3;
+  --bg-3: #e4e4e9;
+  --bg-glass: rgba(255, 255, 255, 0.88);
+  --border-1: rgba(0, 0, 0, 0.08);
+  --border-2: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.18);
+  --overlay-weak: rgba(0, 0, 0, 0.02);
+  --overlay: rgba(0, 0, 0, 0.04);
+  --text-1: #18181b;
+  --text-2: #52525b;
+  --text-3: #71717a;
+  --text-muted: #a1a1aa;
+  --accent: #0891b2;
+  --accent-soft: rgba(8, 145, 178, 0.12);
+  --accent-strong: #0e7490;
+  --accent-violet: #7c3aed;
+  --accent-violet-soft: rgba(124, 58, 237, 0.12);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow:
+    0 0 0 1px var(--border-1), 0 10px 30px -12px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 24px -4px rgba(8, 145, 178, 0.25);
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: rgba(0, 0, 0, 0.1);
+  --chart-tooltip-text: #18181b;
+  --chart-axis: rgba(82, 82, 91, 0.45);
+  --chart-split: rgba(82, 82, 91, 0.14);
+  --chart-item-border: rgba(255, 255, 255, 0.95);
+  --map-canvas-bg: #dce4ef;
+  --map-attrib-bg: rgba(255, 255, 255, 0.88);
+  --map-swatch-ring: rgba(0, 0, 0, 0.12);
+  --map-ctrl-icon: #52525b;
+  --globe-attrib: rgba(82, 82, 91, 0.65);
+  --globe-overlay-from: rgba(232, 238, 245, 0.55);
+  --globe-overlay-mid: rgba(220, 228, 239, 0.92);
+  --globe-overlay-to: rgba(212, 222, 235, 0.97);
+}
+
+html[data-theme="light"] body {
+  background:
+    radial-gradient(
+      1200px 600px at 50% -200px,
+      rgba(8, 145, 178, 0.06),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 400px at 100% 10%,
+      rgba(124, 58, 237, 0.04),
+      transparent 60%
+    ),
+    var(--bg-0);
+}
+
+html[data-theme="dim"] body {
+  background:
+    radial-gradient(
+      1200px 600px at 50% -200px,
+      rgba(34, 211, 238, 0.06),
+      transparent 60%
+    ),
+    var(--bg-0);
+}
+
+/* ---- Reset ---- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+#app {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+#app :global(.app-shell) {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+html {
+  height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-0);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+body {
+  min-height: 100%;
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      1200px 600px at 50% -200px,
+      rgba(34, 211, 238, 0.08),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 400px at 100% 10%,
+      rgba(167, 139, 250, 0.05),
+      transparent 60%
+    ),
+    var(--bg-0);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(34, 211, 238, 0.35);
+  transition: color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease);
+}
+a:hover {
+  color: var(--accent-strong);
+  border-bottom-color: var(--accent-strong);
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+}
+p {
+  margin: 0;
+  color: var(--text-2);
+}
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* -------------------------------------------------------------------------
+   Buttons — shared (.btn) for Settings, feeds, deployment, banners, etc.
+   Child Svelte components cannot rely on parent scoped styles; define once.
+   ------------------------------------------------------------------------- */
+.btn,
+button.btn,
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  color: var(--text-1);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  box-shadow: var(--shadow-sm);
+  transition:
+    background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease),
+    filter var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-3);
+  border-color: var(--border-2);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn--primary,
+.btn.primary,
+.btn.is-primary {
+  background: linear-gradient(
+    135deg,
+    var(--accent) 0%,
+    var(--accent-violet) 100%
+  );
+  color: #0b0b0f;
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+    var(--shadow-sm);
+}
+
+.btn--primary:hover:not(:disabled),
+.btn.primary:hover:not(:disabled),
+.btn.is-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  background: linear-gradient(
+    135deg,
+    var(--accent) 0%,
+    var(--accent-violet) 100%
+  );
+  border-color: transparent;
+}
+
+.btn-sm,
+.btn.btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  gap: var(--space-1);
+}
+
+.btn-link,
+.btn.btn-link,
+a.btn.btn-link {
+  padding: 8px 12px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--accent);
+}
+
+.btn-link:hover:not(:disabled),
+a.btn.btn-link:hover {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent-strong);
+}
+
+.settings-actions,
+.deploy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-3);
+}
+
+/* Scrollbar. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Utility. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.spacer {
+  flex: 1;
+}
+
+/* MapLibre controls — theme-aware across embedded + full-page maps. */
+:global(.maplibregl-ctrl-group) {
+  background: var(--bg-2) !important;
+  border: 1px solid var(--border-1) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+:global(.maplibregl-ctrl-group button) {
+  background: transparent !important;
+}
+:global(.maplibregl-ctrl-group button .maplibregl-ctrl-icon) {
+  filter: none;
+}
+html[data-theme="light"] :global(.maplibregl-ctrl-group button .maplibregl-ctrl-icon) {
+  filter: invert(0.35) hue-rotate(180deg);
+}
+:global(.maplibregl-ctrl-attrib) {
+  background: var(--map-attrib-bg) !important;
+  color: var(--text-3) !important;
+  backdrop-filter: blur(6px);
+}
+:global(.maplibregl-ctrl-attrib a) {
+  color: var(--text-2) !important;
+}
+
+/* =========================================================================
+   Compact / mobile / tablet — desktop unchanged above 1024px
+   Phone ≤768: data-mobile-layout · Tablet 769–1024: data-tablet-layout
+   Shell chrome ≤1024 + native: data-compact-layout
+   ========================================================================= */
+
+html[data-compact-layout],
+html[data-mobile-layout] {
+  --mobile-tap-min: 44px;
+  /* Matches .mobile-bottom-nav padding + 44px tap targets + label */
+  --mobile-nav-height: calc(68px + env(safe-area-inset-bottom, 0px));
+  --mobile-top-inset: calc(env(safe-area-inset-top, 0px) + 52px);
+  /* Pinned map inspector must paint above .mobile-bottom-nav (250). */
+  --z-map-inspector: 260;
+}
+
+html[data-compact-layout] #app,
+html[data-mobile-layout] #app {
+  min-height: 100dvh;
+  min-height: 100vh;
+  padding-top: 0;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  box-sizing: border-box;
+}
+
+html[data-compact-layout] :global(#shell-main.shell-main-fill),
+html[data-compact-layout] :global(#shell-main.shell-main-fill .route-view[data-scroll="fill"]),
+html[data-mobile-layout] :global(#shell-main.shell-main-fill),
+html[data-mobile-layout] :global(#shell-main.shell-main-fill .route-view[data-scroll="fill"]) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+html[data-compact-layout] :global(.route-view),
+html[data-mobile-layout] :global(.route-view) {
+  width: 100%;
+  max-width: 100%;
+  min-height: calc(100dvh - var(--mobile-nav-height) - var(--mobile-top-inset));
+  box-sizing: border-box;
+}
+
+html[data-compact-layout] :global(.route-view[data-scroll="page"]),
+html[data-mobile-layout] :global(.route-view[data-scroll="page"]) {
+  padding-bottom: var(--space-4);
+}
+
+html[data-mobile-layout] :global(.hub-grid-top),
+html[data-mobile-layout] :global(.hub-grid-bottom),
+html[data-mobile-layout] :global(.hub-grid),
+html[data-mobile-layout] :global(.domain-desk-grid),
+html[data-mobile-layout] :global(.desk-charts-grid),
+html[data-mobile-layout] :global(.matrix-bound-grid),
+html[data-mobile-layout] :global(.matrix-grid) {
+  grid-template-columns: 1fr !important;
+}
+
+html[data-mobile-layout] :global(.desk-charts-grid) {
+  flex-direction: column;
+}
+
+html[data-mobile-layout] :global(.desk-charts-grid .chart-card) {
+  flex: 1 1 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+}
+
+html[data-mobile-layout] :global(.matrix-grid .matrix-panel),
+html[data-mobile-layout] :global(.matrix-grid .matrix-panel[data-span="2"]),
+html[data-mobile-layout] :global(.matrix-grid .matrix-panel[data-span="3"]),
+html[data-mobile-layout] :global(.matrix-grid .matrix-ai) {
+  grid-column: span 1 !important;
+  grid-row: auto !important;
+  position: static !important;
+}
+
+html[data-mobile-layout] :global(.kpi-strip-panel) {
+  grid-template-columns: 1fr !important;
+  gap: var(--space-2);
+}
+
+html[data-compact-layout] :global(.hub),
+html[data-mobile-layout] :global(.hub) {
+  padding: var(--space-4) var(--space-3) var(--space-6);
+  gap: var(--space-4);
+}
+
+html[data-compact-layout] :global(.hub-overview),
+html[data-mobile-layout] :global(.hub-overview) {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+html[data-compact-layout] :global(.domain-analyst),
+html[data-mobile-layout] :global(.domain-analyst) {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+html[data-compact-layout] :global(.domain-analyst-btn),
+html[data-mobile-layout] :global(.domain-analyst-btn) {
+  min-height: var(--mobile-tap-min);
+  min-width: var(--mobile-tap-min);
+  padding: 10px 14px;
+}
+
+html[data-compact-layout] :global(.domain-map-aside),
+html[data-mobile-layout] :global(.domain-map-aside) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.matrix-header-actions),
+html[data-mobile-layout] :global(.matrix-header-actions) {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion),
+html[data-mobile-layout] :global(.matrix-ai-accordion) {
+  grid-column: span 1 !important;
+  grid-row: auto !important;
+  position: static !important;
+  margin-top: var(--space-2);
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion > summary),
+html[data-mobile-layout] :global(.matrix-ai-accordion > summary) {
+  list-style: none;
+  cursor: pointer;
+  min-height: var(--mobile-tap-min);
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  touch-action: manipulation;
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion > summary::-webkit-details-marker),
+html[data-mobile-layout] :global(.matrix-ai-accordion > summary::-webkit-details-marker) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion[open] > summary),
+html[data-mobile-layout] :global(.matrix-ai-accordion[open] > summary) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+}
+
+html[data-compact-layout] :global(.matrix-ai-accordion .matrix-ai),
+html[data-mobile-layout] :global(.matrix-ai-accordion .matrix-ai) {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+html[data-compact-layout] :global(.settings-tabs),
+html[data-mobile-layout] :global(.settings-tabs) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+/* Horizontal scroll for wide tables on phone / compact */
+html[data-compact-layout] :global(.table-scroll),
+html[data-compact-layout] :global(.entities-table-wrap),
+html[data-compact-layout] :global(.feed-table-wrap),
+html[data-compact-layout] :global(.ops-table-wrap),
+html[data-mobile-layout] :global(.table-scroll),
+html[data-mobile-layout] :global(.entities-table-wrap),
+html[data-mobile-layout] :global(.feed-table-wrap),
+html[data-mobile-layout] :global(.ops-table-wrap) {
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+html[data-compact-layout] :global(.data-table),
+html[data-compact-layout] :global(.entities-table),
+html[data-compact-layout] :global(.feed-table),
+html[data-compact-layout] :global(.ops-table),
+html[data-mobile-layout] :global(.data-table),
+html[data-mobile-layout] :global(.entities-table),
+html[data-mobile-layout] :global(.feed-table),
+html[data-mobile-layout] :global(.ops-table) {
+  width: max-content;
+  min-width: 100%;
+}
+
+html[data-compact-layout] :global(.settings-fold + .settings-fold),
+html[data-tablet-layout] :global(.settings-fold + .settings-fold) {
+  border-top: 1px solid var(--border-1);
+}
+
+html[data-compact-layout] :global(.settings-page--mobile),
+html[data-mobile-layout] :global(.settings-page--mobile) {
+  padding: 0;
+  max-width: none;
+  min-height: 0;
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+html[data-compact-layout] :global(.settings-fold.card--ops),
+html[data-mobile-layout] :global(.settings-fold.card--ops) {
+  border-top: 8px solid var(--bg-0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-compact-layout] :global(.map-mobile-flyout),
+  html[data-compact-layout] :global(.mobile-domains-sheet),
+  html[data-compact-layout] :global(.shell-search-backdrop),
+  html[data-compact-layout] :global(.shell-search-sheet),
+  html[data-compact-layout] :global([data-settings-fold] .settings-fold-summary),
+  html[data-compact-layout] :global([data-settings-fold] .settings-inner-fold-summary),
+  html[data-mobile-layout] :global(.map-mobile-flyout),
+  html[data-mobile-layout] :global(.mobile-domains-sheet),
+  html[data-mobile-layout] :global(.shell-search-backdrop),
+  html[data-mobile-layout] :global(.shell-search-sheet),
+  html[data-mobile-layout] :global([data-settings-fold] .settings-fold-summary),
+  html[data-mobile-layout] :global([data-settings-fold] .settings-inner-fold-summary) {
+    animation: none !important;
+  }
+}
+
+html[data-compact-layout] :global(.map-wrap .map),
+html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
+html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe),
+html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe canvas),
+html[data-mobile-layout] :global(.map-wrap .map),
+html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
+html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe),
+html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe canvas) {
+  touch-action: none;
+  pointer-events: auto;
+}
+
+/* Map controls live inside .map-wrap (absolute, vertically centered on the right) */
+html[data-compact-layout] :global(.map-wrap),
+html[data-mobile-layout] :global(.map-wrap) {
+  overflow: visible;
+  box-sizing: border-box;
+  padding-bottom: var(--mobile-nav-height);
+}
+
+html[data-compact-layout] :global(.map-wrap .map),
+html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
+html[data-mobile-layout] :global(.map-wrap .map),
+html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe-wrap) {
+  bottom: var(--mobile-nav-height);
+}
+
+html[data-compact-layout] :global(.map-wrap .map-mobile-controls),
+html[data-mobile-layout] :global(.map-wrap .map-mobile-controls) {
+  position: absolute;
+  top: 40%;
+  right: max(6px, env(safe-area-inset-right, 0px));
+  transform: translateY(-50%);
+  max-height: calc(100% - 88px);
+  padding-bottom: 12px;
+  z-index: 12;
+}
+
+html[data-compact-layout] :global(.map-wrap .map-mobile-controls:has(.map-mobile-flyout)),
+html[data-mobile-layout] :global(.map-wrap .map-mobile-controls:has(.map-mobile-flyout)) {
+  top: 34%;
+  transform: translateY(calc(-50% - 28px));
+}
+
+/* Event inspector — above map rail; pinned card uses --z-map-inspector (260) > bottom nav (250). */
+html[data-compact-layout] :global(.map-wrap .emhc-wrap:not(.emhc-wrap-docked-compact)),
+html[data-mobile-layout] :global(.map-wrap .emhc-wrap:not(.emhc-wrap-docked-compact)) {
+  z-index: 48;
+}
+
+html[data-compact-layout] :global(.map-wrap .map-inspector-overlay),
+html[data-mobile-layout] :global(.map-wrap .map-inspector-overlay) {
+  z-index: var(--z-map-inspector, 260);
+}
+
+html[data-compact-layout] :global(.map-wrap.map-wrap--inspector-open),
+html[data-mobile-layout] :global(.map-wrap.map-wrap--inspector-open) {
+  /* container-type: size makes position:fixed anchor to the map box, not the viewport */
+  container-type: normal;
+}
+
+html:not([data-compact-layout]):not([data-mobile-layout]) :global(.map-pinned-dock .emhc-wrap-docked-flex) {
+  max-height: min(46vh, calc(100% - 24px));
+}
+
+/* Pinned mobile inspector: fixed to viewport, always above bottom nav. */
+html[data-compact-layout] :global(.emhc-wrap-docked-compact),
+html[data-mobile-layout] :global(.emhc-wrap-docked-compact) {
+  position: fixed;
+  left: max(8px, env(safe-area-inset-left, 0px));
+  right: max(80px, calc(56px + env(safe-area-inset-right, 0px) + 16px));
+  width: auto;
+  max-width: none;
+  bottom: calc(12px + var(--mobile-nav-height, calc(68px + env(safe-area-inset-bottom, 0px))));
+  max-height: min(
+    50dvh,
+    calc(
+      100dvh - var(--mobile-top-inset, 52px) - var(--mobile-nav-height, calc(68px + env(safe-area-inset-bottom, 0px))) -
+        16px
+    )
+  );
+  z-index: var(--z-map-inspector, 260);
+  box-shadow: 0 -12px 40px -8px color-mix(in srgb, #000 55%, transparent);
+}
+
+html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-controls),
+html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-controls) {
+  z-index: 6;
+}
+
+html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-rail),
+html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-rail-btn),
+html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-flyout),
+html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-rail),
+html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-rail-btn),
+html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-flyout) {
+  z-index: 6;
+}
+
+html[data-compact-layout] :global(.map-mobile-rail),
+html[data-compact-layout] :global(.map-mobile-rail-btn),
+html[data-compact-layout] :global(.map-mobile-rail .map-mode button),
+html[data-mobile-layout] :global(.map-mobile-rail),
+html[data-mobile-layout] :global(.map-mobile-rail-btn),
+html[data-mobile-layout] :global(.map-mobile-rail .map-mode button) {
+  pointer-events: auto;
+  min-height: var(--mobile-tap-min);
+  min-width: var(--mobile-tap-min);
+  touch-action: manipulation;
+}
+
+html[data-compact-layout] :global(.map-empty-dismiss),
+html[data-mobile-layout] :global(.map-empty-dismiss) {
+  min-width: var(--mobile-tap-min);
+  min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.map-float-ui) {
+  pointer-events: none;
+}
+
+html[data-compact-layout] :global(.map-float-bar),
+html[data-compact-layout] :global(.map-mode),
+html[data-compact-layout] :global(.map-float-bar button) {
+  pointer-events: auto;
+}
+
+html[data-compact-layout] :global(.map-layers-panel.is-open .map-layers-pill),
+html[data-compact-layout] :global(.map-layers-panel.is-open .map-mode-compact button),
+html[data-compact-layout] :global(.map-layers-panel.is-open .solar-scrub),
+html[data-compact-layout] :global(.map-layers-panel.is-open .solar-scrub *),
+html[data-mobile-layout] :global(.map-layers-panel.is-open .map-layers-pill),
+html[data-mobile-layout] :global(.map-layers-panel.is-open .map-mode-compact button),
+html[data-mobile-layout] :global(.map-layers-panel.is-open .solar-scrub),
+html[data-mobile-layout] :global(.map-layers-panel.is-open .solar-scrub *) {
+  pointer-events: auto;
+}
+
+html[data-compact-layout] :global(.map-command-bar) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  overflow: visible;
+}
+
+html[data-compact-layout] :global(.map-command-bar .map-command-titles) {
+  width: 100%;
+  min-width: 0;
+}
+
+html[data-compact-layout] :global(.map-command-bar .ops-strip) {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  box-sizing: border-box;
+}
+
+html[data-compact-layout] :global(.map-command-bar .ops-live) {
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+html[data-compact-layout] :global(.map-globe-root) {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+html[data-compact-layout] :global(.map-wrap.map-wrap-globe) {
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+}
+
+html[data-compact-layout] :global(.map-float-bar button),
+html[data-compact-layout] :global(.map-layers-pill),
+html[data-compact-layout] :global(.map-mode button),
+html[data-mobile-layout] :global(.map-float-bar button),
+html[data-mobile-layout] :global(.map-layers-pill),
+html[data-mobile-layout] :global(.map-mode button) {
+  min-height: var(--mobile-tap-min);
+  min-width: var(--mobile-tap-min);
+  touch-action: manipulation;
+}
+
+html[data-compact-layout] :global(.map-layers-backdrop),
+html[data-mobile-layout] :global(.map-layers-backdrop) {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg-0) 48%, transparent);
+}
+
+html[data-compact-layout] :global(.map-float-anchor:has(.map-layers-panel.is-open)),
+html[data-mobile-layout] :global(.map-float-anchor:has(.map-layers-panel.is-open)) {
+  /* Panel is position:fixed z-index:30 but lives inside anchor; raise anchor above backdrop (25). */
+  z-index: 31;
+}
+
+/* Legacy bottom sheet (desktop float only); mobile flyout uses .map-layers-panel--sheet */
+html[data-compact-layout] :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet)),
+html[data-mobile-layout] :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet)) {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: auto;
+  max-height: min(85dvh, 85vh);
+  z-index: 30;
+  pointer-events: auto;
+  grid-template-rows: 1fr !important;
+  opacity: 1;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  overflow: hidden;
+}
+
+html[data-compact-layout]
+  :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet) .map-layers-panel-inner),
+html[data-mobile-layout]
+  :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet) .map-layers-panel-inner) {
+  max-height: min(85dvh, 85vh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding-top: 0;
+  pointer-events: auto;
+}
+
+html[data-compact-layout] :global(.map-mobile-flyout .map-layers-panel--sheet),
+html[data-mobile-layout] :global(.map-mobile-flyout .map-layers-panel--sheet) {
+  position: relative;
+  max-height: none;
+  width: 100%;
+}
+
+/* Desktop float anchor only — compact map uses .map-mobile-controls rail */
+html[data-compact-layout] :global(.map-float-ui),
+html[data-mobile-layout] :global(.map-float-ui) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.map-page),
+html[data-compact-layout] :global(.globe-page),
+html[data-mobile-layout] :global(.map-page),
+html[data-mobile-layout] :global(.globe-page) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: calc(
+    100dvh - var(--mobile-top-inset) - var(--mobile-nav-height)
+  );
+}
+
+html[data-compact-layout] :global(.settings-page:not(.settings-page--mobile)),
+html[data-mobile-layout] :global(.settings-page:not(.settings-page--mobile)) {
+  padding: var(--space-4);
+  padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
+  padding-bottom: calc(var(--space-6) + var(--mobile-nav-height));
+  max-width: none;
+}
+
+html[data-compact-layout] :global(.settings .card),
+html[data-mobile-layout] :global(.settings .card) {
+  margin-top: var(--space-3);
+  padding: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+html[data-compact-layout] :global(.settings .card > h3),
+html[data-mobile-layout] :global(.settings .card > h3) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-1);
+}
+
+html[data-compact-layout] :global(.settings .card > :not(h3)),
+html[data-mobile-layout] :global(.settings .card > :not(h3)) {
+  margin-left: var(--space-4);
+  margin-right: var(--space-4);
+}
+
+html[data-compact-layout] :global(.settings .card > :not(h3):first-of-type),
+html[data-compact-layout] :global(.settings .card > h3 + *),
+html[data-mobile-layout] :global(.settings .card > :not(h3):first-of-type),
+html[data-mobile-layout] :global(.settings .card > h3 + *) {
+  margin-top: var(--space-3);
+}
+
+html[data-compact-layout] :global(.settings .card > :last-child),
+html[data-mobile-layout] :global(.settings .card > :last-child) {
+  margin-bottom: var(--space-4);
+}
+
+html[data-compact-layout] :global(.settings .btn),
+html[data-compact-layout] :global(.settings-mobile-detail-body .btn),
+html[data-compact-layout] :global(.deploy-panel .btn),
+html[data-compact-layout] :global(.settings .theme-card),
+html[data-compact-layout] :global(.settings label),
+html[data-compact-layout] :global(.settings input[type="text"]),
+html[data-compact-layout] :global(.settings input[type="url"]),
+html[data-compact-layout] :global(.settings select),
+html[data-mobile-layout] :global(.settings .btn),
+html[data-mobile-layout] :global(.settings-mobile-detail-body .btn),
+html[data-mobile-layout] :global(.deploy-panel .btn),
+html[data-mobile-layout] :global(.settings .theme-card),
+html[data-mobile-layout] :global(.settings label),
+html[data-mobile-layout] :global(.settings input[type="text"]),
+html[data-mobile-layout] :global(.settings input[type="url"]),
+html[data-mobile-layout] :global(.settings select) {
+  min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.settings .btn),
+html[data-compact-layout] :global(.settings-mobile-detail-body .btn),
+html[data-compact-layout] :global(.deploy-panel .btn),
+html[data-mobile-layout] :global(.settings .btn),
+html[data-mobile-layout] :global(.settings-mobile-detail-body .btn),
+html[data-mobile-layout] :global(.deploy-panel .btn) {
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+html[data-compact-layout] :global(.settings .theme-grid),
+html[data-mobile-layout] :global(.settings .theme-grid) {
+  grid-template-columns: 1fr;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+html[data-compact-layout] :global(.settings > header),
+html[data-mobile-layout] :global(.settings > header) {
+  padding-bottom: var(--space-2);
+}
+
+html[data-compact-layout] :global(.cmd-bar),
+html[data-mobile-layout] :global(.cmd-bar) {
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+html[data-compact-layout] :global(.cmd-prompt),
+html[data-mobile-layout] :global(.cmd-prompt) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.cmd-input),
+html[data-mobile-layout] :global(.cmd-input) {
+  font-size: 11px;
+  min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.cmd-aux),
+html[data-mobile-layout] :global(.cmd-aux) {
+  min-width: var(--mobile-tap-min);
+  min-height: var(--mobile-tap-min);
+}
+
+html[data-compact-layout] :global(.cmd-status),
+html[data-mobile-layout] :global(.cmd-status) {
+  max-width: min(200px, 45vw);
+}
+
+/* Tablet: two-column charts; phone stays single-column via data-mobile-layout above */
+html[data-tablet-layout] :global(.hub-grid-top),
+html[data-tablet-layout] :global(.hub-grid-bottom),
+html[data-tablet-layout] :global(.hub-grid),
+html[data-tablet-layout] :global(.domain-desk-grid),
+html[data-tablet-layout] :global(.desk-charts-grid),
+html[data-tablet-layout] :global(.matrix-bound-grid),
+html[data-tablet-layout] :global(.matrix-grid) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-tablet-layout] :global(.desk-charts-grid) {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+html[data-tablet-layout] :global(.desk-charts-grid .chart-card) {
+  flex: 1 1 calc(50% - var(--space-2)) !important;
+  min-width: calc(50% - var(--space-2)) !important;
+  max-width: calc(50% - var(--space-2)) !important;
+}
+
+html[data-tablet-layout] :global(.kpi-strip-panel) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-tablet-layout] :global(.hub-grid) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-tablet-layout] :global(.viz-grid) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-tablet-layout] :global(.matrix-grid .matrix-panel),
+html[data-tablet-layout] :global(.matrix-grid .matrix-panel[data-span="2"]),
+html[data-tablet-layout] :global(.matrix-grid .matrix-panel[data-span="3"]) {
+  grid-column: span 1 !important;
+}
+
+html[data-compact-layout] :global(.event-detail) {
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-6) + var(--mobile-nav-height));
+}
+
+html[data-mobile-layout] :global(.event-detail) {
+  padding-left: max(var(--space-3), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-3), env(safe-area-inset-right, 0px));
+}
+
+html[data-mobile-layout] :global(.ed-back),
+html[data-mobile-layout] :global(.ed-loc-btn) {
+  min-height: var(--mobile-tap-min);
+  min-width: var(--mobile-tap-min);
+  touch-action: manipulation;
+}
+
+html[data-compact-layout] :global(.viz-page) {
+  padding: var(--space-4) var(--space-4) calc(var(--space-8) + var(--mobile-nav-height));
+}
+
+html[data-mobile-layout] :global(.viz-grid) {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: var(--space-4);
+}
+
+html[data-compact-layout] :global(.ops-strip) {
+  max-width: 100%;
+  font-size: 10px;
+}
+
+html[data-compact-layout] :global(.ops-strip--command) {
+  gap: 6px;
+}
+
+html[data-compact-layout] :global(.ops-pill) {
+  min-height: var(--mobile-tap-min);
+  padding: 6px 8px;
+  touch-action: manipulation;
+}
+
+html[data-mobile-layout] :global(.ops-phase) {
+  display: none;
+}
+
+html[data-compact-layout] :global(.hub-header) {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+html[data-compact-layout] :global(.hub-btn) {
+  min-height: var(--mobile-tap-min);
+  touch-action: manipulation;
+}
+
+/* Toasts: top-center on compact — clear bottom nav and map controls */
+html[data-compact-layout] :global(.toast-a11y) {
+  top: calc(env(safe-area-inset-top, 0px) + 48px);
+  bottom: auto;
+  left: 0;
+  right: 0;
+  justify-content: center;
+  align-items: flex-start;
+  padding: var(--space-2) var(--space-3);
+  z-index: 180;
+}
+
+html[data-compact-layout] :global(.toast-stack) {
+  align-items: stretch;
+  max-width: min(20rem, calc(100vw - var(--space-6)));
+  width: 100%;
+}
+
+html[data-compact-layout] :global(.toast) {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.75rem;
+}
+
+html[data-compact-layout] :global(.toast-detail),
+html[data-compact-layout] :global(.toast-action) {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-compact-layout] :global(.mobile-tab),
+  html[data-compact-layout] :global(.map-layers-panel),
+  html[data-compact-layout] :global(.mobile-domains-sheet),
+  html[data-mobile-layout] :global(.mobile-tab),
+  html[data-mobile-layout] :global(.map-layers-panel),
+  html[data-mobile-layout] :global(.mobile-domains-sheet) {
+    transition: none;
+  }
+}

@@ -212,3 +212,220 @@ pub(crate) fn sparkline_svg(values: &[f64], color: &str) -> String {
                    points=\"{points}\"/></svg>"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // project_equirectangular
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn project_equirectangular_origin() {
+        let (x, y) = project_equirectangular(0.0, 0.0, 800.0, 400.0);
+        assert!((x - 400.0).abs() < 1e-9, "x={x}");
+        assert!((y - 200.0).abs() < 1e-9, "y={y}");
+    }
+
+    #[test]
+    fn project_equirectangular_north_pole() {
+        let (x, y) = project_equirectangular(90.0, 0.0, 800.0, 400.0);
+        assert!((x - 400.0).abs() < 1e-9, "x={x}");
+        assert!((y - 0.0).abs() < 1e-9, "y={y}");
+    }
+
+    #[test]
+    fn project_equirectangular_south_pole() {
+        let (x, y) = project_equirectangular(-90.0, 0.0, 800.0, 400.0);
+        assert!((x - 400.0).abs() < 1e-9, "x={x}");
+        assert!((y - 400.0).abs() < 1e-9, "y={y}");
+    }
+
+    #[test]
+    fn project_equirectangular_dateline() {
+        let (x1, y1) = project_equirectangular(0.0, 180.0, 800.0, 400.0);
+        assert!((x1 - 800.0).abs() < 1e-9, "x={x1}");
+        let (x2, y2) = project_equirectangular(0.0, -180.0, 800.0, 400.0);
+        assert!((x2 - 0.0).abs() < 1e-9, "x={x2}");
+        assert!((y1 - y2).abs() < 1e-9, "y mismatch");
+    }
+
+    #[test]
+    fn project_equirectangular_aspect_independent() {
+        let (x, y) = project_equirectangular(45.0, -75.0, 1600.0, 760.0);
+        // lon=-75 → (( -75 + 180) / 360) * 1600 = 466.666…
+        assert!((x - 466.6666666666667).abs() < 1e-9, "x={x}");
+        // lat=45 → ((90 - 45) / 180) * 760 = 190
+        assert!((y - 190.0).abs() < 1e-9, "y={y}");
+    }
+
+    #[test]
+    fn project_equirectangular_zero_size() {
+        let (x, y) = project_equirectangular(0.0, 0.0, 0.0, 0.0);
+        assert!((x - 0.0).abs() < 1e-9, "x={x}");
+        assert!((y - 0.0).abs() < 1e-9, "y={y}");
+    }
+
+    // -----------------------------------------------------------------------
+    // domain_color
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn domain_color_known_entries_return_accent() {
+        for (id, color) in DOMAIN_CATALOG {
+            assert_eq!(domain_color(id), *color, "mismatch for {id}");
+        }
+    }
+
+    #[test]
+    fn domain_color_unknown_returns_fallback() {
+        assert_eq!(domain_color("nonexistent"), "#cbd5e1");
+        assert_eq!(domain_color(""), "#cbd5e1");
+    }
+
+    #[test]
+    fn domain_color_is_case_sensitive() {
+        assert_eq!(domain_color("Energy"), "#cbd5e1");
+        assert_eq!(domain_color("energy"), "#f59e0b");
+    }
+
+    // -----------------------------------------------------------------------
+    // severity_percent
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn severity_percent_clamps_low() {
+        assert!((severity_percent(-0.5) - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn severity_percent_clamps_high() {
+        assert!((severity_percent(1.5) - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn severity_percent_mid_range() {
+        assert!((severity_percent(0.5) - 50.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn severity_percent_boundaries() {
+        assert!((severity_percent(0.0) - 0.0).abs() < 1e-9);
+        assert!((severity_percent(1.0) - 100.0).abs() < 1e-9);
+    }
+
+    // -----------------------------------------------------------------------
+    // sparkline_svg
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn sparkline_svg_empty_returns_flat_guide() {
+        let svg = sparkline_svg(&[], "#f00");
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("stroke-dasharray"));
+        assert!(svg.contains("#f00"));
+    }
+
+    #[test]
+    fn sparkline_svg_single_value_returns_flat_guide() {
+        let svg = sparkline_svg(&[0.5], "#00f");
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("stroke-dasharray"));
+    }
+
+    #[test]
+    fn sparkline_svg_two_values_draws_polyline() {
+        let svg = sparkline_svg(&[0.2, 0.8], "#0f0");
+        assert!(svg.contains("<polyline"));
+        assert!(!svg.contains("stroke-dasharray"));
+    }
+
+    #[test]
+    fn sparkline_svg_many_values() {
+        let svg = sparkline_svg(&[0.1, 0.3, 0.5, 0.7, 0.9], "#abc");
+        assert!(svg.contains("<polyline"));
+        assert!(svg.contains("#abc"));
+        assert!(svg.contains("points="));
+    }
+
+    #[test]
+    fn sparkline_svg_all_same_value() {
+        let svg = sparkline_svg(&[0.5, 0.5, 0.5], "#333");
+        assert!(svg.contains("<polyline"));
+    }
+
+    #[test]
+    fn sparkline_svg_constant_dimensions() {
+        let svg = sparkline_svg(&[0.0, 1.0], "#000");
+        assert!(svg.contains("viewBox=\"0 0 240 36\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // capitalize
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn capitalize_empty_string() {
+        assert_eq!(capitalize(""), "");
+    }
+
+    #[test]
+    fn capitalize_single_char() {
+        assert_eq!(capitalize("a"), "A");
+    }
+
+    #[test]
+    fn capitalize_lowercase_word() {
+        assert_eq!(capitalize("energy"), "Energy");
+    }
+
+    #[test]
+    fn capitalize_already_capitalized() {
+        assert_eq!(capitalize("Energy"), "Energy");
+    }
+
+    #[test]
+    fn capitalize_multi_word() {
+        assert_eq!(capitalize("hello world"), "Hello world");
+    }
+
+    #[test]
+    fn capitalize_leading_whitespace() {
+        assert_eq!(capitalize("  hello"), "  hello");
+    }
+
+    // -----------------------------------------------------------------------
+    // DOMAIN_CATALOG invariants
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn domain_catalog_entries_are_unique() {
+        let mut seen_ids = std::collections::HashSet::new();
+        for (id, _) in DOMAIN_CATALOG {
+            assert!(
+                seen_ids.insert(id),
+                "duplicate domain id in DOMAIN_CATALOG: {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn domain_catalog_has_no_empty_ids_or_colors() {
+        for (id, color) in DOMAIN_CATALOG {
+            assert!(!id.is_empty(), "empty domain id");
+            assert!(!color.is_empty(), "empty color for {id}");
+            assert!(
+                color.starts_with('#'),
+                "color {color} for {id} must start with #"
+            );
+        }
+    }
+
+    #[test]
+    fn domain_color_roundtrip() {
+        for (id, color) in DOMAIN_CATALOG {
+            assert_eq!(domain_color(id), *color);
+        }
+    }
+}

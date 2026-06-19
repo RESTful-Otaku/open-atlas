@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// (`openatlas-ingest::stdb::domain_to_u8`) is stable across releases.
 /// Only **append** new variants — reordering would silently reinterpret
 /// existing rows.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Domain {
     Energy,
@@ -69,6 +69,12 @@ impl Domain {
         Domain::Demographics,
         Domain::Infrastructure,
     ];
+}
+
+impl std::fmt::Display for Domain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 impl FromStr for Domain {

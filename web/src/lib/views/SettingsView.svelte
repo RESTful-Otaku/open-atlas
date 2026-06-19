@@ -90,6 +90,7 @@
     });
     return () => {
       unsubLayout();
+      clearSectionTimers();
     };
   });
 
@@ -124,6 +125,7 @@
     if (!detailTrackOpen) return;
     clearSectionTimers();
     opsConsoleReady = false;
+    const wasActiveSection = activeSection;
     detailTrackOpen = false;
     if (typeof window === "undefined") {
       activeSection = null;
@@ -141,12 +143,12 @@
     const onEnd = (e: TransitionEvent): void => {
       if (e.target !== el || e.propertyName !== "transform") return;
       el.removeEventListener("transitionend", onEnd);
-      if (!detailTrackOpen) activeSection = null;
+      if (activeSection === wasActiveSection && !detailTrackOpen) activeSection = null;
     };
     el.addEventListener("transitionend", onEnd);
     setTimeoutId(() => {
       el.removeEventListener("transitionend", onEnd);
-      if (!detailTrackOpen) activeSection = null;
+      if (activeSection === wasActiveSection && !detailTrackOpen) activeSection = null;
     }, 400);
   }
 

@@ -20,10 +20,11 @@ pub async fn is_circuit_open(state: &AppState, feed: &str) -> bool {
     if !h.circuit_open {
         return false;
     }
-    if let Some(since) = h.circuit_opened_since {
-        if Utc::now().signed_duration_since(since).num_minutes() >= AUTO_RECOVERY_DURATION_MINUTES {
-            return false;
-        }
+    let Some(since) = h.circuit_opened_since else {
+        return false;
+    };
+    if Utc::now().signed_duration_since(since).num_minutes() >= AUTO_RECOVERY_DURATION_MINUTES {
+        return false;
     }
     true
 }
@@ -39,14 +40,16 @@ pub async fn on_poll_success(state: &AppState, feed: &str) {
 pub async fn on_poll_failure(state: &AppState, feed: &str) {
     let mut feeds = state.feed_runtime.write().await;
     if let Some(h) = feeds.get_mut(feed) {
-        if h.consecutive_failures >= CIRCUIT_FAILURE_THRESHOLD {
-            if !h.circuit_open {
-                warn!(
-                    "{feed}: circuit breaker opened after {threshold} consecutive failures",
-                    threshold = CIRCUIT_FAILURE_THRESHOLD,
-                );
-            }
+        if h.consecutive_failures >= CIRCUIT_FAILURE_THRESHOLD && !h.circuit_open {
+            warn!(
+                "{feed}: circuit breaker opened after {threshold} consecutive failures",
+                threshold = CIRCUIT_FAILURE_THRESHOLD,
+            );
             h.circuit_open = true;
+            h.circuit_opened_since = Some(Utc::now());
+        } else if h.circuit_open {
+            // Circuit was already open (half-open probe failure).
+            // Re-arm the cooldown to prevent immediate retry.
             h.circuit_opened_since = Some(Utc::now());
         }
     }
@@ -125,5 +128,53 @@ mod tests {
         assert!(!is_circuit_open(&state, "usgs").await);
         let feeds = state.feed_runtime.read().await;
         assert_eq!(feeds["usgs"].consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn below_threshold_does_not_open_circuit() {
+        let state = test_state().await;
+        let below = CIRCUIT_FAILURE_THRESHOLD - 1;
+        set_failures(&state, "usgs", below).await;
+        on_poll_failure(&state, "usgs").await;
+        assert!(!is_circuit_open(&state, "usgs").await);
+    }
+
+    #[tokio::test]
+    async fn success_after_recovery_keeps_circuit_closed() {
+        let state = test_state().await;
+        set_failures(&state, "usgs", CIRCUIT_FAILURE_THRESHOLD).await;
+        on_poll_failure(&state, "usgs").await;
+        assert!(is_circuit_open(&state, "usgs").await);
+        on_poll_success(&state, "usgs").await;
+        assert!(!is_circuit_open(&state, "usgs").await);
+        // After close, a single new failure should not immediately re-open.
+        set_failures(&state, "usgs", 1).await;
+        on_poll_failure(&state, "usgs").await;
+        assert!(!is_circuit_open(&state, "usgs").await);
+    }
+
+    #[tokio::test]
+    async fn auto_recovery_returns_closed_after_duration_passes() {
+        let state = test_state().await;
+        set_failures(&state, "usgs", CIRCUIT_FAILURE_THRESHOLD).await;
+        on_poll_failure(&state, "usgs").await;
+        assert!(is_circuit_open(&state, "usgs").await);
+        // Simulate that the circuit opened 5+ minutes ago (half-open window).
+        {
+            let mut feeds = state.feed_runtime.write().await;
+            let h = feeds.get_mut("usgs").expect("usgs");
+            h.circuit_opened_since = Some(Utc::now() - chrono::Duration::minutes(6));
+        }
+        // is_circuit_open should now return false (half-open → allow probe).
+        assert!(!is_circuit_open(&state, "usgs").await);
+        // But the circuit_open flag should still be true internally.
+        let feeds = state.feed_runtime.read().await;
+        assert!(feeds["usgs"].circuit_open);
+    }
+
+    #[test]
+    #[allow(clippy::assertions_on_constants)]
+    fn auto_recovery_duration_is_positive() {
+        assert!(AUTO_RECOVERY_DURATION_MINUTES > 0);
     }
 }

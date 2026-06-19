@@ -102,12 +102,12 @@ fn replay_minimal_fixture_matches_row_counts() {
             .expect("deterministic ingest must succeed");
     }
 
-    assert_eq!(graph.events.len(), fixture.expect.event_count);
-    assert!(graph.signals.len() >= fixture.expect.signal_count_min);
+    assert_eq!(graph.events().len(), fixture.expect.event_count);
+    assert!(graph.signals().len() >= fixture.expect.signal_count_min);
     assert!(
-        graph.world_state.len() >= fixture.expect.world_state_domain_count_min,
+        graph.world_state().len() >= fixture.expect.world_state_domain_count_min,
         "world_state domains: got {}, want >= {}",
-        graph.world_state.len(),
+        graph.world_state().len(),
         fixture.expect.world_state_domain_count_min
     );
 }

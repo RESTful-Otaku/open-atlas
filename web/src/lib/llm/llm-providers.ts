@@ -1,5 +1,5 @@
 import { requestGeminiInsight } from "./gemini-client";
-import { LLM_SYSTEM_PROMPT, parseApiError } from "./llm-shared";
+import { LLM_SYSTEM_PROMPT, parseApiError, cudaIncompatibilityHint } from "./llm-shared";
 import {
   loadLlmProviderSettings,
   type LlmProviderId,
@@ -108,7 +108,8 @@ async function requestBridgeInsight(
   });
   if (!r.ok) {
     const msg = await parseApiError(r);
-    throw new Error(msg);
+    const cuda = cudaIncompatibilityHint(msg);
+    throw new Error(cuda ? `${msg} — ${cuda}` : msg);
   }
   return (await r.json()) as LlmInsightResponse;
 }

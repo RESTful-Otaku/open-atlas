@@ -5,18 +5,7 @@
 -->
 <script lang="ts">
   import { StatusDot } from "../../primitives";
-  import type { StatusLevel } from "../../primitives/status";
-
-  export interface StatusTableRow {
-    readonly id: string;
-    readonly primary: string;
-    readonly secondary?: string;
-    readonly status: StatusLevel;
-    readonly statusLabel?: string;
-    readonly right?: string;
-    /** When set, primary text is a link to event detail. */
-    readonly href?: string;
-  }
+  import type { StatusTableRow } from "./types";
 
   interface Props {
     rows: readonly StatusTableRow[];

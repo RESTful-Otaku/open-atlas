@@ -10,7 +10,7 @@ use crate::{
     state::UiState,
 };
 
-use super::require_element;
+use super::{escape_html, require_element};
 
 const MAX_ROWS: usize = 40;
 
@@ -35,11 +35,11 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
     for signal in rows {
         let color = domain_color(&signal.domain);
         let pct = severity_percent(signal.score);
-        let short_event = signal
-            .event_id
-            .split('-')
-            .next()
-            .unwrap_or(&signal.event_id);
+        let short_event = escape_html(
+            signal.event_id.split('-').next().unwrap_or(&signal.event_id),
+        );
+        let domain = escape_html(&signal.domain);
+        let reason = escape_html(&signal.reason);
 
         let _ = std::fmt::Write::write_fmt(
             &mut html,
@@ -56,33 +56,13 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
                 </li>"#,
                 color = color,
                 score = signal.score,
-                domain = signal.domain,
-                reason = escape_html(&signal.reason),
                 pct = pct,
-                short_event = short_event,
             ),
         );
     }
 
     panel.set_inner_html(&html);
     Ok(())
-}
-
-/// Minimal HTML escape. Reasons come from server-generated strings but
-/// we still defend in depth — the UI never trusts incoming text.
-fn escape_html(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 fn empty_state() -> String {
@@ -95,7 +75,7 @@ fn empty_state() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::escape_html;
+    use crate::render::escape_html;
 
     #[test]
     fn escape_html_handles_control_chars() {

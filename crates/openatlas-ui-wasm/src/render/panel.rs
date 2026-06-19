@@ -87,3 +87,60 @@ pub(crate) struct PanelDescriptor {
     /// Per-frame render function.
     pub render: RenderFn,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{BodyStyle, Container};
+
+    #[test]
+    fn container_div_tag() {
+        assert_eq!(Container::Div.tag(), "div");
+    }
+
+    #[test]
+    fn container_ul_tag() {
+        assert_eq!(Container::Ul.tag(), "ul");
+    }
+
+    #[test]
+    fn body_style_default_css() {
+        assert_eq!(BodyStyle::Default.css(), "panel-body");
+    }
+
+    #[test]
+    fn body_style_flush_css() {
+        assert_eq!(BodyStyle::Flush.css(), "panel-body is-flush");
+    }
+
+    #[test]
+    fn body_style_scrollable_css() {
+        assert_eq!(BodyStyle::Scrollable.css(), "panel-body is-scrollable");
+    }
+
+    #[test]
+    fn body_style_flush_scrollable_css() {
+        assert_eq!(
+            BodyStyle::FlushScrollable.css(),
+            "panel-body is-flush is-scrollable"
+        );
+    }
+
+    #[test]
+    fn container_tag_is_always_lowercase() {
+        for tag in &[Container::Div.tag(), Container::Ul.tag()] {
+            assert_eq!(tag.to_lowercase(), *tag);
+        }
+    }
+
+    #[test]
+    fn body_style_all_contain_panel_body() {
+        for style in &[
+            BodyStyle::Default,
+            BodyStyle::Flush,
+            BodyStyle::Scrollable,
+            BodyStyle::FlushScrollable,
+        ] {
+            assert!(style.css().contains("panel-body"));
+        }
+    }
+}

@@ -8,18 +8,7 @@
 <script lang="ts">
   import CompactNumber from "../../components/CompactNumber.svelte";
   import { TrendArrow } from "../../primitives";
-
-  export interface KpiCell {
-    readonly label: string;
-    readonly value: string;
-    /** When set, renders {@link CompactNumber} instead of the string `value`. */
-    readonly valueNumber?: number;
-    readonly delta?: number;
-    readonly deltaLabel?: string;
-    /** Force a tone; if omitted the trend arrow colours itself from `delta`. */
-    readonly direction?: "up-good" | "up-bad";
-    readonly tone?: "default" | "warn" | "danger" | "accent";
-  }
+  import type { KpiCell } from "./types";
 
   interface Props {
     cells: readonly KpiCell[];

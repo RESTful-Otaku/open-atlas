@@ -71,6 +71,8 @@ struct Response {
     latitude: f64,
     longitude: f64,
     current: Option<Current>,
+    #[serde(default)]
+    utc_offset_seconds: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,10 +99,13 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
         let Some(current) = payload.current else {
             continue;
         };
+        let utc_offset_seconds = payload.utc_offset_seconds.unwrap_or(0);
         let Ok(naive) = NaiveDateTime::parse_from_str(&current.time, "%Y-%m-%dT%H:%M") else {
             continue;
         };
-        let timestamp = DateTime::from_naive_utc_and_offset(naive, Utc);
+        let timestamp =
+            DateTime::from_naive_utc_and_offset(naive, Utc)
+                - chrono::Duration::seconds(utc_offset_seconds);
         let wind = current.wind_speed_10m.unwrap_or(0.0);
         let precipitation = current.precipitation.unwrap_or(0.0);
         let severity_score = (ratio_severity(wind, WIND_SATURATION_KMH)
@@ -124,4 +129,84 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
         }
     }
     Ok(drafts_to_events("open-meteo", SOURCE_URL, drafts))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::feeds::normalize::{drafts_to_events, location_from_coords, ObservationDraft};
+
+    #[allow(clippy::too_many_arguments)]
+    fn make_region_draft(
+        tag: &str,
+        lat: f64,
+        lon: f64,
+        wind: f64,
+        precip: f64,
+        temp: f64,
+        time: &str,
+        timestamp: DateTime<Utc>,
+    ) -> ObservationDraft {
+        let severity = (ratio_severity(wind, WIND_SATURATION_KMH)
+            + ratio_severity(precip, PRECIP_SATURATION_MM))
+        .clamp(0.0, 1.0);
+        let external_key = format!("{}-{}", tag, time);
+        let location = location_from_coords(lat, lon, vec![tag.to_owned(), "open-meteo".to_owned()])
+            .expect("valid location");
+        ObservationDraft::new(external_key, timestamp, Domain::Climate, severity)
+            .field("temperature_2m", temp)
+            .field("wind_speed_10m", wind)
+            .field("precipitation", precip)
+            .field("region", tag)
+            .with_location(location)
+            .expect("location should be valid")
+    }
+
+    #[test]
+    fn golden_data_event_has_climate_domain() {
+        let ts = DateTime::from_naive_utc_and_offset(
+            NaiveDateTime::parse_from_str("2024-06-15T14:00", "%Y-%m-%dT%H:%M").unwrap(),
+            Utc,
+        );
+        let draft = make_region_draft("tokyo", 35.6762, 139.6503, 12.0, 0.0, 28.5, "2024-06-15T14:00", ts);
+        let events = drafts_to_events("open-meteo", SOURCE_URL, vec![draft]);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].domain, Domain::Climate);
+    }
+
+    #[test]
+    fn golden_data_event_has_location() {
+        let ts = DateTime::from_naive_utc_and_offset(
+            NaiveDateTime::parse_from_str("2024-06-15T14:00", "%Y-%m-%dT%H:%M").unwrap(),
+            Utc,
+        );
+        let draft = make_region_draft("new-york", 40.7128, -74.0060, 8.0, 0.5, 22.0, "2024-06-15T14:00", ts);
+        let events = drafts_to_events("open-meteo", SOURCE_URL, vec![draft]);
+        let event = &events[0];
+        assert!(event.location.is_some());
+        let loc = event.location.as_ref().unwrap();
+        assert!((loc.lat - 40.7128).abs() < 0.001);
+        assert!((loc.lon - (-74.0060)).abs() < 0.001);
+    }
+
+    #[test]
+    fn golden_data_severity_bounds() {
+        let ts = DateTime::from_naive_utc_and_offset(
+            NaiveDateTime::parse_from_str("2024-06-15T14:00", "%Y-%m-%dT%H:%M").unwrap(),
+            Utc,
+        );
+        let drafts = vec![
+            make_region_draft("tokyo", 35.6762, 139.6503, 120.0, 30.0, 28.0, "2024-06-15T14:00", ts),
+            make_region_draft("london", 51.5072, -0.1276, 5.0, 0.0, 15.0, "2024-06-15T14:00", ts),
+            make_region_draft("sao-paulo", -23.5505, -46.6333, 60.0, 10.0, 32.0, "2024-06-15T14:00", ts),
+        ];
+        let events = drafts_to_events("open-meteo", SOURCE_URL, drafts);
+        for event in &events {
+            assert!(
+                (0.0..=1.0).contains(&event.severity_score),
+                "severity {} out of [0, 1]",
+                event.severity_score
+            );
+        }
+    }
 }

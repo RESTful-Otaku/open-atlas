@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use openatlas_core::{Domain, Location, WorldEvent};
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use serde_json::json;
 use tracing::error;
 use uuid::Uuid;
@@ -94,7 +94,7 @@ pub fn spawn_simulators(state: AppState) {
     for (i, sim) in SIMULATORS.iter().enumerate() {
         let state = state.clone();
         let source = sim.source;
-        let domain = sim.domain.clone();
+        let domain = sim.domain;
         let tick_ms = sim.tick_ms;
         tokio::spawn(async move {
             let jitter = Duration::from_millis(tick_ms / 4 * i as u64);
@@ -102,7 +102,7 @@ pub fn spawn_simulators(state: AppState) {
             let mut interval = tokio::time::interval(Duration::from_millis(tick_ms));
             loop {
                 interval.tick().await;
-                let event = generate_event(source, domain.clone());
+                let event = generate_event(source, domain);
                 let result =
                     push_events_via_state(&state, vec![event], source, "internal://simulator")
                         .await;
@@ -121,7 +121,9 @@ pub(crate) fn generate_event_for_test(source: &str, domain: Domain) -> WorldEven
 }
 
 fn generate_event(source: &str, domain: Domain) -> WorldEvent {
-    let mut rng = rand::rng();
+    // Deterministic seed for reproducible event generation
+    // TODO: accept seed from config for full reproducibility
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let base_severity = match domain {
         Domain::Climate => 0.4,
         Domain::Finance => 0.5,
@@ -166,7 +168,7 @@ mod tests {
     #[test]
     fn simulator_catalog_covers_all_domains() {
         let domains: std::collections::HashSet<_> =
-            SIMULATORS.iter().map(|s| s.domain.clone()).collect();
+            SIMULATORS.iter().map(|s| s.domain).collect();
         for d in Domain::ALL.iter() {
             assert!(domains.contains(d), "missing simulator for {:?}", d);
         }

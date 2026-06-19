@@ -118,7 +118,7 @@
     overflow-y: auto;
   }
 
-  @media (max-width: 1100px) {
+  @media (max-width: 900px) {
     .panel[data-span="4"],
     .panel[data-span="6"],
     .panel[data-span="8"] {

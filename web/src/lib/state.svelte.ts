@@ -424,6 +424,10 @@ function flushPendingTrackableList<T extends { id: string }>(
     setList(getList().filter((e) => !deletes.has(e.id)));
     deletes.clear();
     idIndex.clear();
+    const list = getList();
+    for (let i = 0; i < list.length; i++) {
+      idIndex.set(list[i].id, i);
+    }
     dirty = true;
   }
 
@@ -449,6 +453,7 @@ function flushPendingTrackableList<T extends { id: string }>(
           mutated = true;
         }
         buf.push(next);
+        idIndex.set(next.id, buf.length - 1);
       }
     }
     pending.clear();
@@ -626,7 +631,24 @@ export function removeEvent(id: bigint): void {
 }
 
 export function applySignal(row: Signal): void {
-  const next = projectSignal(row);
+  let next: UiSignal;
+  try {
+    next = projectSignal(row);
+  } catch (e) {
+    console.error("openatlas: projectSignal failed, row dropped", e, row);
+    const detail = e instanceof Error ? e.message : String(e);
+    notifyError({
+      code: NOTIFY_CODES.EVENT_PROJECT,
+      title: "Could not import a signal row",
+      message:
+        "The signal was skipped so the rest of the stream stays responsive. A schema or domain mismatch may be involved.",
+      detail,
+      action:
+        "If this was after a SpacetimeDB or client upgrade, regenerate and publish the module, then hard-refresh the app.",
+      dedupeKey: `SIGNAL_PROJECT:${detail}`,
+    });
+    return;
+  }
   if (batchSignals !== null) {
     batchSignals.push(next);
     return;
@@ -645,7 +667,24 @@ export function removeSignal(id: bigint): void {
 }
 
 export function applyCausalEdge(row: CausalEdge): void {
-  const next = projectCausalEdge(row);
+  let next: UiCausalEdge;
+  try {
+    next = projectCausalEdge(row);
+  } catch (e) {
+    console.error("openatlas: projectCausalEdge failed, row dropped", e, row);
+    const detail = e instanceof Error ? e.message : String(e);
+    notifyError({
+      code: NOTIFY_CODES.EVENT_PROJECT,
+      title: "Could not import a causal edge row",
+      message:
+        "The causal edge was skipped so the rest of the stream stays responsive. A schema or domain mismatch may be involved.",
+      detail,
+      action:
+        "If this was after a SpacetimeDB or client upgrade, regenerate and publish the module, then hard-refresh the app.",
+      dedupeKey: `CAUSAL_EDGE_PROJECT:${detail}`,
+    });
+    return;
+  }
   if (batchCausalEdges !== null) {
     batchCausalEdges.push(next);
     return;
@@ -664,7 +703,24 @@ export function removeCausalEdge(id: bigint): void {
 }
 
 export function applyWorldState(row: WorldStateRow): void {
-  const next = projectWorldState(row);
+  let next: UiWorldState;
+  try {
+    next = projectWorldState(row);
+  } catch (e) {
+    console.error("openatlas: projectWorldState failed, row dropped", e, row);
+    const detail = e instanceof Error ? e.message : String(e);
+    notifyError({
+      code: NOTIFY_CODES.EVENT_PROJECT,
+      title: "Could not import a world state row",
+      message:
+        "The world state was skipped so the rest of the stream stays responsive. A schema or domain mismatch may be involved.",
+      detail,
+      action:
+        "If this was after a SpacetimeDB or client upgrade, regenerate and publish the module, then hard-refresh the app.",
+      dedupeKey: `WORLD_STATE_PROJECT:${detail}`,
+    });
+    return;
+  }
   if (batchDomainState !== null) {
     batchDomainState[next.domain] = next;
     return;
@@ -673,7 +729,24 @@ export function applyWorldState(row: WorldStateRow): void {
 }
 
 export function applyDomainInsight(row: DomainInsight): void {
-  const next = projectDomainInsight(row);
+  let next: UiDomainInsight;
+  try {
+    next = projectDomainInsight(row);
+  } catch (e) {
+    console.error("openatlas: projectDomainInsight failed, row dropped", e, row);
+    const detail = e instanceof Error ? e.message : String(e);
+    notifyError({
+      code: NOTIFY_CODES.EVENT_PROJECT,
+      title: "Could not import a domain insight row",
+      message:
+        "The domain insight was skipped so the rest of the stream stays responsive. A schema or domain mismatch may be involved.",
+      detail,
+      action:
+        "If this was after a SpacetimeDB or client upgrade, regenerate and publish the module, then hard-refresh the app.",
+      dedupeKey: `DOMAIN_INSIGHT_PROJECT:${detail}`,
+    });
+    return;
+  }
   if (batchDomainInsights !== null) {
     batchDomainInsights[next.domain] = next;
     return;
@@ -692,6 +765,10 @@ export function applyEventNarrative(row: EventNarrative): void {
 
 export function removeEventNarrative(eventId: bigint): void {
   const key = String(eventId);
+  if (batchNarratives !== null) {
+    delete batchNarratives[key];
+    return;
+  }
   if (!(key in dashboard.eventNarratives)) return;
   const { [key]: _omit, ...rest } = dashboard.eventNarratives;
   dashboard.eventNarratives = rest;

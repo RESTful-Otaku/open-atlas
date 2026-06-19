@@ -123,3 +123,17 @@ fn get_document(window: &Window) -> Result<Document, JsValue> {
         .document()
         .ok_or_else(|| JsValue::from_str("document not available"))
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn version_is_set() {
+        assert!(!env!("CARGO_PKG_VERSION").is_empty());
+    }
+
+    #[test]
+    fn module_reexports_compile() {
+        // Verify the module tree is sound by referencing each submodule name
+        let _ = (crate::layout::DOMAIN_CATALOG, crate::render::REGISTRY);
+    }
+}

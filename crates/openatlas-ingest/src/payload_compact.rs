@@ -20,6 +20,32 @@ const KEEP_KEYS: &[&str] = &[
     "simulated",
 ];
 
+/// Estimate serialised JSON byte-length without allocating a string.
+fn estimate_json_size(v: &Value) -> usize {
+    match v {
+        Value::Null => 4,
+        Value::Bool(b) => {
+            if *b { 4 } else { 5 }
+        }
+        Value::Number(n) => n.to_string().len(),
+        Value::String(s) => s.len() + 2,
+        Value::Array(arr) => {
+            let mut total = 2;
+            for v in arr {
+                total += estimate_json_size(v) + 1;
+            }
+            total
+        }
+        Value::Object(obj) => {
+            let mut total = 2;
+            for (k, v) in obj {
+                total += k.len() + 3 + estimate_json_size(v) + 1;
+            }
+            total
+        }
+    }
+}
+
 /// Build minimal canonical JSON: drop redundant `source_url` (on domain_insight).
 pub fn compact_canonical_payload(
     source: &str,
@@ -39,13 +65,9 @@ pub fn compact_canonical_payload(
         }
     }
 
-    let serialized = Value::Object(out.clone());
-    if serde_json::to_string(&serialized)
-        .map(|s| s.len())
-        .unwrap_or(0)
-        <= TARGET_PAYLOAD_BYTES
-    {
-        return serialized;
+    let size = estimate_json_size(&Value::Object(out.clone()));
+    if size <= TARGET_PAYLOAD_BYTES {
+        return Value::Object(out);
     }
 
     for key in out.keys().cloned().collect::<Vec<_>>() {

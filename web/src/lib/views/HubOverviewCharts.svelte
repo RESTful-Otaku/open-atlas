@@ -113,8 +113,8 @@
   .hub-grid-top,
   .hub-grid-bottom {
     display: grid;
-    grid-template-columns: minmax(14rem, 1fr) minmax(18rem, 1.4fr);
-    gap: var(--space-3);
+    grid-template-columns: minmax(18rem, 1fr) minmax(22rem, 1.5fr);
+    gap: var(--space-4);
     min-width: 0;
   }
   @media (max-width: 960px) {

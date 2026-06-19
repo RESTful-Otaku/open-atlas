@@ -8,13 +8,20 @@ use reqwest::Client;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
+fn sanitize_url(url: &str) -> String {
+    url.split_once('?')
+        .map(|(base, _)| base.to_string())
+        .unwrap_or_else(|| url.to_string())
+}
+
 fn transport_error(url: &str, err: reqwest::Error) -> anyhow::Error {
+    let safe = sanitize_url(url);
     if err.is_timeout() {
         anyhow::anyhow!(
-            "GET {url} timed out (upstream slow or unreachable — will retry on next poll)"
+            "GET {safe} timed out (upstream slow or unreachable — will retry on next poll)"
         )
     } else {
-        anyhow::anyhow!("GET {url} transport error: {err}")
+        anyhow::anyhow!("GET {safe} transport error: {err}")
     }
 }
 
@@ -46,7 +53,7 @@ fn upstream_error_detail(body: &str) -> String {
 /// GET + status check + JSON body as `T`.
 pub async fn fetch_json<T: DeserializeOwned>(client: &Client, feed: &str, url: &str) -> Result<T> {
     let text = fetch_text(client, feed, url).await?;
-    serde_json::from_str(&text).with_context(|| format!("JSON decode failed for {url}"))
+    serde_json::from_str(&text).with_context(|| format!("JSON decode failed for {}", sanitize_url(url)))
 }
 
 /// GET + status check; returns raw body text. Applies per-host throttling when the
@@ -64,7 +71,7 @@ pub async fn fetch_text_with_request(
 ) -> Result<String> {
     if let Some(host) = host_from_url(url) {
         if let Some(limiter) = rate_limiter() {
-            limiter.wait_host_request(&host).await;
+            limiter.wait_and_record_host_request(&host).await;
         }
 
         let response = request
@@ -87,7 +94,8 @@ pub async fn fetch_text_with_request(
                 limiter.penalize_host(&host, cooldown).await;
             }
             bail!(
-                "GET {url} rate limited (HTTP 429){}",
+                "GET {} rate limited (HTTP 429){}",
+                sanitize_url(url),
                 retry_after
                     .as_ref()
                     .map(|s| format!(", retry-after: {s}"))
@@ -99,18 +107,15 @@ pub async fn fetch_text_with_request(
             response
                 .text()
                 .await
-                .with_context(|| format!("GET {url} body read failed"))?
+                .with_context(|| format!("GET {} body read failed", sanitize_url(url)))?
         } else {
             let body = response.text().await.unwrap_or_default();
             bail!(
-                "GET {url} returned {status}{}",
+                "GET {} returned {status}{}",
+                sanitize_url(url),
                 upstream_error_detail(&body)
             );
         };
-
-        if let Some(limiter) = rate_limiter() {
-            limiter.record_host_request(&host).await;
-        }
 
         return Ok(body);
     }
@@ -126,11 +131,12 @@ pub async fn fetch_text_with_request(
         return response
             .text()
             .await
-            .with_context(|| format!("GET {url} body read failed"));
+            .with_context(|| format!("GET {} body read failed", sanitize_url(url)));
     }
     let body = response.text().await.unwrap_or_default();
     bail!(
-        "GET {url} returned {status}{}",
+        "GET {} returned {status}{}",
+        sanitize_url(url),
         upstream_error_detail(&body)
     );
 }

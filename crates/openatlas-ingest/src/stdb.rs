@@ -201,7 +201,13 @@ impl StdbClient {
             .await
             .with_context(|| format!("stdb call {reducer} failed (transport)"))?;
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+        let body = match response.text().await {
+            Ok(text) => text,
+            Err(e) => {
+                tracing::warn!("failed to read STDB response body: {e}");
+                String::new()
+            }
+        };
         Ok((status, body))
     }
 
@@ -218,6 +224,10 @@ impl StdbClient {
             // query those tables; for metrics we are optimistic — the
             // accepted/duplicate split is cosmetic for feed health, and the
             // total processed count is what matters for rate-limiting.
+            //
+            // TODO: batch endpoint does not return per-event outcomes;
+            // accepted assumes all were accepted — duplicates inflate this count.
+            // Future: query batch_outcome table for actual counts.
             debug!(reducer, count = event_count, "batch reducer accepted");
             return Ok(BatchIngestSummary {
                 accepted: event_count as u32,
@@ -448,7 +458,7 @@ mod tests {
     fn domain_round_trips_through_u8() {
         for domain in Domain::ALL.iter() {
             let tag = domain_to_u8(domain);
-            let back = u8_to_domain(tag).expect("known tag");
+            let back = u8_to_domain(tag).expect("known status tag in ingest_args");
             assert_eq!(&back, domain);
         }
     }
@@ -456,7 +466,7 @@ mod tests {
     #[test]
     fn ingest_args_layout_is_stable() {
         let args = ingest_args(&sample_event(), "usgs", "https://usgs.gov/").unwrap();
-        let arr = args.as_array().expect("array");
+        let arr = args.as_array().expect("ingest_args SQL value is a JSON array");
         assert_eq!(arr.len(), 8, "reducer takes 8 positional arguments");
         assert_eq!(
             arr[0].as_u64(),

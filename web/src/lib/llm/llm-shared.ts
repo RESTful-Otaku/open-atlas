@@ -14,3 +14,19 @@ export async function parseApiError(r: Response): Promise<string> {
   }
   return detail;
 }
+
+/** Return an actionable hint if an Ollama CUDA error is detected in the message. */
+export function cudaIncompatibilityHint(message: string): string {
+  const lower = message.toLowerCase();
+  if (
+    !lower.includes("cuda error") &&
+    !lower.includes("architectural feature absent")
+  ) {
+    return "";
+  }
+  return (
+    " Your GPU is incompatible with this Ollama CUDA build (common on GTX 10xx). " +
+    "Stop the running `ollama serve`, then start CPU-only: `./scripts/ollama-serve-cpu.sh` " +
+    "or `CUDA_VISIBLE_DEVICES=\"\" ollama serve`. Restart `./dev.sh llm:start` afterward."
+  );
+}

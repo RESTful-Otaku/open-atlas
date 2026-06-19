@@ -4,12 +4,7 @@
 -->
 <script lang="ts">
   import { BarBadge } from "../../primitives";
-
-  export interface RegionBar {
-    readonly label: string;
-    readonly value: number;
-    readonly tone?: "accent" | "warn" | "danger" | "good";
-  }
+  import type { RegionBar } from "./types";
 
   interface Props {
     items: readonly RegionBar[];
