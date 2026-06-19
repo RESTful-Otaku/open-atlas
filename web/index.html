@@ -15,6 +15,7 @@
     <link rel="icon" href="/logo.ico" type="image/x-icon" sizes="any" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0a0c10" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -23,7 +24,16 @@
     />
   </head>
   <body>
+    <a href="#shell-main" style="position: absolute; left: -9999px; top: 0; z-index: 9999; padding: 0.5rem 1rem; background: var(--accent, #06b6d4); color: #fff; text-decoration: none;"
+       onfocus="this.style.left='0'" onblur="this.style.left='-9999px'"
+    >Skip to main content</a>
     <div id="app"></div>
+    <noscript>
+      <div style="padding: 2rem; text-align: center; color: #fff; background: #0b0b0f; min-height: 100vh;">
+        <h1>JavaScript Required</h1>
+        <p>OpenAtlas requires JavaScript to run. Please enable JavaScript in your browser settings.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

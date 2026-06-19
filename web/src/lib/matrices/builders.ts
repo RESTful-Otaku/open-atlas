@@ -7,10 +7,7 @@
  * `(state) => readonly rows` with no side effects.
  */
 
-import type { CardListItem } from "./panels/CardList.svelte";
-import type { RegionBar } from "./panels/RegionBarBadges.svelte";
-import type { StatusTableRow } from "./panels/StatusTable.svelte";
-import type { KpiCell } from "./panels/KpiGrid.svelte";
+import type { CardListItem, RegionBar, StatusTableRow, KpiCell } from "./panels/types";
 
 import { bucketRisk, bucketSeverity } from "../primitives/status";
 import { domainColor, domainLabel } from "../colors";

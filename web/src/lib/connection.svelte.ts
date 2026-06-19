@@ -302,7 +302,7 @@ function openConnection(): void {
 
 function onConnected(connection: DbConnection): void {
   clearConnectionTimer();
-  if (connection !== activeConnection) return;
+  if (activeConnection !== null && connection !== activeConnection) return;
   connectionOpening = false;
   reconnectAttempts = 0;
   dashboard.autoReconnectAttempt = 0;
@@ -428,7 +428,6 @@ function subscribeDashboardQueries(connection: DbConnection): void {
     .subscriptionBuilder()
     .onApplied(() => {
       hydrateDashboardFromConnection(connection);
-      ensureNarrativeSubscription();
     })
     .onError((ctx) => {
       const err = ctx.event;

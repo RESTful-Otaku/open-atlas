@@ -115,7 +115,54 @@ mod tests {
 
     #[test]
     fn env_pair_requires_both_keys() {
-        // Without env in unit tests, returns None.
         assert!(client_credentials_from_env().is_none());
+    }
+
+    #[test]
+    fn token_refresh_margin_is_positive() {
+        assert!(!TOKEN_REFRESH_MARGIN.is_zero());
+        assert!(TOKEN_REFRESH_MARGIN.as_secs() > 0);
+    }
+
+    #[test]
+    fn client_credentials_from_env_returns_none_when_unset() {
+        std::env::remove_var(ENV_CLIENT_ID);
+        std::env::remove_var(ENV_CLIENT_SECRET);
+        assert!(client_credentials_from_env().is_none());
+    }
+
+    #[test]
+    fn client_credentials_from_env_returns_none_for_empty_values() {
+        std::env::set_var(ENV_CLIENT_ID, "");
+        std::env::set_var(ENV_CLIENT_SECRET, "");
+        assert!(client_credentials_from_env().is_none());
+        std::env::remove_var(ENV_CLIENT_ID);
+        std::env::remove_var(ENV_CLIENT_SECRET);
+    }
+
+    #[test]
+    fn client_credentials_from_env_returns_some_when_both_set() {
+        std::env::set_var(ENV_CLIENT_ID, "test-client-id");
+        std::env::set_var(ENV_CLIENT_SECRET, "test-client-secret");
+        let creds = client_credentials_from_env();
+        assert!(creds.is_some());
+        let (id, secret) = creds.unwrap();
+        assert_eq!(id, "test-client-id");
+        assert_eq!(secret, "test-client-secret");
+        std::env::remove_var(ENV_CLIENT_ID);
+        std::env::remove_var(ENV_CLIENT_SECRET);
+    }
+
+    #[test]
+    fn env_constants_are_non_empty() {
+        assert!(!ENV_CLIENT_ID.is_empty());
+        assert!(!ENV_CLIENT_SECRET.is_empty());
+    }
+
+    #[test]
+    fn token_cache_initializes_on_demand() {
+        let cache = token_cache();
+        let lock = cache.blocking_lock();
+        assert!(lock.is_none());
     }
 }

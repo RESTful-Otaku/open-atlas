@@ -6,6 +6,8 @@ import { sortAndTrimDashboardBuffers } from "./sync-dashboard-cache";
 import { logDebug } from "./telemetry/log";
 import { getUpdateIntervalMs } from "./update-interval.svelte";
 
+const HAS_IDLE_CALLBACK = typeof requestIdleCallback !== "undefined";
+
 function minFlushIntervalMs(): number {
   return getUpdateIntervalMs();
 }
@@ -25,7 +27,7 @@ function runFlush(): void {
     clearTimeout(flushTimer);
     flushTimer = undefined;
   }
-  if (flushIdle !== undefined && typeof cancelIdleCallback !== "undefined") {
+  if (flushIdle !== undefined && HAS_IDLE_CALLBACK) {
     cancelIdleCallback(flushIdle);
     flushIdle = undefined;
   }
@@ -42,7 +44,8 @@ function scheduleFlushTick(): void {
   const elapsed = performance.now() - lastFlushAt;
   const wait = Math.max(0, minFlushIntervalMs() - elapsed);
   const runSoon = (): void => {
-    if (typeof requestIdleCallback !== "undefined") {
+    // Safari/Firefox: requestIdleCallback unavailable → fallback to rAF
+    if (HAS_IDLE_CALLBACK) {
       flushIdle = requestIdleCallback(
         () => {
           flushIdle = undefined;
@@ -83,17 +86,24 @@ export function cancelScheduledDashboardFlush(): void {
     clearTimeout(flushTimer);
     flushTimer = undefined;
   }
-  if (flushIdle !== undefined && typeof cancelIdleCallback !== "undefined") {
+  if (flushIdle !== undefined && HAS_IDLE_CALLBACK) {
     cancelIdleCallback(flushIdle);
     flushIdle = undefined;
   }
   flushScheduled = false;
 }
 
-/** Pause trim/revision bumps (tab hidden, route teardown). */
+/**
+ * Pause trim/revision bumps.
+ *
+ * IMPORTANT: Do NOT cancel the scheduled flush here. The running flush
+ * will check `flushPaused` and set `flushPendingWhilePaused = true`
+ * instead, preserving the pending data. If we cancelled, data that
+ * arrived mid-navigation could be permanently lost when the effect
+ * cleanup / new-effect racing in ActiveRoute.svelte drops the schedule.
+ */
 export function pauseDashboardFlush(): void {
   flushPaused = true;
-  cancelScheduledDashboardFlush();
 }
 
 export function resumeDashboardFlush(): void {
@@ -114,8 +124,8 @@ export function resetDashboardFlushSchedule(): void {
   if (!flushPaused) scheduleDashboardFlush();
 }
 
-export function installDashboardFlushVisibilityHook(): void {
-  if (visibilityHookInstalled || typeof document === "undefined") return;
+export function installDashboardFlushVisibilityHook(): () => void {
+  if (visibilityHookInstalled || typeof document === "undefined") return () => {};
   visibilityHookInstalled = true;
   const onVis = (): void => {
     if (document.hidden) pauseDashboardFlush();
@@ -123,4 +133,11 @@ export function installDashboardFlushVisibilityHook(): void {
   };
   document.addEventListener("visibilitychange", onVis);
   if (document.hidden) pauseDashboardFlush();
+  return () => {
+    document.removeEventListener("visibilitychange", onVis);
+    visibilityHookInstalled = false;
+    if (flushPaused) {
+      resumeDashboardFlush();
+    }
+  };
 }

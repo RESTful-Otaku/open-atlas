@@ -820,7 +820,7 @@ fn prune_events_over_ring_size(ctx: &ReducerContext) {
     if total <= EVENT_RING_SIZE {
         return;
     }
-    let excess = total - EVENT_RING_SIZE;
+    let excess = total.saturating_sub(EVENT_RING_SIZE);
     let mut rows: Vec<Event> = ctx.db.event().iter().collect();
     rows.sort_by_key(|e| e.ordinal);
     for row in rows.into_iter().take(excess as usize) {
@@ -861,7 +861,7 @@ fn prune_signals(ctx: &ReducerContext) {
     if total <= SIGNAL_RING_SIZE {
         return;
     }
-    let excess = total - SIGNAL_RING_SIZE;
+    let excess = total.saturating_sub(SIGNAL_RING_SIZE);
     let mut rows: Vec<Signal> = ctx.db.signal().iter().collect();
     rows.sort_by_key(|s| s.id);
     for row in rows.into_iter().take(excess as usize) {
@@ -892,7 +892,7 @@ fn prune_causal_edges(ctx: &ReducerContext) {
     if total <= CAUSAL_EDGE_RING_SIZE {
         return;
     }
-    let excess = total - CAUSAL_EDGE_RING_SIZE;
+    let excess = total.saturating_sub(CAUSAL_EDGE_RING_SIZE);
     let mut rows: Vec<CausalEdge> = ctx.db.causal_edge().iter().collect();
     rows.sort_by_key(|e| e.id);
     for row in rows.into_iter().take(excess as usize) {

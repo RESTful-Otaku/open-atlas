@@ -52,6 +52,15 @@ export function installDashboardFlushCadence(): void {
   restartDashboardFlushCadence();
 }
 
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (cadenceInterval !== undefined) {
+      clearInterval(cadenceInterval);
+      cadenceInterval = undefined;
+    }
+  });
+}
+
 export function getUpdateIntervalMs(): number {
   const hit = UPDATE_INTERVAL_OPTIONS.find((o) => o.id === updateInterval.id);
   return hit?.ms ?? 5_000;
@@ -71,11 +80,11 @@ export function setUpdateInterval(id: UpdateIntervalId): void {
   }
   resetDashboardFlushSchedule();
   restartDashboardFlushCadence();
-  void syncIngestPollCadenceFromClient(getUpdateIntervalMs());
+  void syncIngestPollCadenceFromClient(getUpdateIntervalMs()).catch(() => {});
 }
 
 /** Apply stored cadence on boot (chart timer + ingest poll config). */
 export function applyStoredUpdateCadence(): void {
   restartDashboardFlushCadence();
-  void syncIngestPollCadenceFromClient(getUpdateIntervalMs());
+  void syncIngestPollCadenceFromClient(getUpdateIntervalMs()).catch(() => {});
 }

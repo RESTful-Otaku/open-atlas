@@ -220,7 +220,7 @@ html[data-theme="dim"] body {
   overflow: hidden;
 }
 
-#app :global(.app-shell) {
+#app .app-shell {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
@@ -266,13 +266,18 @@ body {
 a {
   color: var(--accent);
   text-decoration: none;
-  border-bottom: 1px dashed rgba(34, 211, 238, 0.35);
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 35%, transparent);
   transition: color var(--motion-fast) var(--ease),
     border-color var(--motion-fast) var(--ease);
 }
 a:hover {
   color: var(--accent-strong);
   border-bottom-color: var(--accent-strong);
+}
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 code,
@@ -301,7 +306,11 @@ ul {
 }
 
 button {
-  font-family: inherit;
+  font: inherit;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
 }
 
 /* -------------------------------------------------------------------------
@@ -445,6 +454,11 @@ a.btn.btn-link:hover {
   background: transparent;
 }
 
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+}
+
 /* Utility. */
 .mono {
   font-family: var(--font-mono);
@@ -466,26 +480,26 @@ a.btn.btn-link:hover {
 }
 
 /* MapLibre controls — theme-aware across embedded + full-page maps. */
-:global(.maplibregl-ctrl-group) {
+.maplibregl-ctrl-group {
   background: var(--bg-2) !important;
   border: 1px solid var(--border-1) !important;
   box-shadow: var(--shadow-sm) !important;
 }
-:global(.maplibregl-ctrl-group button) {
+.maplibregl-ctrl-group button {
   background: transparent !important;
 }
-:global(.maplibregl-ctrl-group button .maplibregl-ctrl-icon) {
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: none;
 }
-html[data-theme="light"] :global(.maplibregl-ctrl-group button .maplibregl-ctrl-icon) {
+html[data-theme="light"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: invert(0.35) hue-rotate(180deg);
 }
-:global(.maplibregl-ctrl-attrib) {
+.maplibregl-ctrl-attrib {
   background: var(--map-attrib-bg) !important;
   color: var(--text-3) !important;
   backdrop-filter: blur(6px);
 }
-:global(.maplibregl-ctrl-attrib a) {
+.maplibregl-ctrl-attrib a {
   color: var(--text-2) !important;
 }
 
@@ -507,117 +521,117 @@ html[data-mobile-layout] {
 
 html[data-compact-layout] #app,
 html[data-mobile-layout] #app {
-  min-height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   padding-top: 0;
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   box-sizing: border-box;
 }
 
-html[data-compact-layout] :global(#shell-main.shell-main-fill),
-html[data-compact-layout] :global(#shell-main.shell-main-fill .route-view[data-scroll="fill"]),
-html[data-mobile-layout] :global(#shell-main.shell-main-fill),
-html[data-mobile-layout] :global(#shell-main.shell-main-fill .route-view[data-scroll="fill"]) {
+html[data-compact-layout] #shell-main.shell-main-fill,
+html[data-compact-layout] #shell-main.shell-main-fill .route-view[data-scroll="fill"],
+html[data-mobile-layout] #shell-main.shell-main-fill,
+html[data-mobile-layout] #shell-main.shell-main-fill .route-view[data-scroll="fill"] {
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
 }
 
-html[data-compact-layout] :global(.route-view),
-html[data-mobile-layout] :global(.route-view) {
+html[data-compact-layout] .route-view,
+html[data-mobile-layout] .route-view {
   width: 100%;
   max-width: 100%;
   min-height: calc(100dvh - var(--mobile-nav-height) - var(--mobile-top-inset));
   box-sizing: border-box;
 }
 
-html[data-compact-layout] :global(.route-view[data-scroll="page"]),
-html[data-mobile-layout] :global(.route-view[data-scroll="page"]) {
+html[data-compact-layout] .route-view[data-scroll="page"],
+html[data-mobile-layout] .route-view[data-scroll="page"] {
   padding-bottom: var(--space-4);
 }
 
-html[data-mobile-layout] :global(.hub-grid-top),
-html[data-mobile-layout] :global(.hub-grid-bottom),
-html[data-mobile-layout] :global(.hub-grid),
-html[data-mobile-layout] :global(.domain-desk-grid),
-html[data-mobile-layout] :global(.desk-charts-grid),
-html[data-mobile-layout] :global(.matrix-bound-grid),
-html[data-mobile-layout] :global(.matrix-grid) {
+html[data-mobile-layout] .hub-grid-top,
+html[data-mobile-layout] .hub-grid-bottom,
+html[data-mobile-layout] .hub-grid,
+html[data-mobile-layout] .domain-desk-grid,
+html[data-mobile-layout] .desk-charts-grid,
+html[data-mobile-layout] .matrix-bound-grid,
+html[data-mobile-layout] .matrix-grid {
   grid-template-columns: 1fr !important;
 }
 
-html[data-mobile-layout] :global(.desk-charts-grid) {
+html[data-mobile-layout] .desk-charts-grid {
   flex-direction: column;
 }
 
-html[data-mobile-layout] :global(.desk-charts-grid .chart-card) {
+html[data-mobile-layout] .desk-charts-grid .chart-card {
   flex: 1 1 100% !important;
   min-width: 100% !important;
   max-width: 100% !important;
 }
 
-html[data-mobile-layout] :global(.matrix-grid .matrix-panel),
-html[data-mobile-layout] :global(.matrix-grid .matrix-panel[data-span="2"]),
-html[data-mobile-layout] :global(.matrix-grid .matrix-panel[data-span="3"]),
-html[data-mobile-layout] :global(.matrix-grid .matrix-ai) {
+html[data-mobile-layout] .matrix-grid .matrix-panel,
+html[data-mobile-layout] .matrix-grid .matrix-panel[data-span="2"],
+html[data-mobile-layout] .matrix-grid .matrix-panel[data-span="3"],
+html[data-mobile-layout] .matrix-grid .matrix-ai {
   grid-column: span 1 !important;
   grid-row: auto !important;
   position: static !important;
 }
 
-html[data-mobile-layout] :global(.kpi-strip-panel) {
+html[data-mobile-layout] .kpi-strip-panel {
   grid-template-columns: 1fr !important;
   gap: var(--space-2);
 }
 
-html[data-compact-layout] :global(.hub),
-html[data-mobile-layout] :global(.hub) {
+html[data-compact-layout] .hub,
+html[data-mobile-layout] .hub {
   padding: var(--space-4) var(--space-3) var(--space-6);
   gap: var(--space-4);
 }
 
-html[data-compact-layout] :global(.hub-overview),
-html[data-mobile-layout] :global(.hub-overview) {
+html[data-compact-layout] .hub-overview,
+html[data-mobile-layout] .hub-overview {
   padding-left: 0;
   padding-right: 0;
 }
 
-html[data-compact-layout] :global(.domain-analyst),
-html[data-mobile-layout] :global(.domain-analyst) {
+html[data-compact-layout] .domain-analyst,
+html[data-mobile-layout] .domain-analyst {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
 }
 
-html[data-compact-layout] :global(.domain-analyst-btn),
-html[data-mobile-layout] :global(.domain-analyst-btn) {
+html[data-compact-layout] .domain-analyst-btn,
+html[data-mobile-layout] .domain-analyst-btn {
   min-height: var(--mobile-tap-min);
   min-width: var(--mobile-tap-min);
   padding: 10px 14px;
 }
 
-html[data-compact-layout] :global(.domain-map-aside),
-html[data-mobile-layout] :global(.domain-map-aside) {
+html[data-compact-layout] .domain-map-aside,
+html[data-mobile-layout] .domain-map-aside {
   display: none;
 }
 
-html[data-compact-layout] :global(.matrix-header-actions),
-html[data-mobile-layout] :global(.matrix-header-actions) {
+html[data-compact-layout] .matrix-header-actions,
+html[data-mobile-layout] .matrix-header-actions {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-html[data-compact-layout] :global(.matrix-ai-accordion),
-html[data-mobile-layout] :global(.matrix-ai-accordion) {
+html[data-compact-layout] .matrix-ai-accordion,
+html[data-mobile-layout] .matrix-ai-accordion {
   grid-column: span 1 !important;
   grid-row: auto !important;
   position: static !important;
   margin-top: var(--space-2);
 }
 
-html[data-compact-layout] :global(.matrix-ai-accordion > summary),
-html[data-mobile-layout] :global(.matrix-ai-accordion > summary) {
+html[data-compact-layout] .matrix-ai-accordion > summary,
+html[data-mobile-layout] .matrix-ai-accordion > summary {
   list-style: none;
   cursor: pointer;
   min-height: var(--mobile-tap-min);
@@ -635,65 +649,65 @@ html[data-mobile-layout] :global(.matrix-ai-accordion > summary) {
   touch-action: manipulation;
 }
 
-html[data-compact-layout] :global(.matrix-ai-accordion > summary::-webkit-details-marker),
-html[data-mobile-layout] :global(.matrix-ai-accordion > summary::-webkit-details-marker) {
+html[data-compact-layout] .matrix-ai-accordion > summary::-webkit-details-marker,
+html[data-mobile-layout] .matrix-ai-accordion > summary::-webkit-details-marker {
   display: none;
 }
 
-html[data-compact-layout] :global(.matrix-ai-accordion[open] > summary),
-html[data-mobile-layout] :global(.matrix-ai-accordion[open] > summary) {
+html[data-compact-layout] .matrix-ai-accordion[open] > summary,
+html[data-mobile-layout] .matrix-ai-accordion[open] > summary {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   border-bottom: none;
 }
 
-html[data-compact-layout] :global(.matrix-ai-accordion .matrix-ai),
-html[data-mobile-layout] :global(.matrix-ai-accordion .matrix-ai) {
+html[data-compact-layout] .matrix-ai-accordion .matrix-ai,
+html[data-mobile-layout] .matrix-ai-accordion .matrix-ai {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
 
-html[data-compact-layout] :global(.settings-tabs),
-html[data-mobile-layout] :global(.settings-tabs) {
+html[data-compact-layout] .settings-tabs,
+html[data-mobile-layout] .settings-tabs {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
 
 /* Horizontal scroll for wide tables on phone / compact */
-html[data-compact-layout] :global(.table-scroll),
-html[data-compact-layout] :global(.entities-table-wrap),
-html[data-compact-layout] :global(.feed-table-wrap),
-html[data-compact-layout] :global(.ops-table-wrap),
-html[data-mobile-layout] :global(.table-scroll),
-html[data-mobile-layout] :global(.entities-table-wrap),
-html[data-mobile-layout] :global(.feed-table-wrap),
-html[data-mobile-layout] :global(.ops-table-wrap) {
+html[data-compact-layout] .table-scroll,
+html[data-compact-layout] .entities-table-wrap,
+html[data-compact-layout] .feed-table-wrap,
+html[data-compact-layout] .ops-table-wrap,
+html[data-mobile-layout] .table-scroll,
+html[data-mobile-layout] .entities-table-wrap,
+html[data-mobile-layout] .feed-table-wrap,
+html[data-mobile-layout] .ops-table-wrap {
   overflow-x: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   max-width: 100%;
 }
 
-html[data-compact-layout] :global(.data-table),
-html[data-compact-layout] :global(.entities-table),
-html[data-compact-layout] :global(.feed-table),
-html[data-compact-layout] :global(.ops-table),
-html[data-mobile-layout] :global(.data-table),
-html[data-mobile-layout] :global(.entities-table),
-html[data-mobile-layout] :global(.feed-table),
-html[data-mobile-layout] :global(.ops-table) {
+html[data-compact-layout] .data-table,
+html[data-compact-layout] .entities-table,
+html[data-compact-layout] .feed-table,
+html[data-compact-layout] .ops-table,
+html[data-mobile-layout] .data-table,
+html[data-mobile-layout] .entities-table,
+html[data-mobile-layout] .feed-table,
+html[data-mobile-layout] .ops-table {
   width: max-content;
   min-width: 100%;
 }
 
-html[data-compact-layout] :global(.settings-fold + .settings-fold),
-html[data-tablet-layout] :global(.settings-fold + .settings-fold) {
+html[data-compact-layout] .settings-fold + .settings-fold,
+html[data-tablet-layout] .settings-fold + .settings-fold {
   border-top: 1px solid var(--border-1);
 }
 
-html[data-compact-layout] :global(.settings-page--mobile),
-html[data-mobile-layout] :global(.settings-page--mobile) {
+html[data-compact-layout] .settings-page--mobile,
+html[data-mobile-layout] .settings-page--mobile {
   padding: 0;
   max-width: none;
   min-height: 0;
@@ -701,57 +715,57 @@ html[data-mobile-layout] :global(.settings-page--mobile) {
   height: 100%;
 }
 
-html[data-compact-layout] :global(.settings-fold.card--ops),
-html[data-mobile-layout] :global(.settings-fold.card--ops) {
+html[data-compact-layout] .settings-fold.card--ops,
+html[data-mobile-layout] .settings-fold.card--ops {
   border-top: 8px solid var(--bg-0);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-compact-layout] :global(.map-mobile-flyout),
-  html[data-compact-layout] :global(.mobile-domains-sheet),
-  html[data-compact-layout] :global(.shell-search-backdrop),
-  html[data-compact-layout] :global(.shell-search-sheet),
-  html[data-compact-layout] :global([data-settings-fold] .settings-fold-summary),
-  html[data-compact-layout] :global([data-settings-fold] .settings-inner-fold-summary),
-  html[data-mobile-layout] :global(.map-mobile-flyout),
-  html[data-mobile-layout] :global(.mobile-domains-sheet),
-  html[data-mobile-layout] :global(.shell-search-backdrop),
-  html[data-mobile-layout] :global(.shell-search-sheet),
-  html[data-mobile-layout] :global([data-settings-fold] .settings-fold-summary),
-  html[data-mobile-layout] :global([data-settings-fold] .settings-inner-fold-summary) {
+  html[data-compact-layout] .map-mobile-flyout,
+  html[data-compact-layout] .mobile-domains-sheet,
+  html[data-compact-layout] .shell-search-backdrop,
+  html[data-compact-layout] .shell-search-sheet,
+  html[data-compact-layout] [data-settings-fold] .settings-fold-summary,
+  html[data-compact-layout] [data-settings-fold] .settings-inner-fold-summary,
+  html[data-mobile-layout] .map-mobile-flyout,
+  html[data-mobile-layout] .mobile-domains-sheet,
+  html[data-mobile-layout] .shell-search-backdrop,
+  html[data-mobile-layout] .shell-search-sheet,
+  html[data-mobile-layout] [data-settings-fold] .settings-fold-summary,
+  html[data-mobile-layout] [data-settings-fold] .settings-inner-fold-summary {
     animation: none !important;
   }
 }
 
-html[data-compact-layout] :global(.map-wrap .map),
-html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
-html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe),
-html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe canvas),
-html[data-mobile-layout] :global(.map-wrap .map),
-html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
-html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe),
-html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe canvas) {
+html[data-compact-layout] .map-wrap .map,
+html[data-compact-layout] .map-wrap-globe .oa-three-globe-wrap,
+html[data-compact-layout] .map-wrap-globe .oa-three-globe,
+html[data-compact-layout] .map-wrap-globe .oa-three-globe canvas,
+html[data-mobile-layout] .map-wrap .map,
+html[data-mobile-layout] .map-wrap-globe .oa-three-globe-wrap,
+html[data-mobile-layout] .map-wrap-globe .oa-three-globe,
+html[data-mobile-layout] .map-wrap-globe .oa-three-globe canvas {
   touch-action: none;
   pointer-events: auto;
 }
 
 /* Map controls live inside .map-wrap (absolute, vertically centered on the right) */
-html[data-compact-layout] :global(.map-wrap),
-html[data-mobile-layout] :global(.map-wrap) {
+html[data-compact-layout] .map-wrap,
+html[data-mobile-layout] .map-wrap {
   overflow: visible;
   box-sizing: border-box;
   padding-bottom: var(--mobile-nav-height);
 }
 
-html[data-compact-layout] :global(.map-wrap .map),
-html[data-compact-layout] :global(.map-wrap-globe .oa-three-globe-wrap),
-html[data-mobile-layout] :global(.map-wrap .map),
-html[data-mobile-layout] :global(.map-wrap-globe .oa-three-globe-wrap) {
+html[data-compact-layout] .map-wrap .map,
+html[data-compact-layout] .map-wrap-globe .oa-three-globe-wrap,
+html[data-mobile-layout] .map-wrap .map,
+html[data-mobile-layout] .map-wrap-globe .oa-three-globe-wrap {
   bottom: var(--mobile-nav-height);
 }
 
-html[data-compact-layout] :global(.map-wrap .map-mobile-controls),
-html[data-mobile-layout] :global(.map-wrap .map-mobile-controls) {
+html[data-compact-layout] .map-wrap .map-mobile-controls,
+html[data-mobile-layout] .map-wrap .map-mobile-controls {
   position: absolute;
   top: 40%;
   right: max(6px, env(safe-area-inset-right, 0px));
@@ -761,36 +775,36 @@ html[data-mobile-layout] :global(.map-wrap .map-mobile-controls) {
   z-index: 12;
 }
 
-html[data-compact-layout] :global(.map-wrap .map-mobile-controls:has(.map-mobile-flyout)),
-html[data-mobile-layout] :global(.map-wrap .map-mobile-controls:has(.map-mobile-flyout)) {
+html[data-compact-layout] .map-wrap .map-mobile-controls:has(.map-mobile-flyout),
+html[data-mobile-layout] .map-wrap .map-mobile-controls:has(.map-mobile-flyout) {
   top: 34%;
   transform: translateY(calc(-50% - 28px));
 }
 
 /* Event inspector — above map rail; pinned card uses --z-map-inspector (260) > bottom nav (250). */
-html[data-compact-layout] :global(.map-wrap .emhc-wrap:not(.emhc-wrap-docked-compact)),
-html[data-mobile-layout] :global(.map-wrap .emhc-wrap:not(.emhc-wrap-docked-compact)) {
+html[data-compact-layout] .map-wrap .emhc-wrap:not(.emhc-wrap-docked-compact),
+html[data-mobile-layout] .map-wrap .emhc-wrap:not(.emhc-wrap-docked-compact) {
   z-index: 48;
 }
 
-html[data-compact-layout] :global(.map-wrap .map-inspector-overlay),
-html[data-mobile-layout] :global(.map-wrap .map-inspector-overlay) {
+html[data-compact-layout] .map-wrap .map-inspector-overlay,
+html[data-mobile-layout] .map-wrap .map-inspector-overlay {
   z-index: var(--z-map-inspector, 260);
 }
 
-html[data-compact-layout] :global(.map-wrap.map-wrap--inspector-open),
-html[data-mobile-layout] :global(.map-wrap.map-wrap--inspector-open) {
+html[data-compact-layout] .map-wrap.map-wrap--inspector-open,
+html[data-mobile-layout] .map-wrap.map-wrap--inspector-open {
   /* container-type: size makes position:fixed anchor to the map box, not the viewport */
   container-type: normal;
 }
 
-html:not([data-compact-layout]):not([data-mobile-layout]) :global(.map-pinned-dock .emhc-wrap-docked-flex) {
+html:not([data-compact-layout]):not([data-mobile-layout]) .map-pinned-dock .emhc-wrap-docked-flex {
   max-height: min(46vh, calc(100% - 24px));
 }
 
 /* Pinned mobile inspector: fixed to viewport, always above bottom nav. */
-html[data-compact-layout] :global(.emhc-wrap-docked-compact),
-html[data-mobile-layout] :global(.emhc-wrap-docked-compact) {
+html[data-compact-layout] .emhc-wrap-docked-compact,
+html[data-mobile-layout] .emhc-wrap-docked-compact {
   position: fixed;
   left: max(8px, env(safe-area-inset-left, 0px));
   right: max(80px, calc(56px + env(safe-area-inset-right, 0px) + 16px));
@@ -808,60 +822,60 @@ html[data-mobile-layout] :global(.emhc-wrap-docked-compact) {
   box-shadow: 0 -12px 40px -8px color-mix(in srgb, #000 55%, transparent);
 }
 
-html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-controls),
-html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-controls) {
+html[data-compact-layout] .map-wrap--inspector-open .map-mobile-controls,
+html[data-mobile-layout] .map-wrap--inspector-open .map-mobile-controls {
   z-index: 6;
 }
 
-html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-rail),
-html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-rail-btn),
-html[data-compact-layout] :global(.map-wrap--inspector-open .map-mobile-flyout),
-html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-rail),
-html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-rail-btn),
-html[data-mobile-layout] :global(.map-wrap--inspector-open .map-mobile-flyout) {
+html[data-compact-layout] .map-wrap--inspector-open .map-mobile-rail,
+html[data-compact-layout] .map-wrap--inspector-open .map-mobile-rail-btn,
+html[data-compact-layout] .map-wrap--inspector-open .map-mobile-flyout,
+html[data-mobile-layout] .map-wrap--inspector-open .map-mobile-rail,
+html[data-mobile-layout] .map-wrap--inspector-open .map-mobile-rail-btn,
+html[data-mobile-layout] .map-wrap--inspector-open .map-mobile-flyout {
   z-index: 6;
 }
 
-html[data-compact-layout] :global(.map-mobile-rail),
-html[data-compact-layout] :global(.map-mobile-rail-btn),
-html[data-compact-layout] :global(.map-mobile-rail .map-mode button),
-html[data-mobile-layout] :global(.map-mobile-rail),
-html[data-mobile-layout] :global(.map-mobile-rail-btn),
-html[data-mobile-layout] :global(.map-mobile-rail .map-mode button) {
+html[data-compact-layout] .map-mobile-rail,
+html[data-compact-layout] .map-mobile-rail-btn,
+html[data-compact-layout] .map-mobile-rail .map-mode button,
+html[data-mobile-layout] .map-mobile-rail,
+html[data-mobile-layout] .map-mobile-rail-btn,
+html[data-mobile-layout] .map-mobile-rail .map-mode button {
   pointer-events: auto;
   min-height: var(--mobile-tap-min);
   min-width: var(--mobile-tap-min);
   touch-action: manipulation;
 }
 
-html[data-compact-layout] :global(.map-empty-dismiss),
-html[data-mobile-layout] :global(.map-empty-dismiss) {
+html[data-compact-layout] .map-empty-dismiss,
+html[data-mobile-layout] .map-empty-dismiss {
   min-width: var(--mobile-tap-min);
   min-height: var(--mobile-tap-min);
 }
 
-html[data-compact-layout] :global(.map-float-ui) {
+html[data-compact-layout] .map-float-ui {
   pointer-events: none;
 }
 
-html[data-compact-layout] :global(.map-float-bar),
-html[data-compact-layout] :global(.map-mode),
-html[data-compact-layout] :global(.map-float-bar button) {
+html[data-compact-layout] .map-float-bar,
+html[data-compact-layout] .map-mode,
+html[data-compact-layout] .map-float-bar button {
   pointer-events: auto;
 }
 
-html[data-compact-layout] :global(.map-layers-panel.is-open .map-layers-pill),
-html[data-compact-layout] :global(.map-layers-panel.is-open .map-mode-compact button),
-html[data-compact-layout] :global(.map-layers-panel.is-open .solar-scrub),
-html[data-compact-layout] :global(.map-layers-panel.is-open .solar-scrub *),
-html[data-mobile-layout] :global(.map-layers-panel.is-open .map-layers-pill),
-html[data-mobile-layout] :global(.map-layers-panel.is-open .map-mode-compact button),
-html[data-mobile-layout] :global(.map-layers-panel.is-open .solar-scrub),
-html[data-mobile-layout] :global(.map-layers-panel.is-open .solar-scrub *) {
+html[data-compact-layout] .map-layers-panel.is-open .map-layers-pill,
+html[data-compact-layout] .map-layers-panel.is-open .map-mode-compact button,
+html[data-compact-layout] .map-layers-panel.is-open .solar-scrub,
+html[data-compact-layout] .map-layers-panel.is-open .solar-scrub,
+html[data-mobile-layout] .map-layers-panel.is-open .map-layers-pill,
+html[data-mobile-layout] .map-layers-panel.is-open .map-mode-compact button,
+html[data-mobile-layout] .map-layers-panel.is-open .solar-scrub,
+html[data-mobile-layout] .map-layers-panel.is-open .solar-scrub {
   pointer-events: auto;
 }
 
-html[data-compact-layout] :global(.map-command-bar) {
+html[data-compact-layout] .map-command-bar {
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-2);
@@ -869,12 +883,12 @@ html[data-compact-layout] :global(.map-command-bar) {
   overflow: visible;
 }
 
-html[data-compact-layout] :global(.map-command-bar .map-command-titles) {
+html[data-compact-layout] .map-command-bar .map-command-titles {
   width: 100%;
   min-width: 0;
 }
 
-html[data-compact-layout] :global(.map-command-bar .ops-strip) {
+html[data-compact-layout] .map-command-bar .ops-strip {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
@@ -886,19 +900,19 @@ html[data-compact-layout] :global(.map-command-bar .ops-strip) {
   box-sizing: border-box;
 }
 
-html[data-compact-layout] :global(.map-command-bar .ops-live) {
+html[data-compact-layout] .map-command-bar .ops-live {
   flex-shrink: 0;
   margin-left: 4px;
 }
 
-html[data-compact-layout] :global(.map-globe-root) {
+html[data-compact-layout] .map-globe-root {
   min-height: 0;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
 }
 
-html[data-compact-layout] :global(.map-wrap.map-wrap-globe) {
+html[data-compact-layout] .map-wrap.map-wrap-globe {
   flex: 1 1 auto;
   min-height: 0;
   border-radius: 0;
@@ -906,19 +920,19 @@ html[data-compact-layout] :global(.map-wrap.map-wrap-globe) {
   border-right: 0;
 }
 
-html[data-compact-layout] :global(.map-float-bar button),
-html[data-compact-layout] :global(.map-layers-pill),
-html[data-compact-layout] :global(.map-mode button),
-html[data-mobile-layout] :global(.map-float-bar button),
-html[data-mobile-layout] :global(.map-layers-pill),
-html[data-mobile-layout] :global(.map-mode button) {
+html[data-compact-layout] .map-float-bar button,
+html[data-compact-layout] .map-layers-pill,
+html[data-compact-layout] .map-mode button,
+html[data-mobile-layout] .map-float-bar button,
+html[data-mobile-layout] .map-layers-pill,
+html[data-mobile-layout] .map-mode button {
   min-height: var(--mobile-tap-min);
   min-width: var(--mobile-tap-min);
   touch-action: manipulation;
 }
 
-html[data-compact-layout] :global(.map-layers-backdrop),
-html[data-mobile-layout] :global(.map-layers-backdrop) {
+html[data-compact-layout] .map-layers-backdrop,
+html[data-mobile-layout] .map-layers-backdrop {
   position: fixed;
   inset: 0;
   z-index: 25;
@@ -926,15 +940,15 @@ html[data-mobile-layout] :global(.map-layers-backdrop) {
   background: color-mix(in srgb, var(--bg-0) 48%, transparent);
 }
 
-html[data-compact-layout] :global(.map-float-anchor:has(.map-layers-panel.is-open)),
-html[data-mobile-layout] :global(.map-float-anchor:has(.map-layers-panel.is-open)) {
+html[data-compact-layout] .map-float-anchor:has(.map-layers-panel.is-open),
+html[data-mobile-layout] .map-float-anchor:has(.map-layers-panel.is-open) {
   /* Panel is position:fixed z-index:30 but lives inside anchor; raise anchor above backdrop (25). */
   z-index: 31;
 }
 
 /* Legacy bottom sheet (desktop float only); mobile flyout uses .map-layers-panel--sheet */
-html[data-compact-layout] :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet)),
-html[data-mobile-layout] :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet)) {
+html[data-compact-layout] .map-layers-panel.is-open:not(.map-layers-panel--sheet),
+html[data-mobile-layout] .map-layers-panel.is-open:not(.map-layers-panel--sheet) {
   position: fixed;
   left: 0;
   right: 0;
@@ -951,9 +965,9 @@ html[data-mobile-layout] :global(.map-layers-panel.is-open:not(.map-layers-panel
 }
 
 html[data-compact-layout]
-  :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet) .map-layers-panel-inner),
+  .map-layers-panel.is-open:not(.map-layers-panel--sheet) .map-layers-panel-inner,
 html[data-mobile-layout]
-  :global(.map-layers-panel.is-open:not(.map-layers-panel--sheet) .map-layers-panel-inner) {
+  .map-layers-panel.is-open:not(.map-layers-panel--sheet) .map-layers-panel-inner {
   max-height: min(85dvh, 85vh);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -962,23 +976,23 @@ html[data-mobile-layout]
   pointer-events: auto;
 }
 
-html[data-compact-layout] :global(.map-mobile-flyout .map-layers-panel--sheet),
-html[data-mobile-layout] :global(.map-mobile-flyout .map-layers-panel--sheet) {
+html[data-compact-layout] .map-mobile-flyout .map-layers-panel--sheet,
+html[data-mobile-layout] .map-mobile-flyout .map-layers-panel--sheet {
   position: relative;
   max-height: none;
   width: 100%;
 }
 
 /* Desktop float anchor only — compact map uses .map-mobile-controls rail */
-html[data-compact-layout] :global(.map-float-ui),
-html[data-mobile-layout] :global(.map-float-ui) {
+html[data-compact-layout] .map-float-ui,
+html[data-mobile-layout] .map-float-ui {
   display: none;
 }
 
-html[data-compact-layout] :global(.map-page),
-html[data-compact-layout] :global(.globe-page),
-html[data-mobile-layout] :global(.map-page),
-html[data-mobile-layout] :global(.globe-page) {
+html[data-compact-layout] .map-page,
+html[data-compact-layout] .globe-page,
+html[data-mobile-layout] .map-page,
+html[data-mobile-layout] .globe-page {
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
@@ -987,8 +1001,8 @@ html[data-mobile-layout] :global(.globe-page) {
   );
 }
 
-html[data-compact-layout] :global(.settings-page:not(.settings-page--mobile)),
-html[data-mobile-layout] :global(.settings-page:not(.settings-page--mobile)) {
+html[data-compact-layout] .settings-page:not(.settings-page--mobile),
+html[data-mobile-layout] .settings-page:not(.settings-page--mobile) {
   padding: var(--space-4);
   padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
   padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
@@ -996,16 +1010,16 @@ html[data-mobile-layout] :global(.settings-page:not(.settings-page--mobile)) {
   max-width: none;
 }
 
-html[data-compact-layout] :global(.settings .card),
-html[data-mobile-layout] :global(.settings .card) {
+html[data-compact-layout] .settings .card,
+html[data-mobile-layout] .settings .card {
   margin-top: var(--space-3);
   padding: 0;
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
-html[data-compact-layout] :global(.settings .card > h3),
-html[data-mobile-layout] :global(.settings .card > h3) {
+html[data-compact-layout] .settings .card > h3,
+html[data-mobile-layout] .settings .card > h3 {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -1015,190 +1029,190 @@ html[data-mobile-layout] :global(.settings .card > h3) {
   border-bottom: 1px solid var(--border-1);
 }
 
-html[data-compact-layout] :global(.settings .card > :not(h3)),
-html[data-mobile-layout] :global(.settings .card > :not(h3)) {
+html[data-compact-layout] .settings .card > :not(h3),
+html[data-mobile-layout] .settings .card > :not(h3) {
   margin-left: var(--space-4);
   margin-right: var(--space-4);
 }
 
-html[data-compact-layout] :global(.settings .card > :not(h3):first-of-type),
-html[data-compact-layout] :global(.settings .card > h3 + *),
-html[data-mobile-layout] :global(.settings .card > :not(h3):first-of-type),
-html[data-mobile-layout] :global(.settings .card > h3 + *) {
+html[data-compact-layout] .settings .card > :not(h3):first-of-type,
+html[data-compact-layout] .settings .card > h3 + *,
+html[data-mobile-layout] .settings .card > :not(h3):first-of-type,
+html[data-mobile-layout] .settings .card > h3 + * {
   margin-top: var(--space-3);
 }
 
-html[data-compact-layout] :global(.settings .card > :last-child),
-html[data-mobile-layout] :global(.settings .card > :last-child) {
+html[data-compact-layout] .settings .card > :last-child,
+html[data-mobile-layout] .settings .card > :last-child {
   margin-bottom: var(--space-4);
 }
 
-html[data-compact-layout] :global(.settings .btn),
-html[data-compact-layout] :global(.settings-mobile-detail-body .btn),
-html[data-compact-layout] :global(.deploy-panel .btn),
-html[data-compact-layout] :global(.settings .theme-card),
-html[data-compact-layout] :global(.settings label),
-html[data-compact-layout] :global(.settings input[type="text"]),
-html[data-compact-layout] :global(.settings input[type="url"]),
-html[data-compact-layout] :global(.settings select),
-html[data-mobile-layout] :global(.settings .btn),
-html[data-mobile-layout] :global(.settings-mobile-detail-body .btn),
-html[data-mobile-layout] :global(.deploy-panel .btn),
-html[data-mobile-layout] :global(.settings .theme-card),
-html[data-mobile-layout] :global(.settings label),
-html[data-mobile-layout] :global(.settings input[type="text"]),
-html[data-mobile-layout] :global(.settings input[type="url"]),
-html[data-mobile-layout] :global(.settings select) {
+html[data-compact-layout] .settings .btn,
+html[data-compact-layout] .settings-mobile-detail-body .btn,
+html[data-compact-layout] .deploy-panel .btn,
+html[data-compact-layout] .settings .theme-card,
+html[data-compact-layout] .settings label,
+html[data-compact-layout] .settings input[type="text"],
+html[data-compact-layout] .settings input[type="url"],
+html[data-compact-layout] .settings select,
+html[data-mobile-layout] .settings .btn,
+html[data-mobile-layout] .settings-mobile-detail-body .btn,
+html[data-mobile-layout] .deploy-panel .btn,
+html[data-mobile-layout] .settings .theme-card,
+html[data-mobile-layout] .settings label,
+html[data-mobile-layout] .settings input[type="text"],
+html[data-mobile-layout] .settings input[type="url"],
+html[data-mobile-layout] .settings select {
   min-height: var(--mobile-tap-min);
 }
 
-html[data-compact-layout] :global(.settings .btn),
-html[data-compact-layout] :global(.settings-mobile-detail-body .btn),
-html[data-compact-layout] :global(.deploy-panel .btn),
-html[data-mobile-layout] :global(.settings .btn),
-html[data-mobile-layout] :global(.settings-mobile-detail-body .btn),
-html[data-mobile-layout] :global(.deploy-panel .btn) {
+html[data-compact-layout] .settings .btn,
+html[data-compact-layout] .settings-mobile-detail-body .btn,
+html[data-compact-layout] .deploy-panel .btn,
+html[data-mobile-layout] .settings .btn,
+html[data-mobile-layout] .settings-mobile-detail-body .btn,
+html[data-mobile-layout] .deploy-panel .btn {
   padding: 10px 16px;
   font-size: 14px;
 }
 
-html[data-compact-layout] :global(.settings .theme-grid),
-html[data-mobile-layout] :global(.settings .theme-grid) {
+html[data-compact-layout] .settings .theme-grid,
+html[data-mobile-layout] .settings .theme-grid {
   grid-template-columns: 1fr;
   padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
-html[data-compact-layout] :global(.settings > header),
-html[data-mobile-layout] :global(.settings > header) {
+html[data-compact-layout] .settings > header,
+html[data-mobile-layout] .settings > header {
   padding-bottom: var(--space-2);
 }
 
-html[data-compact-layout] :global(.cmd-bar),
-html[data-mobile-layout] :global(.cmd-bar) {
+html[data-compact-layout] .cmd-bar,
+html[data-mobile-layout] .cmd-bar {
   padding: var(--space-2) var(--space-3);
   gap: var(--space-2);
   flex-wrap: wrap;
 }
 
-html[data-compact-layout] :global(.cmd-prompt),
-html[data-mobile-layout] :global(.cmd-prompt) {
+html[data-compact-layout] .cmd-prompt,
+html[data-mobile-layout] .cmd-prompt {
   display: none;
 }
 
-html[data-compact-layout] :global(.cmd-input),
-html[data-mobile-layout] :global(.cmd-input) {
+html[data-compact-layout] .cmd-input,
+html[data-mobile-layout] .cmd-input {
   font-size: 11px;
   min-height: var(--mobile-tap-min);
 }
 
-html[data-compact-layout] :global(.cmd-aux),
-html[data-mobile-layout] :global(.cmd-aux) {
+html[data-compact-layout] .cmd-aux,
+html[data-mobile-layout] .cmd-aux {
   min-width: var(--mobile-tap-min);
   min-height: var(--mobile-tap-min);
 }
 
-html[data-compact-layout] :global(.cmd-status),
-html[data-mobile-layout] :global(.cmd-status) {
+html[data-compact-layout] .cmd-status,
+html[data-mobile-layout] .cmd-status {
   max-width: min(200px, 45vw);
 }
 
 /* Tablet: two-column charts; phone stays single-column via data-mobile-layout above */
-html[data-tablet-layout] :global(.hub-grid-top),
-html[data-tablet-layout] :global(.hub-grid-bottom),
-html[data-tablet-layout] :global(.hub-grid),
-html[data-tablet-layout] :global(.domain-desk-grid),
-html[data-tablet-layout] :global(.desk-charts-grid),
-html[data-tablet-layout] :global(.matrix-bound-grid),
-html[data-tablet-layout] :global(.matrix-grid) {
+html[data-tablet-layout] .hub-grid-top,
+html[data-tablet-layout] .hub-grid-bottom,
+html[data-tablet-layout] .hub-grid,
+html[data-tablet-layout] .domain-desk-grid,
+html[data-tablet-layout] .desk-charts-grid,
+html[data-tablet-layout] .matrix-bound-grid,
+html[data-tablet-layout] .matrix-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
-html[data-tablet-layout] :global(.desk-charts-grid) {
+html[data-tablet-layout] .desk-charts-grid {
   flex-direction: row;
   flex-wrap: wrap;
 }
 
-html[data-tablet-layout] :global(.desk-charts-grid .chart-card) {
+html[data-tablet-layout] .desk-charts-grid .chart-card {
   flex: 1 1 calc(50% - var(--space-2)) !important;
   min-width: calc(50% - var(--space-2)) !important;
   max-width: calc(50% - var(--space-2)) !important;
 }
 
-html[data-tablet-layout] :global(.kpi-strip-panel) {
+html[data-tablet-layout] .kpi-strip-panel {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
-html[data-tablet-layout] :global(.hub-grid) {
+html[data-tablet-layout] .hub-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
-html[data-tablet-layout] :global(.viz-grid) {
+html[data-tablet-layout] .viz-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
-html[data-tablet-layout] :global(.matrix-grid .matrix-panel),
-html[data-tablet-layout] :global(.matrix-grid .matrix-panel[data-span="2"]),
-html[data-tablet-layout] :global(.matrix-grid .matrix-panel[data-span="3"]) {
+html[data-tablet-layout] .matrix-grid .matrix-panel,
+html[data-tablet-layout] .matrix-grid .matrix-panel[data-span="2"],
+html[data-tablet-layout] .matrix-grid .matrix-panel[data-span="3"] {
   grid-column: span 1 !important;
 }
 
-html[data-compact-layout] :global(.event-detail) {
+html[data-compact-layout] .event-detail {
   padding: var(--space-4);
   padding-bottom: calc(var(--space-6) + var(--mobile-nav-height));
 }
 
-html[data-mobile-layout] :global(.event-detail) {
+html[data-mobile-layout] .event-detail {
   padding-left: max(var(--space-3), env(safe-area-inset-left, 0px));
   padding-right: max(var(--space-3), env(safe-area-inset-right, 0px));
 }
 
-html[data-mobile-layout] :global(.ed-back),
-html[data-mobile-layout] :global(.ed-loc-btn) {
+html[data-mobile-layout] .ed-back,
+html[data-mobile-layout] .ed-loc-btn {
   min-height: var(--mobile-tap-min);
   min-width: var(--mobile-tap-min);
   touch-action: manipulation;
 }
 
-html[data-compact-layout] :global(.viz-page) {
+html[data-compact-layout] .viz-page {
   padding: var(--space-4) var(--space-4) calc(var(--space-8) + var(--mobile-nav-height));
 }
 
-html[data-mobile-layout] :global(.viz-grid) {
+html[data-mobile-layout] .viz-grid {
   grid-template-columns: minmax(0, 1fr) !important;
   gap: var(--space-4);
 }
 
-html[data-compact-layout] :global(.ops-strip) {
+html[data-compact-layout] .ops-strip {
   max-width: 100%;
   font-size: 10px;
 }
 
-html[data-compact-layout] :global(.ops-strip--command) {
+html[data-compact-layout] .ops-strip--command {
   gap: 6px;
 }
 
-html[data-compact-layout] :global(.ops-pill) {
+html[data-compact-layout] .ops-pill {
   min-height: var(--mobile-tap-min);
   padding: 6px 8px;
   touch-action: manipulation;
 }
 
-html[data-mobile-layout] :global(.ops-phase) {
+html[data-mobile-layout] .ops-phase {
   display: none;
 }
 
-html[data-compact-layout] :global(.hub-header) {
+html[data-compact-layout] .hub-header {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-html[data-compact-layout] :global(.hub-btn) {
+html[data-compact-layout] .hub-btn {
   min-height: var(--mobile-tap-min);
   touch-action: manipulation;
 }
 
 /* Toasts: top-center on compact — clear bottom nav and map controls */
-html[data-compact-layout] :global(.toast-a11y) {
+html[data-compact-layout] .toast-a11y {
   top: calc(env(safe-area-inset-top, 0px) + 48px);
   bottom: auto;
   left: 0;
@@ -1209,29 +1223,29 @@ html[data-compact-layout] :global(.toast-a11y) {
   z-index: 180;
 }
 
-html[data-compact-layout] :global(.toast-stack) {
+html[data-compact-layout] .toast-stack {
   align-items: stretch;
   max-width: min(20rem, calc(100vw - var(--space-6)));
   width: 100%;
 }
 
-html[data-compact-layout] :global(.toast) {
+html[data-compact-layout] .toast {
   padding: var(--space-2) var(--space-3);
   font-size: 0.75rem;
 }
 
-html[data-compact-layout] :global(.toast-detail),
-html[data-compact-layout] :global(.toast-action) {
+html[data-compact-layout] .toast-detail,
+html[data-compact-layout] .toast-action {
   display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-compact-layout] :global(.mobile-tab),
-  html[data-compact-layout] :global(.map-layers-panel),
-  html[data-compact-layout] :global(.mobile-domains-sheet),
-  html[data-mobile-layout] :global(.mobile-tab),
-  html[data-mobile-layout] :global(.map-layers-panel),
-  html[data-mobile-layout] :global(.mobile-domains-sheet) {
+  html[data-compact-layout] .mobile-tab,
+  html[data-compact-layout] .map-layers-panel,
+  html[data-compact-layout] .mobile-domains-sheet,
+  html[data-mobile-layout] .mobile-tab,
+  html[data-mobile-layout] .map-layers-panel,
+  html[data-mobile-layout] .mobile-domains-sheet {
     transition: none;
   }
 }

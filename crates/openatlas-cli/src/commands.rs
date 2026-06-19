@@ -165,3 +165,49 @@ fn format_micros(micros: i64) -> String {
         None => format!("<invalid ts {micros}>"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_micros_valid_timestamp() {
+        let result = format_micros(1_700_000_000_000_000);
+        assert!(result.contains("2023-11-14T"));
+        assert!(result.contains("Z") || result.contains("+00:00"));
+    }
+
+    #[test]
+    fn format_micros_zero() {
+        let result = format_micros(0);
+        assert!(result.contains("1970-01-01T"));
+    }
+
+    #[test]
+    fn format_micros_negative_valid() {
+        // -1 µs = 1969-12-31 23:59:59.999999 UTC
+        let result = format_micros(-1);
+        assert!(result.contains("1969-12-31T23:59:59"));
+    }
+
+    #[test]
+    fn format_micros_overflow_i64() {
+        let result = format_micros(i64::MAX);
+        assert!(result.contains("<invalid ts"));
+    }
+
+    #[test]
+    fn format_micros_i64_min() {
+        let result = format_micros(i64::MIN);
+        assert!(result.contains("<invalid ts"));
+    }
+
+    #[test]
+    fn format_micros_known_timestamp() {
+        let result = format_micros(1_704_067_200_000_000);
+        assert!(
+            result.starts_with("2024-01-01T"),
+            "expected 2024-01-01T..., got {result}"
+        );
+    }
+}

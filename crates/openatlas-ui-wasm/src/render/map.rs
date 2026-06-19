@@ -11,7 +11,7 @@ use crate::{
     state::UiState,
 };
 
-use super::require_element;
+use super::{escape_html, require_element};
 
 const MAP_WIDTH: f64 = 1600.0;
 const MAP_HEIGHT: f64 = 760.0;
@@ -55,7 +55,7 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
                 glow_radius = glow_radius,
                 radius = radius,
                 color = color,
-                domain = event.domain,
+                domain = escape_html(&event.domain),
                 severity = event.severity_score,
             ),
         );
@@ -143,9 +143,118 @@ fn render_legend(counts: &HashMap<String, usize>) -> String {
                   {domain}
                   <span class="legend-count">{count}</span>
                 </span>"#,
+                domain = escape_html(domain),
             ),
         );
     }
     html.push_str("</div>");
     html
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{render_legend, render_svg, MAP_WIDTH, MAP_HEIGHT};
+    use std::collections::HashMap;
+
+    // -----------------------------------------------------------------------
+    // render_legend
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn legend_empty_returns_empty_string() {
+        let counts: HashMap<String, usize> = HashMap::new();
+        assert_eq!(render_legend(&counts), "");
+    }
+
+    #[test]
+    fn legend_single_domain() {
+        let mut counts = HashMap::new();
+        counts.insert("energy".to_owned(), 42usize);
+        let html = render_legend(&counts);
+        assert!(html.contains("energy"));
+        assert!(html.contains("42"));
+        assert!(html.contains("map-legend"));
+    }
+
+    #[test]
+    fn legend_multiple_domains_sorted_by_count_desc() {
+        let mut counts = HashMap::new();
+        counts.insert("a".to_owned(), 5usize);
+        counts.insert("b".to_owned(), 10usize);
+        counts.insert("c".to_owned(), 1usize);
+        let html = render_legend(&counts);
+        // Find the "10" count for item "b" — it appears before "a" and "c"
+        let count_10 = html.find(">10<").unwrap();
+        let count_5 = html.find(">5<").unwrap();
+        let count_1 = html.find(">1<").unwrap();
+        assert!(count_10 < count_5, "b (10) should appear before a (5)");
+        assert!(count_5 < count_1, "a (5) should appear before c (1)");
+    }
+
+    #[test]
+    fn legend_tie_sorted_alphabetically() {
+        let mut counts = HashMap::new();
+        counts.insert("beta".to_owned(), 5usize);
+        counts.insert("alpha".to_owned(), 5usize);
+        let html = render_legend(&counts);
+        let pos_alpha = html.find("alpha").unwrap();
+        let pos_beta = html.find("beta").unwrap();
+        assert!(pos_alpha < pos_beta, "tie should be alphabetical");
+    }
+
+    #[test]
+    fn legend_contains_legend_class_and_swatch() {
+        let mut counts = HashMap::new();
+        counts.insert("cyber".to_owned(), 7usize);
+        let html = render_legend(&counts);
+        assert!(html.contains("class=\"map-legend\""));
+        assert!(html.contains("<span class=\"swatch\""));
+        assert!(html.contains("--card-accent"));
+    }
+
+    // -----------------------------------------------------------------------
+    // render_svg
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn svg_empty_markers_has_graticule_lines() {
+        let svg = render_svg("");
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.ends_with("</svg>"));
+        assert!(svg.contains("viewBox"));
+        // Has horizontal graticule lines (x1="0") and the equator / meridian
+        assert!(svg.contains("<line x1=\"0\""));
+        assert!(svg.contains("x2=\""));
+        // Has the equatorial line
+        assert!(svg.contains("y1=\"380\""));
+    }
+
+    #[test]
+    fn svg_with_markers_includes_marker_group() {
+        let svg = render_svg(r#"<circle cx="100" cy="200" r="5"/>"#);
+        assert!(svg.contains("<g>"));
+    }
+
+    #[test]
+    fn svg_contains_expected_dimensions() {
+        let svg = render_svg("");
+        assert!(svg.contains(&format!("{MAP_WIDTH}")));
+        assert!(svg.contains(&format!("{MAP_HEIGHT}")));
+    }
+
+    #[test]
+    fn svg_contains_equator_and_meridian() {
+        let svg = render_svg("");
+        let equator_y = MAP_HEIGHT / 2.0;
+        let meridian_x = MAP_WIDTH / 2.0;
+        assert!(svg.contains(&format!("y1=\"{equator_y}\"")));
+        assert!(svg.contains(&format!("x1=\"{meridian_x}\"")));
+    }
+
+    #[test]
+    fn svg_has_proper_marker_injection_point() {
+        let markers = r#"<circle cx="400" cy="300" r="8"/>"#;
+        let svg = render_svg(markers);
+        assert!(svg.contains(markers));
+    }
 }

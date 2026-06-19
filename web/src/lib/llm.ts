@@ -10,17 +10,6 @@ import { llmBaseUrl } from "./native-config";
 import { probeFetch } from "./probe-fetch";
 
 /** Default insight timeout (slow CPU models). Override: VITE_LLM_INSIGHT_TIMEOUT_MS */
-const DEFAULT_INSIGHT_TIMEOUT_MS = 120_000;
-
-function insightTimeoutMs(): number {
-  const raw = import.meta.env.VITE_LLM_INSIGHT_TIMEOUT_MS as string | undefined;
-  if (raw) {
-    const n = Number.parseInt(raw, 10);
-    if (Number.isFinite(n) && n >= 30_000) return n;
-  }
-  return DEFAULT_INSIGHT_TIMEOUT_MS;
-}
-
 export { llmBaseUrl };
 
 export interface LlmInsightResponse {
@@ -29,105 +18,26 @@ export interface LlmInsightResponse {
   readonly ollama_base: string;
 }
 
-export interface LlmInsightErrorBody {
-  readonly error?: string;
-}
-
-/**
- * Request a natural-language analysis grounded in the given snapshot
- * (see `buildLlmSnapshot`). Fails if the bridge or Ollama is down.
- */
-function cudaIncompatibilityHint(message: string): string {
-  const lower = message.toLowerCase();
-  if (
-    !lower.includes("cuda error") &&
-    !lower.includes("architectural feature absent")
-  ) {
-    return "";
-  }
-  return (
-    " Your GPU is incompatible with this Ollama CUDA build (common on GTX 10xx). " +
-    "Stop the running `ollama serve`, then start CPU-only: `./scripts/ollama-serve-cpu.sh` " +
-    "or `CUDA_VISIBLE_DEVICES=\"\" ollama serve`. Restart `./dev.sh llm:start` afterward."
-  );
-}
-
-function llmFailureHint(status: number, message: string): string {
-  const cuda = cudaIncompatibilityHint(message);
-  if (cuda) return cuda;
-  if (status === 404 || status === 502 || status === 503) {
-    return " Start the bridge with ./dev.sh llm:start (or ./dev.sh up). In dev, Vite proxies /api/llm → :3847.";
-  }
-  if (status === 504) {
-    return " The model may still be loading — try again or use a smaller Ollama model.";
-  }
-  return "";
-}
-
-async function requestLlmInsightOnce(
-  snapshot: Record<string, unknown>,
-  userPrompt: string | undefined,
-): Promise<LlmInsightResponse> {
-  const url = `${llmBaseUrl()}/v1/insight`;
-  let r: Response;
-  try {
-    r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(insightTimeoutMs()),
-      body: JSON.stringify({
-        snapshot,
-        user_prompt: userPrompt?.trim() || undefined,
-      }),
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const timeoutNote =
-      msg.includes("timeout") || msg.includes("aborted")
-        ? ` Insight timed out after ${Math.round(insightTimeoutMs() / 1000)}s — try a smaller model or raise VITE_LLM_INSIGHT_TIMEOUT_MS / OPENATLAS_OLLAMA_TIMEOUT_SECS.`
-        : "";
-    throw new Error(
-      `${msg}.${timeoutNote} Is openatlas-llm-bridge running? Try ./dev.sh llm:start and ensure Vite dev proxies /api/llm.`,
-    );
-  }
-  if (!r.ok) {
-    let msg = r.statusText;
-    try {
-      const body = (await r.json()) as LlmInsightErrorBody;
-      if (body.error) msg = body.error;
-    } catch {
-      /* use status */
-    }
-    throw new Error(`${msg}${llmFailureHint(r.status, msg)}`);
-  }
-  return (await r.json()) as LlmInsightResponse;
-}
-
 export async function requestLlmInsight(
   snapshot: Record<string, unknown>,
   userPrompt?: string,
   options?: { retries?: number },
 ): Promise<LlmInsightResponse> {
-  const { requestProviderLlmInsight, usesClientSideLlm } = await import("./llm/llm-providers");
-  const retries = options?.retries ?? 1;
+  const { requestProviderLlmInsight } = await import("./llm/llm-providers");
+  const retries = options?.retries ?? 2;
   let lastErr: Error | null = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      if (usesClientSideLlm()) {
-        return await requestProviderLlmInsight(snapshot, userPrompt);
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 200 * attempt));
       }
-      return await requestLlmInsightOnce(snapshot, userPrompt);
+      return await requestProviderLlmInsight(snapshot, userPrompt);
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
       if (attempt >= retries) break;
     }
   }
   throw lastErr ?? new Error("LLM request failed");
-}
-
-/** Base URL used for bridge probes (Settings, ops console). */
-export function llmBaseUrlForDisplay(): string {
-  return llmBaseUrl();
 }
 
 /**
@@ -158,7 +68,4 @@ export async function checkLlmBridgeCapable(): Promise<boolean> {
   }
 }
 
-/** Bridge + Ollama HTTP up (fast; does not run inference). */
-export async function checkLlmBridgeReady(): Promise<boolean> {
-  return checkLlmBridgePing();
-}
+

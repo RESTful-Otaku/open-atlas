@@ -209,4 +209,327 @@ pub(crate) async fn clear_feed_backoff(state: &AppState, feed_name: &str) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::collections::HashSet;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    fn test_state() -> AppState {
+        AppState {
+            bind_addr: "127.0.0.1:0".parse().unwrap(),
+            started_at: Utc::now(),
+            feed_runtime: Arc::new(RwLock::new(HashMap::new())),
+            spawned_feeds: Arc::new(RwLock::new(HashSet::new())),
+            stdb: crate::stdb::StdbClient::from_env().unwrap(),
+            rate_limiter: Arc::new(crate::rate_limit::FeedRateLimiter::new()),
+            metrics: Arc::new(crate::metrics::IngestMetrics::default()),
+        }
+    }
+
+    async fn insert_feed(state: &AppState, name: &str) {
+        let mut map = state.feed_runtime.write().await;
+        map.insert(
+            name.to_owned(),
+            FeedHealth {
+                name: name.to_owned(),
+                enabled: true,
+                worker_running: false,
+                success_count: 0,
+                failure_count: 0,
+                consecutive_failures: 0,
+                last_success: None,
+                last_error: None,
+                next_retry_ms: None,
+                last_test_at: None,
+                last_test_ok: None,
+                last_test_message: None,
+                last_test_event_count: None,
+                poll_interval_secs: 60,
+                default_poll_interval_secs: 60,
+                last_events_accepted: 0,
+                last_events_duplicate: 0,
+                last_poll_at: None,
+                next_poll_at: None,
+                circuit_open: false,
+                circuit_opened_since: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn initialize_feed_runtime_populates_all_registered_feeds() {
+        let state = test_state();
+        initialize_feed_runtime(&state, IngestMode::Live).await;
+        let map = state.feed_runtime.read().await;
+        assert_eq!(map.len(), feeds::REGISTRY.len());
+        for descriptor in feeds::REGISTRY {
+            let entry = map
+                .get(descriptor.name)
+                .unwrap_or_else(|| panic!("missing feed: {}", descriptor.name));
+            assert_eq!(entry.name, descriptor.name);
+        }
+    }
+
+    #[tokio::test]
+    async fn initialize_feed_runtime_respects_env_gating() {
+        std::env::remove_var("FRED_API_KEY");
+        std::env::remove_var("EIA_API_KEY");
+        std::env::remove_var("OPENSKY_CLIENT_ID");
+        std::env::remove_var("OPENSKY_CLIENT_SECRET");
+        let state = test_state();
+        initialize_feed_runtime(&state, IngestMode::Live).await;
+        let map = state.feed_runtime.read().await;
+        for descriptor in feeds::REGISTRY {
+            let entry = map.get(descriptor.name).unwrap();
+            let env_satisfied = descriptor
+                .requires_env
+                .is_none_or(feed_config::env_key_present);
+            assert_eq!(
+                entry.enabled, env_satisfied,
+                "feed {} enabled={} but env_satisfied={}",
+                descriptor.name, entry.enabled, env_satisfied
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn record_feed_success_updates_counts() {
+        let state = test_state();
+        insert_feed(&state, "test-feed").await;
+        record_feed_success(&state, "test-feed", 5, 2, Duration::from_secs(60)).await;
+        let map = state.feed_runtime.read().await;
+        let feed = map.get("test-feed").unwrap();
+        assert_eq!(feed.success_count, 1);
+        assert_eq!(feed.consecutive_failures, 0);
+        assert!(feed.last_success.is_some());
+        assert!(feed.last_error.is_none());
+        assert_eq!(feed.last_events_accepted, 5);
+        assert_eq!(feed.last_events_duplicate, 2);
+        assert!(feed.next_poll_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn record_feed_failure_updates_counts() {
+        let state = test_state();
+        insert_feed(&state, "test-feed").await;
+        record_feed_failure(&state, "test-feed", "timeout".into(), Duration::from_secs(30)).await;
+        let map = state.feed_runtime.read().await;
+        let feed = map.get("test-feed").unwrap();
+        assert_eq!(feed.failure_count, 1);
+        assert_eq!(feed.consecutive_failures, 1);
+        assert_eq!(feed.last_error.as_deref(), Some("timeout"));
+        assert_eq!(feed.last_events_accepted, 0);
+        assert_eq!(feed.last_events_duplicate, 0);
+    }
+
+    #[tokio::test]
+    async fn consecutive_failures_saturate_at_u32_max() {
+        let state = test_state();
+        insert_feed(&state, "saturating-feed").await;
+        {
+            let mut map = state.feed_runtime.write().await;
+            let feed = map.get_mut("saturating-feed").unwrap();
+            feed.consecutive_failures = u32::MAX;
+        }
+        record_feed_failure(
+            &state,
+            "saturating-feed",
+            "another error".into(),
+            Duration::from_secs(60),
+        )
+        .await;
+        let map = state.feed_runtime.read().await;
+        let feed = map.get("saturating-feed").unwrap();
+        assert_eq!(feed.consecutive_failures, u32::MAX);
+        assert_eq!(feed.failure_count, 1);
+    }
+
+    #[tokio::test]
+    async fn record_feed_poll_start_records_timestamp() {
+        let state = test_state();
+        insert_feed(&state, "poll-feed").await;
+        record_feed_poll_start(&state, "poll-feed").await;
+        let map = state.feed_runtime.read().await;
+        let feed = map.get("poll-feed").unwrap();
+        assert!(feed.last_poll_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn sync_poll_intervals_reflects_config() {
+        let state = test_state();
+        initialize_feed_runtime(&state, IngestMode::Live).await;
+        {
+            let mut map = state.feed_runtime.write().await;
+            for (_, feed) in map.iter_mut() {
+                feed.poll_interval_secs = 9999;
+                feed.default_poll_interval_secs = 9999;
+            }
+        }
+        sync_poll_intervals_from_config(&state).await;
+        let map = state.feed_runtime.read().await;
+        for descriptor in feeds::REGISTRY {
+            let entry = map.get(descriptor.name).unwrap();
+            let expected_default = feed_poll::default_interval_secs(descriptor);
+            assert_eq!(
+                entry.default_poll_interval_secs, expected_default,
+                "{} default should be {} not {}",
+                descriptor.name, expected_default, entry.default_poll_interval_secs
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn record_feed_test_records_all_fields() {
+        let state = test_state();
+        insert_feed(&state, "testable-feed").await;
+        record_feed_test(&state, "testable-feed", true, "all good".into(), 7).await;
+        let map = state.feed_runtime.read().await;
+        let feed = map.get("testable-feed").unwrap();
+        assert!(feed.last_test_at.is_some());
+        assert_eq!(feed.last_test_ok, Some(true));
+        assert_eq!(feed.last_test_message.as_deref(), Some("all good"));
+        assert_eq!(feed.last_test_event_count, Some(7));
+    }
+
+    #[tokio::test]
+    async fn set_feed_worker_running_toggles_flag() {
+        let state = test_state();
+        insert_feed(&state, "worker-feed").await;
+        set_feed_worker_running(&state, "worker-feed", true).await;
+        {
+            let map = state.feed_runtime.read().await;
+            assert!(map.get("worker-feed").unwrap().worker_running);
+        }
+        set_feed_worker_running(&state, "worker-feed", false).await;
+        {
+            let map = state.feed_runtime.read().await;
+            assert!(!map.get("worker-feed").unwrap().worker_running);
+        }
+    }
+
+    #[tokio::test]
+    async fn refresh_feed_enabled_flags_updates_enabled() {
+        std::env::set_var("OPENATLAS_INGEST_MODE", "live");
+        let state = test_state();
+        initialize_feed_runtime(&state, IngestMode::Live).await;
+        {
+            let mut map = state.feed_runtime.write().await;
+            for (_, feed) in map.iter_mut() {
+                feed.enabled = false;
+            }
+        }
+        std::env::remove_var("FRED_API_KEY");
+        std::env::remove_var("EIA_API_KEY");
+        std::env::remove_var("OPENSKY_CLIENT_ID");
+        std::env::remove_var("OPENSKY_CLIENT_SECRET");
+        refresh_feed_enabled_flags(&state).await;
+        let map = state.feed_runtime.read().await;
+        for descriptor in feeds::REGISTRY {
+            let entry = map.get(descriptor.name).unwrap();
+            let env_satisfied = descriptor
+                .requires_env
+                .is_none_or(feed_config::env_key_present);
+            assert!(entry.enabled == env_satisfied);
+        }
+    }
+
+    #[tokio::test]
+    async fn clear_feed_backoff_resets_failure_state() {
+        let state = test_state();
+        insert_feed(&state, "backoff-feed").await;
+        {
+            let mut map = state.feed_runtime.write().await;
+            let feed = map.get_mut("backoff-feed").unwrap();
+            feed.consecutive_failures = 7;
+            feed.last_error = Some("boom".into());
+            feed.next_retry_ms = Some(30_000);
+        }
+        clear_feed_backoff(&state, "backoff-feed").await;
+        let map = state.feed_runtime.read().await;
+        let feed = map.get("backoff-feed").unwrap();
+        assert_eq!(feed.consecutive_failures, 0);
+        assert!(feed.last_error.is_none());
+        assert!(feed.next_retry_ms.is_none());
+    }
+
+    #[test]
+    fn feed_health_serde_round_trip() {
+        let health = FeedHealth {
+            name: "test-feed".into(),
+            enabled: true,
+            worker_running: false,
+            success_count: 42,
+            failure_count: 3,
+            consecutive_failures: 1,
+            last_success: Some(Utc::now()),
+            last_error: Some("oops".into()),
+            next_retry_ms: Some(5_000),
+            last_test_at: None,
+            last_test_ok: Some(true),
+            last_test_message: Some("ok".into()),
+            last_test_event_count: Some(10),
+            poll_interval_secs: 60,
+            default_poll_interval_secs: 60,
+            last_events_accepted: 5,
+            last_events_duplicate: 2,
+            last_poll_at: Some(Utc::now()),
+            next_poll_at: Some(Utc::now()),
+            circuit_open: false,
+            circuit_opened_since: None,
+        };
+        let json = serde_json::to_string(&health).expect("serialize");
+        let deserialized: FeedHealth = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.name, "test-feed");
+        assert_eq!(deserialized.success_count, 42);
+        assert_eq!(deserialized.consecutive_failures, 1);
+        assert_eq!(
+            deserialized.last_error.as_deref(),
+            Some("oops")
+        );
+    }
+
+    #[test]
+    fn service_status_can_be_serialized() {
+        let status = ServiceStatus {
+            uptime_seconds: 3600,
+            ingest_mode: "live".into(),
+            simulators_enabled: false,
+            live_feeds_enabled: true,
+            stdb_uri: "http://localhost:3000".into(),
+            stdb_database: "openatlas".into(),
+            stdb_reachable: true,
+            stdb_event_count: Some(1000),
+            feeds: vec![FeedHealth {
+                name: "usgs".into(),
+                enabled: true,
+                worker_running: true,
+                success_count: 10,
+                failure_count: 0,
+                consecutive_failures: 0,
+                last_success: Some(Utc::now()),
+                last_error: None,
+                next_retry_ms: None,
+                last_test_at: None,
+                last_test_ok: None,
+                last_test_message: None,
+                last_test_event_count: None,
+                poll_interval_secs: 45,
+                default_poll_interval_secs: 45,
+                last_events_accepted: 3,
+                last_events_duplicate: 1,
+                last_poll_at: Some(Utc::now()),
+                next_poll_at: Some(Utc::now()),
+                circuit_open: false,
+                circuit_opened_since: None,
+            }],
+        };
+        let json = serde_json::to_string(&status).expect("serialize");
+        assert!(json.contains("usgs"));
+        assert!(json.contains("live"));
+    }
+}
+
 

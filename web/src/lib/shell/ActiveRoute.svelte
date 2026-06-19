@@ -10,11 +10,8 @@
   import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
   import { mainScrollModeForPattern, viewForPattern } from "../views";
   import { loadViewForPattern, peekCachedView } from "../view-loaders";
-  import {
-    cancelScheduledDashboardFlush,
-    pauseDashboardFlush,
-    resumeDashboardFlush,
-  } from "../dashboard-flush";
+  import { refreshRemoteReadiness } from "../readiness.svelte";
+  import { refreshFeedLive } from "../feed-live.svelte";
 
   const entry = $derived(viewForPattern(router.match.pattern));
   let compactLayout = $state(isCompactLayout());
@@ -49,19 +46,15 @@
     const pattern = router.match.pattern;
     const gen = ++loadGen;
 
-    pauseDashboardFlush();
-    cancelScheduledDashboardFlush();
+    void refreshRemoteReadiness().catch(() => {});
+    void refreshFeedLive().catch(() => {});
 
     const cached = peekCachedView(pattern);
     if (cached) {
       View = cached;
       loadError = null;
       loadedPattern = pattern;
-      resumeDashboardFlush();
-      return () => {
-        cancelScheduledDashboardFlush();
-        resumeDashboardFlush();
-      };
+      return;
     }
 
     if (loadedPattern !== pattern) {
@@ -71,30 +64,28 @@
 
     const loadPromise = loadViewForPattern(pattern);
     const timeoutMs = 15_000;
+    let loadTimeout: ReturnType<typeof setTimeout> | undefined;
     const timedOut = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error(`View load timed out after ${timeoutMs}ms`)), timeoutMs);
+      loadTimeout = setTimeout(() => reject(new Error(`View load timed out after ${timeoutMs}ms`)), timeoutMs);
     });
     void Promise.race([loadPromise, timedOut])
       .then((component) => {
+        clearTimeout(loadTimeout);
         if (gen !== loadGen) return;
         View = component;
         loadError = null;
         loadedPattern = pattern;
-        resumeDashboardFlush();
       })
       .catch((err) => {
+        clearTimeout(loadTimeout);
         if (gen !== loadGen) return;
         View = null;
         loadError = err instanceof Error ? err.message : String(err);
         loadedPattern = null;
-        resumeDashboardFlush();
         console.error("route view load failed", pattern, err);
       });
 
-    return () => {
-      cancelScheduledDashboardFlush();
-      resumeDashboardFlush();
-    };
+    return () => clearTimeout(loadTimeout);
   });
 </script>
 

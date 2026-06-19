@@ -112,6 +112,23 @@ pub(crate) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
     Ok(())
 }
 
+/// HTML-escape untrusted strings before interpolating into markup.
+/// Defends against XSS even when the server sends malicious payloads.
+pub(crate) fn escape_html(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
+            '\'' => result.push_str("&#39;"),
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
 /// Shared helper used by panel modules to look up their mount point.
 pub(crate) fn require_element(document: &Document, id: &str) -> Result<web_sys::Element, JsValue> {
     document

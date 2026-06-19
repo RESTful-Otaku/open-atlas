@@ -8,6 +8,8 @@
 //! For an interactive dashboard, run the Svelte frontend — it uses the
 //! SpacetimeDB TypeScript SDK and subscribes to live row updates.
 
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use reqwest::{Client, Url};
@@ -67,7 +69,7 @@ enum ViewCommand {
         limit: usize,
         #[arg(long, default_value_t = false)]
         watch: bool,
-        #[arg(long, default_value_t = 1_500)]
+        #[arg(long, default_value_t = 1_500, value_parser = clap::value_parser!(u64).range(100..30_000))]
         interval_ms: u64,
     },
 }
@@ -76,7 +78,11 @@ enum ViewCommand {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let base_url = Url::parse(&cli.base_url).context("invalid --base-url")?;
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .expect("valid reqwest Client");
     let db = cli.database.as_str();
 
     match cli.command {
@@ -111,4 +117,117 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_cli() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn parse_state_subcommand() {
+        let cli = Cli::try_parse_from(["openatlas", "state"]).unwrap();
+        assert!(matches!(cli.command, Command::State { .. }));
+        assert_eq!(cli.base_url, "http://127.0.0.1:3000");
+        assert_eq!(cli.database, "openatlas");
+    }
+
+    #[test]
+    fn parse_state_with_domain() {
+        let cli =
+            Cli::try_parse_from(["openatlas", "state", "--domain", "energy"]).unwrap();
+        assert!(matches!(cli.command, Command::State { domain: Some(_) }));
+    }
+
+    #[test]
+    fn parse_anomalies_subcommand() {
+        let cli = Cli::try_parse_from(["openatlas", "anomalies"]).unwrap();
+        assert!(matches!(cli.command, Command::Anomalies { .. }));
+    }
+
+    #[test]
+    fn parse_anomalies_with_options() {
+        let cli = Cli::try_parse_from([
+            "openatlas",
+            "anomalies",
+            "--domain",
+            "climate",
+            "--limit",
+            "50",
+        ])
+        .unwrap();
+        assert!(matches!(cli.command, Command::Anomalies { .. }));
+    }
+
+    #[test]
+    fn parse_trace_subcommand() {
+        let cli = Cli::try_parse_from(["openatlas", "trace", "99"]).unwrap();
+        assert!(matches!(cli.command, Command::Trace { .. }));
+    }
+
+    #[test]
+    fn trace_missing_event_id_fails() {
+        let result = Cli::try_parse_from(["openatlas", "trace"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_view_events() {
+        let cli = Cli::try_parse_from(["openatlas", "view", "events"]).unwrap();
+        assert!(matches!(cli.command, Command::View { .. }));
+    }
+
+    #[test]
+    fn parse_view_events_with_all_options() {
+        let cli = Cli::try_parse_from([
+            "openatlas",
+            "view",
+            "events",
+            "--domain",
+            "cyber",
+            "--limit",
+            "100",
+            "--watch",
+            "--interval-ms",
+            "500",
+        ])
+        .unwrap();
+        assert!(matches!(cli.command, Command::View { .. }));
+    }
+
+    #[test]
+    fn help_does_not_panic() {
+        let result = Cli::try_parse_from(["openatlas", "--help"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn base_url_override() {
+        let cli = Cli::try_parse_from([
+            "openatlas",
+            "--base-url",
+            "http://example.com:8080",
+            "state",
+        ])
+        .unwrap();
+        assert_eq!(cli.base_url, "http://example.com:8080");
+    }
+
+    #[test]
+    fn database_override() {
+        let cli =
+            Cli::try_parse_from(["openatlas", "--database", "custom_db", "state"]).unwrap();
+        assert_eq!(cli.database, "custom_db");
+    }
+
+    #[test]
+    fn unknown_subcommand_fails() {
+        let result = Cli::try_parse_from(["openatlas", "bogus"]);
+        assert!(result.is_err());
+    }
 }

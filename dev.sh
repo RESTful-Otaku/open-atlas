@@ -206,6 +206,143 @@ maybe_enable_ingest_lan_bind() {
     fi
 }
 
+# ----------------------------------------------------------------------------
+# Deployment profile resolution (mirrors mobile-runtime-config.ts)
+# Maps 11 GUI deployment profiles + custom to dev.sh parameters.
+# CLI accepts kebab-case or snake_case: local-sim == local_sim
+# ----------------------------------------------------------------------------
+
+resolve_profile_id() {
+  local p="$1"
+  p="${p//-/_}"
+  case "$p" in
+    demo|cloud_live|cloud_ingest_sim|cloud_ingest_live|cloud_ingest_hybrid|cloud_lan_ingest|local_sim|local_live|local_hybrid|local_lan|local_emulator|custom)
+      printf '%s' "$p"
+      return 0
+      ;;
+    *)
+      style_err "Unknown deployment profile: $1"
+      style_muted "Valid: demo, cloud-live, cloud-ingest-sim, cloud-ingest-live, cloud-ingest-hybrid,"
+      style_muted "       local-sim, local-live, local-hybrid, local-lan, local-emulator, custom"
+      return 1
+      ;;
+  esac
+}
+
+profile_label() {
+  case "$1" in
+    demo)                  printf "Demo" ;;
+    cloud_live)            printf "Cloud live" ;;
+    cloud_ingest_sim)      printf "Cloud + LAN ingest (sim)" ;;
+    cloud_ingest_live)     printf "Cloud + LAN ingest (live)" ;;
+    cloud_ingest_hybrid)   printf "Cloud + LAN ingest (hybrid)" ;;
+    cloud_lan_ingest)      printf "Cloud + LAN ingest (hybrid, old)" ;;
+    local_sim)             printf "Local STDB (sim)" ;;
+    local_live)            printf "Local STDB (live)" ;;
+    local_hybrid)          printf "Local STDB (hybrid)" ;;
+    local_lan)             printf "Local STDB (LAN)" ;;
+    local_emulator)        printf "Local STDB (emulator)" ;;
+    custom)                printf "Custom" ;;
+  esac
+}
+
+profile_to_params() {
+  case "$1" in
+    demo)                printf "none none 0" ;;
+    cloud_live)          printf "cloud none 0" ;;
+    cloud_ingest_sim|cloud_lan_ingest)  printf "cloud sim 1" ;;
+    cloud_ingest_live)   printf "cloud live 1" ;;
+    cloud_ingest_hybrid) printf "cloud hybrid 1" ;;
+    local_sim)           printf "local sim 0" ;;
+    local_live)          printf "local live 0" ;;
+    local_hybrid)        printf "local hybrid 0" ;;
+    local_lan)           printf "local live 1" ;;
+    local_emulator)      printf "local hybrid 1" ;;
+    custom)              printf "custom custom 0" ;;
+  esac
+}
+
+do_up_by_profile() {
+  local profile
+  profile="$(resolve_profile_id "$1")" || return 1
+  local -a params
+  IFS=' ' read -ra params <<< "$(profile_to_params "$profile")"
+  local stdb_target="${params[0]}"
+  local ingest_mode="${params[1]}"
+  local needs_lan="${params[2]}"
+
+  style_header "Profile: $(profile_label "$profile")"
+
+  if [[ "$needs_lan" == "1" ]]; then
+    export OPENATLAS_INGEST_LAN_BIND=1
+  fi
+
+  case "$profile" in
+    demo)
+      do_dev_frontend_demo
+      do_open_dashboard
+      ;;
+    cloud_live)
+      cloud_preflight || return 1
+      start_frontend_dev cloud || return 1
+      do_open_dashboard
+      ;;
+    custom)
+      if [[ -z "${OPENATLAS_STDB_TARGET:-}" ]]; then
+        style_err "Custom profile requires OPENATLAS_STDB_TARGET (local|cloud)"
+        return 1
+      fi
+      local mode="${OPENATLAS_INGEST_MODE:-hybrid}"
+      ensure_stack_for_run "$OPENATLAS_STDB_TARGET" "$mode"
+      start_frontend_dev "$OPENATLAS_STDB_TARGET" || return 1
+      do_open_dashboard
+      ;;
+    *)
+      ensure_stack_for_run "$stdb_target" "$ingest_mode"
+      start_frontend_dev "$stdb_target" || return 1
+      do_open_dashboard
+      ;;
+  esac
+  style_ok "Profile $(profile_label "$profile") running — ${DASHBOARD_URL}"
+}
+
+do_start_by_profile() {
+  local profile
+  profile="$(resolve_profile_id "$1")" || return 1
+  local -a params
+  IFS=' ' read -ra params <<< "$(profile_to_params "$profile")"
+  local stdb_target="${params[0]}"
+  local ingest_mode="${params[1]}"
+  local needs_lan="${params[2]}"
+
+  if [[ "$needs_lan" == "1" ]]; then
+    export OPENATLAS_INGEST_LAN_BIND=1
+  fi
+
+  case "$profile" in
+    demo)
+      style_warn "Demo profile has no backend (run: ./dev.sh web:demo)"
+      return 1
+      ;;
+    cloud_live)
+      style_warn "Cloud live profile has no local backend (STDB is on Maincloud)"
+      cloud_preflight || return 1
+      style_muted "Run: ./dev.sh web:cloud  for the frontend"
+      return 0
+      ;;
+    custom)
+      if [[ -z "${OPENATLAS_STDB_TARGET:-}" || -z "${OPENATLAS_INGEST_MODE:-}" ]]; then
+        style_err "Custom profile requires OPENATLAS_STDB_TARGET and OPENATLAS_INGEST_MODE"
+        return 1
+      fi
+      start_server "$OPENATLAS_INGEST_MODE" "$OPENATLAS_STDB_TARGET"
+      ;;
+    *)
+      start_server "$ingest_mode" "$stdb_target"
+      ;;
+  esac
+}
+
 server_pid() {
     prune_stale_server_pid
     [[ -f "$PID_FILE" ]] || return 1
@@ -1785,6 +1922,228 @@ do_dev_frontend_demo() {
 }
 
 # ----------------------------------------------------------------------------
+# Configuration wizard (interactive TUI, writes .env)
+# ----------------------------------------------------------------------------
+do_configure() {
+  style_header "Configuration Wizard"
+  style_muted "Writes settings to .env in the project root for persistent defaults."
+  echo
+
+  local env_file="${SCRIPT_DIR}/.env"
+
+  # Read existing .env values for pre-fill
+  if [[ -f "$env_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
+  fi
+
+  # --- 1. Deployment profile ---
+  local profile_id="${OPENATLAS_DEPLOYMENT_PROFILE:-local_hybrid}"
+  style_info "1) Deployment profile (controls STDB target, ingest, LAN bind)"
+  if has_gum; then
+    local chosen
+    chosen="$(gum choose \
+      "Demo" \
+      "Cloud live (Maincloud only)" \
+      "Cloud + LAN ingest (sim)" \
+      "Cloud + LAN ingest (live)" \
+      "Cloud + LAN ingest (hybrid)" \
+      "Local STDB (sim)" \
+      "Local STDB (live)" \
+      "Local STDB (hybrid)" \
+      "Local STDB (LAN)" \
+      "Local STDB (emulator)" \
+      "Custom" \
+      --header "Deployment profile (current: ${profile_id}):" \
+      --cursor "▶ " --height 15)"
+  else
+    echo "  Current: ${profile_id}"
+    echo "  1) Demo               2) Cloud live          3) Cloud + LAN (sim)"
+    echo "  4) Cloud + LAN (live)  5) Cloud + LAN (hybrid) 6) Local STDB (sim)"
+    echo "  7) Local STDB (live)   8) Local STDB (hybrid)  9) Local STDB (LAN)"
+    echo " 10) Local STDB (emulator)  11) Custom"
+    local n
+    read -r -p "  Profile number [8]: " n
+    n="${n:-8}"
+    case "$n" in
+      1)  chosen="Demo" ;;              2)  chosen="Cloud live (Maincloud only)" ;;
+      3)  chosen="Cloud + LAN ingest (sim)" ;;  4)  chosen="Cloud + LAN ingest (live)" ;;
+      5)  chosen="Cloud + LAN ingest (hybrid)" ;;  6)  chosen="Local STDB (sim)" ;;
+      7)  chosen="Local STDB (live)" ;;  8)  chosen="Local STDB (hybrid)" ;;
+      9)  chosen="Local STDB (LAN)" ;;   10) chosen="Local STDB (emulator)" ;;
+      11) chosen="Custom" ;;             *)  chosen="Local STDB (hybrid)" ;;
+    esac
+  fi
+  case "$chosen" in
+    *Demo*)                         profile_id="demo" ;;
+    *"Cloud live"*)                 profile_id="cloud_live" ;;
+    *"Cloud + LAN"*sim*)           profile_id="cloud_ingest_sim" ;;
+    *"Cloud + LAN"*live*)          profile_id="cloud_ingest_live" ;;
+    *"Cloud + LAN"*hybrid*)        profile_id="cloud_ingest_hybrid" ;;
+    *"Local STDB (sim)"*)          profile_id="local_sim" ;;
+    *"Local STDB (live)"*)         profile_id="local_live" ;;
+    *"Local STDB (hybrid)"*)       profile_id="local_hybrid" ;;
+    *"Local STDB (LAN)"*)          profile_id="local_lan" ;;
+    *"Local STDB (emulator)"*)     profile_id="local_emulator" ;;
+    *"Custom"*)                     profile_id="custom" ;;
+  esac
+  style_ok "  Profile: ${profile_id} ($(profile_label "$profile_id"))"
+
+  # --- 2. LAN host (for profiles that need it) ---
+  local lan_host="${OPENATLAS_LAN_HOST:-}"
+  if [[ "$profile_id" == "local_lan" || "$profile_id" == "local_emulator" || "$profile_id" == cloud_ingest_sim || "$profile_id" == cloud_ingest_live || "$profile_id" == cloud_ingest_hybrid || "$profile_id" == cloud_lan_ingest ]]; then
+    style_info "2) LAN host for device access"
+    if has_gum; then
+      lan_host="$(gum input --placeholder "192.168.1.42" --value "$lan_host" --prompt "LAN IP/host: ")"
+    else
+      local tmp
+      read -r -p "  LAN IP/host [${lan_host:-auto}]: " tmp
+      lan_host="${tmp:-$lan_host}"
+    fi
+    style_ok "  LAN host: ${lan_host:-auto-detect}"
+  fi
+
+  # --- 3. Custom URLs (for custom profile) ---
+  local stdb_uri_custom="${OPENATLAS_STDB_URI_CUSTOM:-wss://maincloud.spacetimedb.com}"
+  local ingest_base_custom="${OPENATLAS_INGEST_BASE_CUSTOM:-}"
+  local llm_base_custom="${OPENATLAS_LLM_BASE_CUSTOM:-}"
+  local stdb_db_custom="${OPENATLAS_STDB_DB_CUSTOM:-openatlas}"
+  if [[ "$profile_id" == "custom" ]]; then
+    style_info "3) Custom endpoint URLs"
+    if has_gum; then
+      stdb_uri_custom="$(gum input --placeholder "wss://maincloud.spacetimedb.com" --value "$stdb_uri_custom" --prompt "STDB WebSocket URI: ")"
+      ingest_base_custom="$(gum input --placeholder "http://192.168.1.42:8080" --value "$ingest_base_custom" --prompt "Ingest HTTP base: ")"
+      llm_base_custom="$(gum input --placeholder "http://192.168.1.42:3847" --value "$llm_base_custom" --prompt "LLM bridge base: ")"
+      stdb_db_custom="$(gum input --placeholder "openatlas" --value "$stdb_db_custom" --prompt "STDB database name: ")"
+    else
+      local tmp
+      read -r -p "  STDB WebSocket URI [${stdb_uri_custom}]: " tmp
+      stdb_uri_custom="${tmp:-$stdb_uri_custom}"
+      read -r -p "  Ingest HTTP base [${ingest_base_custom:-none}]: " tmp
+      ingest_base_custom="${tmp:-$ingest_base_custom}"
+      read -r -p "  LLM bridge base [${llm_base_custom:-none}]: " tmp
+      llm_base_custom="${tmp:-$llm_base_custom}"
+      read -r -p "  STDB database name [${stdb_db_custom}]: " tmp
+      stdb_db_custom="${tmp:-$stdb_db_custom}"
+    fi
+    style_ok "  Custom endpoints configured"
+  fi
+
+  # --- 4. Theme ---
+  local theme="${OPENATLAS_THEME:-dark}"
+  style_info "4) UI theme"
+  if has_gum; then
+    theme="$(gum choose "dark" "dim" "light" --header "Theme (current: ${theme}):" --cursor "▶ ")"
+    [[ -z "$theme" ]] && theme="${OPENATLAS_THEME:-dark}"
+  else
+    local tmp
+    read -r -p "  Theme [${theme}] (dark/dim/light): " tmp
+    theme="${tmp:-$theme}"
+  fi
+  style_ok "  Theme: ${theme}"
+
+  # --- 5. Update interval ---
+  local interval="${OPENATLAS_UPDATE_INTERVAL:-5s}"
+  style_info "5) Chart update interval"
+  if has_gum; then
+    interval="$(gum choose "1s" "5s" "30s" "1m" "5m" "10m" "30m" "1h" --header "Update interval (current: ${interval}):" --cursor "▶ ")"
+    [[ -z "$interval" ]] && interval="${OPENATLAS_UPDATE_INTERVAL:-5s}"
+  else
+    local tmp
+    read -r -p "  Update interval [${interval}] (1s/5s/30s/1m/5m/10m/30m/1h): " tmp
+    interval="${tmp:-$interval}"
+  fi
+  style_ok "  Interval: ${interval}"
+
+  # --- 6. LLM provider ---
+  local llm_provider="${OPENATLAS_LLM_PROVIDER:-bridge}"
+  local llm_gemini_key="${OPENATLAS_LLM_GEMINI_API_KEY:-}"
+  local llm_gemini_model="${OPENATLAS_LLM_GEMINI_MODEL:-gemini-2.0-flash}"
+  local llm_openai_base="${OPENATLAS_LLM_OPENAI_BASE_URL:-https://api.openai.com/v1}"
+  local llm_openai_key="${OPENATLAS_LLM_OPENAI_API_KEY:-}"
+  local llm_openai_model="${OPENATLAS_LLM_OPENAI_MODEL:-gpt-4o-mini}"
+  style_info "6) LLM provider"
+  if has_gum; then
+    llm_provider="$(gum choose "bridge" "gemini" "openai_compat" --header "LLM provider (current: ${llm_provider}):" --cursor "▶ ")"
+    [[ -z "$llm_provider" ]] && llm_provider="${OPENATLAS_LLM_PROVIDER:-bridge}"
+  else
+    local tmp
+    read -r -p "  LLM provider [${llm_provider}] (bridge/gemini/openai_compat): " tmp
+    llm_provider="${tmp:-$llm_provider}"
+  fi
+
+  if [[ "$llm_provider" == "gemini" ]]; then
+    if has_gum; then
+      llm_gemini_key="$(gum input --placeholder "AIza..." --value "$llm_gemini_key" --password --prompt "Gemini API key: ")"
+      llm_gemini_model="$(gum input --placeholder "gemini-2.0-flash" --value "$llm_gemini_model" --prompt "Gemini model: ")"
+    else
+      local tmp
+      read -r -p "  Gemini API key [${llm_gemini_key:+***set***}]: " tmp
+      llm_gemini_key="${tmp:-$llm_gemini_key}"
+      read -r -p "  Gemini model [${llm_gemini_model}]: " tmp
+      llm_gemini_model="${tmp:-$llm_gemini_model}"
+    fi
+  elif [[ "$llm_provider" == "openai_compat" ]]; then
+    if has_gum; then
+      llm_openai_base="$(gum input --placeholder "https://api.openai.com/v1" --value "$llm_openai_base" --prompt "OpenAI base URL: ")"
+      llm_openai_key="$(gum input --placeholder "sk-..." --value "$llm_openai_key" --password --prompt "OpenAI API key: ")"
+      llm_openai_model="$(gum input --placeholder "gpt-4o-mini" --value "$llm_openai_model" --prompt "OpenAI model: ")"
+    else
+      local tmp
+      read -r -p "  OpenAI base URL [${llm_openai_base}]: " tmp
+      llm_openai_base="${tmp:-$llm_openai_base}"
+      read -r -p "  OpenAI API key [${llm_openai_key:+***set***}]: " tmp
+      llm_openai_key="${tmp:-$llm_openai_key}"
+      read -r -p "  OpenAI model [${llm_openai_model}]: " tmp
+      llm_openai_model="${tmp:-$llm_openai_model}"
+    fi
+  fi
+  style_ok "  LLM provider: ${llm_provider}"
+
+  # --- Write .env ---
+  echo
+  if has_gum; then
+    if ! gum confirm "Write these settings to ${env_file}?"; then
+      style_muted "Cancelled — no changes written"
+      return 0
+    fi
+  else
+    local yn
+    read -r -p "Write settings to ${env_file}? [Y/n] " yn
+    [[ "$yn" =~ ^[Nn] ]] && { style_muted "Cancelled"; return 0; }
+  fi
+
+  cat > "$env_file" <<CONFIGEOF
+# OpenAtlas persistent configuration — generated by ./dev.sh configure
+# Override any value at runtime: KEY=val ./dev.sh up <profile>
+OPENATLAS_DEPLOYMENT_PROFILE=${profile_id}
+OPENATLAS_LAN_HOST=${lan_host}
+OPENATLAS_STDB_URI_CUSTOM=${stdb_uri_custom}
+OPENATLAS_INGEST_BASE_CUSTOM=${ingest_base_custom}
+OPENATLAS_LLM_BASE_CUSTOM=${llm_base_custom}
+OPENATLAS_STDB_DB_CUSTOM=${stdb_db_custom}
+OPENATLAS_THEME=${theme}
+OPENATLAS_UPDATE_INTERVAL=${interval}
+OPENATLAS_LLM_PROVIDER=${llm_provider}
+OPENATLAS_LLM_GEMINI_API_KEY=${llm_gemini_key}
+OPENATLAS_LLM_GEMINI_MODEL=${llm_gemini_model}
+OPENATLAS_LLM_OPENAI_BASE_URL=${llm_openai_base}
+OPENATLAS_LLM_OPENAI_API_KEY=${llm_openai_key}
+OPENATLAS_LLM_OPENAI_MODEL=${llm_openai_model}
+CONFIGEOF
+  style_ok "Wrote ${env_file}"
+  style_muted "Run: ./dev.sh up \${OPENATLAS_DEPLOYMENT_PROFILE}  (or just: ./dev.sh up with profile menu)"
+  if has_gum; then
+    gum style --foreground 39 "Tip: you can still override any setting at the command line, e.g.:"
+    gum style --foreground 39 "  OPENATLAS_THEME=light ./dev.sh up ${profile_id}"
+  else
+    style_muted "Tip: override at runtime: OPENATLAS_THEME=light ./dev.sh up ${profile_id}"
+  fi
+}
+
+# ----------------------------------------------------------------------------
 # Help + dispatch
 # ----------------------------------------------------------------------------
 print_help() {
@@ -1793,16 +2152,30 @@ OpenAtlas dev harness  —  ./dev.sh <cmd>   or   make <target>
 
 Full stack (STDB + ingest + LLM + Vite + opens browser) — use Run in TUI or:
   run                 Local hybrid (default)
-  run:local:sim       Local STDB + sim ingest + Vite
-  run:local:live      Local STDB + live feeds + Vite
-  run:local:hybrid    Local STDB + live + simulators + Vite
-  run:cloud:sim       Maincloud + sim ingest + Vite
-  run:cloud:live      Maincloud + live feeds + Vite
+  run:local:sim      run:local:live    run:local:hybrid
+  run:cloud:sim      run:cloud:live
   up / up:hybrid      Same as run:local:hybrid
   up:sim | up:live    Full stack with that ingest mode (local STDB)
   up:cloud:sim|live   Full stack on Maincloud
-  up:fast             Full stack, skip wasm/dist rebuild (OPENATLAS_SKIP_BUILD=1)
-  OPENATLAS_VITE_FOREGROUND=1 ./dev.sh run   Vite in foreground (Ctrl+C = UI only)
+  up:fast             Skip wasm/dist rebuild (OPENATLAS_SKIP_BUILD=1)
+
+Deployment profiles (mirror the GUI — accept kebab or snake case):
+  up:demo                  Synthetic data, no STDB
+  up:cloud-live            Maincloud only, no local ingest
+  up:cloud-ingest-sim      Maincloud STDB + LAN ingest (sim)
+  up:cloud-ingest-live     Maincloud STDB + LAN ingest (live)
+  up:cloud-ingest-hybrid   Maincloud STDB + LAN ingest (hybrid)
+  up:local-sim             Local STDB + sim
+  up:local-live            Local STDB + live
+  up:local-hybrid          Local STDB + hybrid
+  up:local-lan             Local STDB + live (LAN bind for devices)
+  up:local-emulator        Local STDB + hybrid (10.0.2.2 for emulator)
+  up:custom                Custom endpoints (set OPENATLAS_STDB_TARGET + _INGEST_MODE)
+  Same profiles work with start:* (backend only, no Vite):
+    start:cloud-ingest-sim   start:local-live   etc.
+
+Configuration wizard (interactive TUI):
+  configure | config    Walk through all settings and write to .env
 
 Advanced / partial (./dev.sh menu → Advanced)
   web | web:cloud     Vite + auto-start/repair ingest (hybrid by default)
@@ -1817,11 +2190,11 @@ Test & build
   test | build | verify [--full] | e2e | e2e:quick | status | logs
 
 Mobile (Capacitor — see docs/MOBILE.md)
-  run-android | mobile:run        Maincloud QA on emulator (default; matches phone STDB + host ingest)
-  run-android:local               Local ./dev.sh stack via 10.0.2.2 (STDB :3000, ingest :8080)
-  run-android:maincloud           Same as run-android (Maincloud + emulator gateway)
-  run-ios | mobile:ios            macOS only: build → cap sync ios → open Xcode (signing manual)
-  mobile:doctor              Check/install JDK 17, SDK, adb, Pixel 9 Pro AVD
+  run-android | mobile:run        Maincloud QA on emulator (default)
+  run-android:local               Local stack via 10.0.2.2
+  run-android:maincloud           Same as run-android
+  run-ios | mobile:ios            macOS only: build → Xcode
+  mobile:doctor              Check/install JDK 17, SDK, adb, AVD
   mobile:setup | mobile:build | mobile:android | mobile:android:release
   mobile:dev                 Live reload against Vite (Android)
 
@@ -1829,8 +2202,9 @@ Advanced
   prove:live | prove:llm | feeds | spacetime:* | llm:* | ollama:start | ollama:cpu | cli | tail | clean
 
 Config: ./dev.sh init-config  (see docs/CONFIG.md)
+        ./dev.sh configure      Interactive TUI config → .env
 Env: .env sets defaults; Run/web commands force local vs cloud STDB for ingest + Vite.
-Menu: ./dev.sh  →  Run (full stack) · Stop (tear down all) · Test · Advanced · Quit
+Menu: ./dev.sh  →  Run · Stop · Test · Configure · Advanced · Quit
 HELP
 }
 
@@ -1850,17 +2224,62 @@ menu_run_presets() {
         "Local sim" \
         "Local live" \
         "Local hybrid" \
+        "Local LAN" \
+        "Local emulator" \
         "Cloud sim" \
         "Cloud live" \
+        "Cloud + LAN (sim)" \
+        "Cloud + LAN (live)" \
+        "Cloud + LAN (hybrid)" \
+        "Demo" \
         "Back")" || return
     case "$r" in
-        "Local sim")     full_stack_up sim local ;;
-        "Local live")    full_stack_up live local ;;
-        "Local hybrid")  full_stack_up hybrid local ;;
-        "Cloud sim")     full_stack_up sim cloud ;;
-        "Cloud live")    full_stack_up live cloud ;;
-        "Back"|"")       return ;;
-        *)               style_warn "unknown: $r" ;;
+        "Local sim")            full_stack_up sim local ;;
+        "Local live")           full_stack_up live local ;;
+        "Local hybrid")         full_stack_up hybrid local ;;
+        "Local LAN")            do_up_by_profile local_lan ;;
+        "Local emulator")       do_up_by_profile local_emulator ;;
+        "Cloud sim")            full_stack_up sim cloud ;;
+        "Cloud live")           full_stack_up live cloud ;;
+        "Cloud + LAN (sim)")    do_up_by_profile cloud_ingest_sim ;;
+        "Cloud + LAN (live)")   do_up_by_profile cloud_ingest_live ;;
+        "Cloud + LAN (hybrid)") do_up_by_profile cloud_ingest_hybrid ;;
+        "Demo")                 do_up_by_profile demo ;;
+        "Back"|"")              return ;;
+        *)                      style_warn "unknown: $r" ;;
+    esac
+}
+
+# Full profile selection (all 11 GUI profiles)
+menu_up_profile() {
+    local p
+    p="$(choose \
+        "Demo" \
+        "Cloud live (Maincloud only)" \
+        "Cloud + LAN ingest (sim)" \
+        "Cloud + LAN ingest (live)" \
+        "Cloud + LAN ingest (hybrid)" \
+        "Local STDB (sim)" \
+        "Local STDB (live)" \
+        "Local STDB (hybrid)" \
+        "Local STDB (LAN)" \
+        "Local STDB (emulator)" \
+        "Custom" \
+        "Back")" || return
+    case "$p" in
+        "Demo")                           do_up_by_profile demo ;;
+        "Cloud live (Maincloud only)")    do_up_by_profile cloud_live ;;
+        "Cloud + LAN ingest (sim)")       do_up_by_profile cloud_ingest_sim ;;
+        "Cloud + LAN ingest (live)")      do_up_by_profile cloud_ingest_live ;;
+        "Cloud + LAN ingest (hybrid)")    do_up_by_profile cloud_ingest_hybrid ;;
+        "Local STDB (sim)")               do_up_by_profile local_sim ;;
+        "Local STDB (live)")              do_up_by_profile local_live ;;
+        "Local STDB (hybrid)")            do_up_by_profile local_hybrid ;;
+        "Local STDB (LAN)")               do_up_by_profile local_lan ;;
+        "Local STDB (emulator)")          do_up_by_profile local_emulator ;;
+        "Custom")                         do_up_by_profile custom ;;
+        "Back"|"")                        return ;;
+        *)                                style_warn "unknown: $p" ;;
     esac
 }
 
@@ -1952,9 +2371,10 @@ menu_mobile() {
 menu_advanced() {
     local a
     a="$(choose \
-        "Run — other preset..." \
+        "Run — by profile..." \
         "Run — web only..." \
         "Run — backend only..." \
+        "Configure" \
         "Mobile (Android / iOS)..." \
         "SpacetimeDB..." \
         "Ingest..." \
@@ -1966,9 +2386,10 @@ menu_advanced() {
         "Command reference" \
         "Back")" || return
     case "$a" in
-        "Run — other preset...")     menu_run_presets ;;
+        "Run — by profile...")       menu_up_profile ;;
         "Run — web only...")         menu_web_only ;;
         "Run — backend only...")     menu_up_backend ;;
+        "Configure")                 do_configure ;;
         "Mobile (Android / iOS)...") menu_mobile ;;
         "SpacetimeDB...")            menu_advanced_spacetime ;;
         "Ingest...")                 menu_advanced_ingest ;;
@@ -2070,7 +2491,7 @@ menu_advanced_llm() {
 
 menu_blocks_after() {
     case "$1" in
-        "Run"|"Run..."|"Stop"|"Test"|"Test..."|"Advanced"|"Advanced...") return 0 ;;
+        "Run"|"Run..."|"Stop"|"Test"|"Test..."|"Configure"|"Advanced"|"Advanced...") return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -2084,12 +2505,14 @@ menu() {
             "Run" \
             "Stop" \
             "Test" \
+            "Configure" \
             "Advanced" \
             "Quit")" || break
         case "$choice" in
             "Run")       full_stack_up hybrid local ;;
             "Stop")      do_down ;;
             "Test")      menu_test ;;
+            "Configure") do_configure ;;
             "Advanced")  menu_advanced ;;
             "Quit"|"")   break ;;
             *)           style_warn "unknown: $choice" ;;
@@ -2110,12 +2533,32 @@ main() {
     fi
     case "$1" in
         help|-h|--help)      print_help ;;
-        all|up|up:hybrid)    do_all ;;
+
+        # Up (full stack) — profile as arg or colon suffix
+        all|up|up:hybrid)
+            if [[ $# -ge 2 ]] && resolve_profile_id "$2" >/dev/null 2>&1; then
+                do_up_by_profile "$2"
+            else
+                do_all
+            fi
+            ;;
         up:fast)             do_up_fast ;;
         up:live)             do_all_live ;;
         up:cloud:sim)        do_all_cloud_sim ;;
         up:cloud:live)       do_all_cloud_live ;;
         all:sim|up:sim)      do_all_sim ;;
+        up:demo)             do_up_by_profile demo ;;
+        up:cloud-live|up:cloud_live)            do_up_by_profile cloud_live ;;
+        up:cloud-ingest-sim|up:cloud_ingest_sim) do_up_by_profile cloud_ingest_sim ;;
+        up:cloud-ingest-live|up:cloud_ingest_live) do_up_by_profile cloud_ingest_live ;;
+        up:cloud-ingest-hybrid|up:cloud_ingest_hybrid) do_up_by_profile cloud_ingest_hybrid ;;
+        up:local-sim|up:local_sim)              do_up_by_profile local_sim ;;
+        up:local-live|up:local_live)            do_up_by_profile local_live ;;
+        up:local-hybrid|up:local_hybrid)        do_up_by_profile local_hybrid ;;
+        up:local-lan|up:local_lan)              do_up_by_profile local_lan ;;
+        up:local-emulator|up:local_emulator)    do_up_by_profile local_emulator ;;
+        up:custom)             do_up_by_profile custom ;;
+
         down)                do_down ;;
         run)                 do_run ;;
         run:local:sim)       do_run_stack local sim ;;
@@ -2125,6 +2568,31 @@ main() {
         run:cloud:live)      do_run_stack cloud live ;;
         verify)              do_verify "${2:-}" ;;
         test)                do_check ;;
+
+        # Profile-based start (backend only)
+        start)               start_server live local ;;
+        start:sim)           start_server sim local ;;
+        start:live)          start_server live local ;;
+        start:hybrid)        start_server hybrid local ;;
+        start:static)        start_server static local ;;
+        start:cloud:sim)     start_server sim cloud ;;
+        start:cloud:live)    start_server live cloud ;;
+        start:cloud:hybrid)  start_server hybrid cloud ;;
+        start:demo)          do_start_by_profile demo ;;
+        start:cloud-live|start:cloud_live)            do_start_by_profile cloud_live ;;
+        start:cloud-ingest-sim|start:cloud_ingest_sim) do_start_by_profile cloud_ingest_sim ;;
+        start:cloud-ingest-live|start:cloud_ingest_live) do_start_by_profile cloud_ingest_live ;;
+        start:cloud-ingest-hybrid|start:cloud_ingest_hybrid) do_start_by_profile cloud_ingest_hybrid ;;
+        start:local-sim|start:local_sim)              do_start_by_profile local_sim ;;
+        start:local-live|start:local_live)            do_start_by_profile local_live ;;
+        start:local-hybrid|start:local_hybrid)        do_start_by_profile local_hybrid ;;
+        start:local-lan|start:local_lan)              do_start_by_profile local_lan ;;
+        start:local-emulator|start:local_emulator)    do_start_by_profile local_emulator ;;
+        start:custom)          do_start_by_profile custom ;;
+
+        # Configuration
+        configure|config)    do_configure ;;
+
         prove:live)          do_prove_live ;;
         prove:llm)           do_prove_llm ;;
         feeds|feed:status)   do_feed_status ;;
@@ -2144,14 +2612,6 @@ main() {
         spacetime:publish:cloud) do_spacetime_publish_cloud ;;
         spacetime:stop)      do_spacetime_stop ;;
         spacetime:logs)      do_spacetime_logs ;;
-        start)               start_server live local ;;
-        start:sim)           start_server sim local ;;
-        start:live)          start_server live local ;;
-        start:hybrid)        start_server hybrid local ;;
-        start:static)        start_server static local ;;
-        start:cloud:sim)     start_server sim cloud ;;
-        start:cloud:live)    start_server live cloud ;;
-        start:cloud:hybrid)  start_server hybrid cloud ;;
         stop)                stop_server ;;
         stop:all)            do_down ;;
         vite:logs)           do_vite_logs ;;

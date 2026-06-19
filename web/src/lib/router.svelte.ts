@@ -107,7 +107,7 @@ export function navigate(path: string): void {
   if (window.location.hash !== fragment) {
     window.location.hash = fragment;
   }
-  applyRoute(normalized);
+  applyRoute(normalized); // redundant if hashchange fires, but sameMatch guard prevents extra work
 }
 
 /** Read the path portion of `window.location.hash`, without the `#`. */

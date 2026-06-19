@@ -118,6 +118,10 @@ async fn push_events_single(
                 let msg = error.to_string();
                 if msg.contains("failed pre-flight validation") {
                     result.rejected += 1;
+                } else if msg.contains("duplicate event id") {
+                    result.duplicates += 1;
+                } else if msg.contains("domain") || msg.contains("severity") {
+                    result.rejected += 1;
                 } else {
                     result.transport_errors += 1;
                 }

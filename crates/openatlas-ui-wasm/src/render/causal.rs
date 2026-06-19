@@ -8,7 +8,7 @@ use web_sys::Document;
 
 use crate::{model::UiCausalEdge, state::UiState};
 
-use super::require_element;
+use super::{escape_html, require_element};
 
 const MAX_ROWS: usize = 30;
 
@@ -74,8 +74,10 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
 fn render_rows(edges: &[UiCausalEdge]) -> String {
     let mut html = String::with_capacity(edges.len() * 320);
     for edge in edges.iter().rev().take(MAX_ROWS) {
-        let source = short(&edge.source_event_id);
-        let target = short(&edge.target_event_id);
+        let full_source = escape_html(&edge.source_event_id);
+        let source = escape_html(&short(&edge.source_event_id));
+        let full_target = escape_html(&edge.target_event_id);
+        let target = escape_html(&short(&edge.target_event_id));
         let _ = std::fmt::Write::write_fmt(
             &mut html,
             format_args!(
@@ -88,10 +90,6 @@ fn render_rows(edges: &[UiCausalEdge]) -> String {
                     <div class="sev-bar" style="--sev-pct: {pct:.0}%"></div>
                   </span>
                 </li>"#,
-                full_source = edge.source_event_id,
-                source = source,
-                full_target = edge.target_event_id,
-                target = target,
                 influence = edge.influence_score,
                 decay = edge.decay_rate,
                 pct = (edge.influence_score.clamp(0.0, 1.0)) * 100.0,
@@ -114,4 +112,77 @@ fn summary_tile(label: &str, count: usize) -> String {
 
 fn short(id: &str) -> String {
     id.split('-').next().unwrap_or(id).chars().take(8).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{short, summary_tile};
+
+    // -----------------------------------------------------------------------
+    // short
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn short_returns_first_segment() {
+        assert_eq!(short("abc123-def456"), "abc123");
+    }
+
+    #[test]
+    fn short_truncates_to_8_chars() {
+        assert_eq!(short("abcdefghij-other"), "abcdefgh");
+    }
+
+    #[test]
+    fn short_no_dash() {
+        assert_eq!(short("hello"), "hello");
+    }
+
+    #[test]
+    fn short_empty_string() {
+        assert_eq!(short(""), "");
+    }
+
+    #[test]
+    fn short_exactly_8_chars_no_dash() {
+        assert_eq!(short("12345678"), "12345678");
+    }
+
+    #[test]
+    fn short_multi_dash() {
+        assert_eq!(short("a-b-c-d"), "a");
+    }
+
+    #[test]
+    fn short_unicode_truncation() {
+        let result = short("évent-id-123");
+        let first = result.chars().next().unwrap();
+        assert_eq!(first, 'é');
+        assert!(result.len() <= 8);
+    }
+
+    // -----------------------------------------------------------------------
+    // summary_tile
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn summary_tile_zero_count() {
+        let html = summary_tile("Test", 0);
+        assert!(html.contains("Test"));
+        assert!(html.contains("0"));
+        assert!(html.contains("kpi"));
+        assert!(html.contains("kpi-value"));
+    }
+
+    #[test]
+    fn summary_tile_positive_count() {
+        let html = summary_tile("Edges", 42);
+        assert!(html.contains("42"));
+        assert!(html.contains("Edges"));
+    }
+
+    #[test]
+    fn summary_tile_contains_kpi_class() {
+        let html = summary_tile("Sources", 7);
+        assert!(html.contains("class=\"kpi\""));
+    }
 }

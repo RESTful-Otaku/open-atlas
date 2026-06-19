@@ -8,25 +8,7 @@
 -->
 <script lang="ts">
   import { SeverityChip } from "../../primitives";
-  import type { SeverityLevel } from "../../primitives/status";
-
-  export interface CardListItem {
-    readonly id: string;
-    readonly title: string;
-    readonly subtitle?: string;
-    readonly severity?: SeverityLevel;
-    readonly severityLabel?: string;
-    readonly leftPair?: { label: string; value: string };
-    readonly rightPair?: { label: string; value: string };
-    readonly accent?: string;
-    /**
-     * Optional hash link. If present, the card renders as a link and
-     * hovering/clicking routes the user to that target. Omitting it
-     * keeps the card as a static list item (back-compat for panels
-     * that have no drill-through target).
-     */
-    readonly href?: string;
-  }
+  import type { CardListItem } from "./types";
 
   interface Props {
     items: readonly CardListItem[];

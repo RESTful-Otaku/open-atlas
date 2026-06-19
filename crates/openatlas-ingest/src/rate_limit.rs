@@ -116,6 +116,42 @@ impl FeedRateLimiter {
         }
     }
 
+    /// Atomically check spacing (host-min-gap + quiet-until) and record the request.
+    /// This replaces the TOCTOU-prone pattern of `wait_host_request` + `record_host_request`
+    /// used separately — here the check and record are serialized under a single write lock.
+    pub async fn wait_and_record_host_request(&self, host: &str) {
+        let min_gap = host_min_gap(host);
+        loop {
+            let decision = {
+                let inner = self.inner.read().await;
+                let gap_wait = inner
+                    .last_host_request
+                    .get(host)
+                    .and_then(|last| min_gap.checked_sub(last.elapsed()))
+                    .filter(|d| !d.is_zero());
+                let penalty_wait = inner.host_quiet_until.get(host).and_then(|until| {
+                    until
+                        .checked_duration_since(Instant::now())
+                        .filter(|d| !d.is_zero())
+                });
+                match (gap_wait, penalty_wait) {
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                    (Some(a), None) => Some(a),
+                    (None, Some(b)) => Some(b),
+                    (None, None) => None,
+                }
+            };
+            match decision {
+                Some(d) => tokio::time::sleep(d).await,
+                None => break,
+            }
+        }
+        let mut inner = self.inner.write().await;
+        inner
+            .last_host_request
+            .insert(host.to_owned(), Instant::now());
+    }
+
     /// After HTTP 429, block this host until `cooldown` elapses.
     pub async fn penalize_host(&self, host: &str, cooldown: Duration) {
         let until = Instant::now() + cooldown;

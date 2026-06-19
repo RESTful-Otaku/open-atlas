@@ -97,8 +97,8 @@ function applyLayout(): void {
   notify();
 }
 
-export async function initMobileShell(): Promise<void> {
-  if (typeof document === "undefined") return;
+export async function initMobileShell(): Promise<() => void> {
+  if (typeof document === "undefined") return () => {};
 
   const html = document.documentElement;
 
@@ -122,6 +122,11 @@ export async function initMobileShell(): Promise<void> {
   for (const mq of mqs) {
     mq.addEventListener("change", applyLayout);
   }
+  return () => {
+    for (const mq of mqs) {
+      mq.removeEventListener("change", applyLayout);
+    }
+  };
 }
 
 /** Sync bootstrap for first paint before the shell mounts. */

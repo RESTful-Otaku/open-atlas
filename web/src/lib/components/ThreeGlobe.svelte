@@ -138,13 +138,8 @@
   /** Stylized cloud shell — rotates slowly when weather overlays are on. */
   let cloudStylizedRoot: Group | null = null;
   let lastCloudSyncSig = "";
-  let weatherSpinFlag = $state(true);
   let adminFeatures = $state<AdminFeature[]>([]);
   let hoverAdmin: AdminFeature | null = $state(null);
-
-  $effect(() => {
-    weatherSpinFlag = showWeatherOverlays;
-  });
 
   function syncStylizedCloudLayer(g: GlobeInstance): void {
     const sig = `${themeId}:${showWeatherOverlays}`;
@@ -509,6 +504,7 @@
     let onLeaveHandler: (() => void) | undefined;
     let onGlobePointerUp: (() => void) | undefined;
     let onWheelBlock: ((e: WheelEvent) => void) | undefined;
+    let onCameraChangeHandler: (() => void) | undefined;
     let loadSafetyTimer: number | undefined;
     const run = async (): Promise<void> => {
       globeReady = false;
@@ -643,13 +639,14 @@
         });
 
         g.onZoom(() => onCameraChange(g));
-        g.controls().addEventListener("change", () => onCameraChange(g));
+        onCameraChangeHandler = () => onCameraChange(g);
+        g.controls().addEventListener("change", onCameraChangeHandler!);
 
         const renderer = g.renderer();
         const scene = g.scene();
         const camera = g.camera();
         const renderFrame = (): void => {
-          if (cloudStylizedRoot && weatherSpinFlag) {
+          if (cloudStylizedRoot && showWeatherOverlays) {
             cloudStylizedRoot.rotation.y += 0.000095;
           }
           syncSolarUniforms(g);
@@ -734,6 +731,7 @@
       ro = null;
       if (globe) {
         try {
+          if (onCameraChangeHandler) globe.controls()?.removeEventListener("change", onCameraChangeHandler);
           if (cloudStylizedRoot) {
             try {
               globe.scene().remove(cloudStylizedRoot);
@@ -799,15 +797,19 @@
     void showSolarShading;
     void dayNightMaterial;
     void solarOverlay;
+    let cancelled = false;
     void (async () => {
       if (showPhotorealEarth && !dayNightMaterial) {
-        dayNightMaterial = await loadDayNightGlobeMaterial();
+        const mat = await loadDayNightGlobeMaterial();
+        if (!cancelled) dayNightMaterial = mat;
       }
       if (showSolarShading && !showPhotorealEarth && !solarOverlay) {
-        solarOverlay = await loadMonochromeSolarOverlay();
+        const overlay = await loadMonochromeSolarOverlay();
+        if (!cancelled) solarOverlay = overlay;
       }
-      if (globe) applyGlobeTheme(globe, themeId);
+      if (!cancelled && globe) applyGlobeTheme(globe, themeId);
     })();
+    return () => { cancelled = true; };
   });
 
   $effect.pre(() => {

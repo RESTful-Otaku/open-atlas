@@ -200,7 +200,7 @@ fn static_events() -> Vec<WorldEvent> {
             WorldEvent {
                 id,
                 timestamp: ts,
-                domain: domain.clone(),
+                domain: *domain,
                 location: Some(Location {
                     lat: *lat,
                     lon: *lon,

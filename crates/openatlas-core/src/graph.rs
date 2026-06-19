@@ -39,11 +39,11 @@ struct DomainAggregate {
 }
 
 pub struct WorldGraph {
-    pub events: HashMap<Uuid, WorldEvent>,
-    pub world_state: HashMap<Domain, WorldState>,
-    pub entity_nodes: HashMap<Uuid, EntityNode>,
-    pub causal_edges: Vec<CausalEdge>,
-    pub signals: Vec<Signal>,
+    pub(crate) events: HashMap<Uuid, WorldEvent>,
+    pub(crate) world_state: HashMap<Domain, WorldState>,
+    pub(crate) entity_nodes: HashMap<Uuid, EntityNode>,
+    pub(crate) causal_edges: Vec<CausalEdge>,
+    pub(crate) signals: Vec<Signal>,
     domain_aggregates: HashMap<Domain, DomainAggregate>,
     recent_by_domain: HashMap<Domain, VecDeque<Uuid>>,
     recent_window_size: usize,
@@ -55,6 +55,7 @@ pub struct WorldGraph {
 impl Default for WorldGraph {
     fn default() -> Self {
         Self::new(Box::<ThresholdInferenceEngine>::default(), 256, 400, 600)
+            .expect("default parameters are valid")
     }
 }
 
@@ -63,14 +64,21 @@ impl WorldGraph {
     /// window size. The window is a hard bound; anomaly detection only ever
     /// inspects the last `recent_window_size` events per domain.
     /// `signal_ring_size` and `causal_edge_ring_size` cap derivative data growth.
+    ///
+    /// # Errors
+    /// Returns `CoreError::InvalidConfig` if `recent_window_size` is 0.
     pub fn new(
         inference: Box<dyn InferenceEngine>,
         recent_window_size: usize,
         signal_ring_size: usize,
         causal_edge_ring_size: usize,
-    ) -> Self {
-        assert!(recent_window_size > 0, "recent_window_size must be > 0");
-        Self {
+    ) -> Result<Self, CoreError> {
+        if recent_window_size == 0 {
+            return Err(CoreError::InvalidConfig(
+                "recent_window_size must be > 0".into(),
+            ));
+        }
+        Ok(Self {
             events: HashMap::new(),
             world_state: HashMap::new(),
             entity_nodes: HashMap::new(),
@@ -82,8 +90,14 @@ impl WorldGraph {
             signal_ring_size,
             causal_edge_ring_size,
             inference,
-        }
+        })
     }
+
+    pub fn events(&self) -> &HashMap<Uuid, WorldEvent> { &self.events }
+    pub fn world_state(&self) -> &HashMap<Domain, WorldState> { &self.world_state }
+    pub fn entity_nodes(&self) -> &HashMap<Uuid, EntityNode> { &self.entity_nodes }
+    pub fn causal_edges(&self) -> &[CausalEdge] { &self.causal_edges }
+    pub fn signals(&self) -> &[Signal] { &self.signals }
 
     /// Deterministic ingest reducer.
     ///
@@ -98,32 +112,32 @@ impl WorldGraph {
             return Err(CoreError::DuplicateEventId(event.id));
         }
 
-        let domain = event.domain.clone();
+        let domain = event.domain;
         let event_id = event.id;
         let event_ts = event.timestamp;
-        let location = event.location.clone();
         self.update_domain_aggregate(&domain, event.severity_score);
         self.events.insert(event_id, event);
-        self.track_recent_event(domain.clone(), event_id);
-        self.update_world_state(domain.clone(), event_ts);
+        self.track_recent_event(domain, event_id);
+        self.update_world_state(domain, event_ts);
 
         let recent_events = self.recent_events_for_domain(&domain);
         let new_signals = self.inference.detect_anomaly(&recent_events);
-        self.signals.extend(new_signals.clone());
+        let result = new_signals.clone();
+        self.signals.extend(new_signals);
         self.prune_signals();
         self.prune_causal_edges();
-        if let Some(ref loc) = location {
+        if let Some(loc) = self.events.get(&event_id).and_then(|e| e.location.as_ref()) {
             self.entity_nodes.insert(
                 event_id,
                 EntityNode {
                     id: event_id,
                     label: format!("{:?}:{}:{}", domain, loc.lat, loc.lon),
-                    domain: domain.clone(),
+                    domain,
                     metadata: serde_json::json!({}),
                 },
             );
         }
-        Ok(new_signals)
+        Ok(result)
     }
 
     /// Recompute the aggregate state for `domain` using the running totals.
@@ -151,7 +165,7 @@ impl WorldGraph {
             .unwrap_or(event_timestamp);
 
         self.world_state.insert(
-            domain.clone(),
+            domain,
             WorldState {
                 domain,
                 event_count: aggregate.event_count,
@@ -188,6 +202,7 @@ impl WorldGraph {
 
     /// Read-only query over all stored events. Returns an owned snapshot so
     /// callers cannot accidentally mutate the graph.
+    #[must_use]
     pub fn query_state(&self, filters: &QueryFilters) -> Vec<WorldEvent> {
         self.events
             .values()
@@ -243,10 +258,13 @@ impl WorldGraph {
             (0.0..=1.0).contains(&severity_score),
             "severity_score out of range: {severity_score}"
         );
-        let aggregate = self.domain_aggregates.entry(domain.clone()).or_default();
+        let aggregate = self.domain_aggregates.entry(*domain).or_default();
         aggregate.event_count = aggregate.event_count.saturating_add(1);
         aggregate.total_severity += severity_score;
-        debug_assert!(aggregate.total_severity.is_finite());
+        debug_assert!(aggregate.total_severity.is_finite(), "total_severity overflowed to Inf");
+        if !aggregate.total_severity.is_finite() {
+            aggregate.total_severity = f64::MAX;
+        }
     }
 }
 

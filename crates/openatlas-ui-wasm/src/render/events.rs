@@ -12,7 +12,7 @@ use crate::{
     state::UiState,
 };
 
-use super::require_element;
+use super::{escape_html, require_element};
 
 /// Upper bound on rows rendered per frame. `UiState::events` is already
 /// bounded at `MAX_EVENTS`; this is a second cap so the stream panel
@@ -40,8 +40,10 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
     for event in rows {
         let color = domain_color(&event.domain);
         let pct = severity_percent(event.severity_score);
-        let short_id = short_id(&event.id);
-        let short_time = short_time(&event.timestamp);
+        let short_id = escape_html(&short_id(&event.id));
+        let short_time = escape_html(short_time(&event.timestamp));
+        let full_time = escape_html(&event.timestamp);
+        let domain = escape_html(&event.domain);
         let _ = std::fmt::Write::write_fmt(
             &mut html,
             format_args!(
@@ -56,10 +58,6 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
                   </span>
                 </li>"#,
                 color = color,
-                full_time = event.timestamp,
-                short_time = short_time,
-                domain = event.domain,
-                short_id = short_id,
                 pct = pct,
                 score = event.severity_score,
             ),
@@ -93,4 +91,107 @@ fn empty_state() -> String {
       Stream activity will appear here as ingest begins.
     </li>"#
         .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{short_id, short_time, empty_state};
+
+    // -----------------------------------------------------------------------
+    // short_id
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn short_id_returns_first_segment() {
+        assert_eq!(short_id("abc123-def456"), "abc123");
+    }
+
+    #[test]
+    fn short_id_truncates_to_8_chars() {
+        assert_eq!(short_id("abcdefghij-other"), "abcdefgh");
+    }
+
+    #[test]
+    fn short_id_no_dash() {
+        assert_eq!(short_id("hello"), "hello");
+    }
+
+    #[test]
+    fn short_id_empty_string() {
+        assert_eq!(short_id(""), "");
+    }
+
+    #[test]
+    fn short_id_exactly_8() {
+        assert_eq!(short_id("12345678"), "12345678");
+    }
+
+    #[test]
+    fn short_id_multi_dash() {
+        assert_eq!(short_id("a-b-c"), "a");
+    }
+
+    // -----------------------------------------------------------------------
+    // short_time
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn short_time_extracts_hh_mm_ss() {
+        // short_time splits on 'T' and '.'; trailing 'Z' / offset remains
+        assert_eq!(
+            short_time("2024-06-01T14:30:00Z"),
+            "14:30:00Z"
+        );
+    }
+
+    #[test]
+    fn short_time_with_fractional() {
+        assert_eq!(
+            short_time("2024-06-01T08:15:30.123456Z"),
+            "08:15:30"
+        );
+    }
+
+    #[test]
+    fn short_time_with_timezone_offset() {
+        assert_eq!(
+            short_time("2024-06-01T10:00:00+02:00"),
+            "10:00:00+02:00"
+        );
+    }
+
+    #[test]
+    fn short_time_no_timezone() {
+        assert_eq!(
+            short_time("2024-06-01T12:00:00"),
+            "12:00:00"
+        );
+    }
+
+    #[test]
+    fn short_time_invalid_format_returns_original() {
+        assert_eq!(short_time("not-a-timestamp"), "not-a-timestamp");
+    }
+
+    #[test]
+    fn short_time_empty_string() {
+        assert_eq!(short_time(""), "");
+    }
+
+    #[test]
+    fn short_time_just_date() {
+        assert_eq!(short_time("2024-06-01"), "2024-06-01");
+    }
+
+    // -----------------------------------------------------------------------
+    // empty_state
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn empty_state_contains_message() {
+        let html = empty_state();
+        assert!(html.contains("No events yet"));
+        assert!(html.contains("empty-state"));
+        assert!(html.contains("<li"));
+    }
 }

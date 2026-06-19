@@ -60,3 +60,71 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
 
     Ok(drafts_to_events("coingecko", SOURCE_URL, drafts))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::feeds::normalize::{drafts_to_events, ObservationDraft};
+
+    fn make_asset_draft(asset: &str, price: f64, change: f64, now: chrono::DateTime<Utc>) -> ObservationDraft {
+        let severity = crate::validate::clamp_severity(
+            (change.abs() / DAILY_SWING_SATURATION_PCT).clamp(0.0, 1.0),
+        );
+        let external_key = format!("{}-{}", asset, now.format("%Y-%m-%d"));
+        let mut fields = serde_json::Map::new();
+        fields.insert("asset".to_owned(), serde_json::json!(asset));
+        fields.insert("usd_price".to_owned(), serde_json::json!(price));
+        fields.insert("usd_24h_change".to_owned(), serde_json::json!(change));
+        ObservationDraft {
+            external_key,
+            observed_at: now,
+            domain: Domain::Finance,
+            severity,
+            location: None,
+            fields,
+        }
+    }
+
+    #[test]
+    fn golden_data_produces_three_events() {
+        let now = Utc::now();
+        let drafts = vec![
+            make_asset_draft("bitcoin", 48250.0, 3.21, now),
+            make_asset_draft("ethereum", 3150.0, -1.45, now),
+            make_asset_draft("solana", 142.0, 7.83, now),
+        ];
+        let events = drafts_to_events("coingecko", SOURCE_URL, drafts);
+        assert_eq!(events.len(), 3);
+    }
+
+    #[test]
+    fn golden_data_domain_is_finance() {
+        let now = Utc::now();
+        let drafts = vec![
+            make_asset_draft("bitcoin", 50000.0, 1.0, now),
+            make_asset_draft("ethereum", 3000.0, -0.5, now),
+        ];
+        let events = drafts_to_events("coingecko", SOURCE_URL, drafts);
+        for event in &events {
+            assert_eq!(event.domain, Domain::Finance);
+        }
+    }
+
+    #[test]
+    fn golden_data_severity_in_bounds() {
+        let now = Utc::now();
+        let drafts = vec![
+            make_asset_draft("bitcoin", 50000.0, 25.0, now),
+            make_asset_draft("ethereum", 3000.0, -30.0, now),
+            make_asset_draft("solana", 100.0, 0.0, now),
+        ];
+        let events = drafts_to_events("coingecko", SOURCE_URL, drafts);
+        for event in &events {
+            assert!(
+                (0.0..=1.0).contains(&event.severity_score),
+                "severity {} out of [0, 1]",
+                event.severity_score
+            );
+        }
+    }
+}

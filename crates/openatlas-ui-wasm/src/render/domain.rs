@@ -10,7 +10,7 @@ use crate::{
     state::{compute_trend, UiState},
 };
 
-use super::require_element;
+use super::{escape_html, require_element};
 
 pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue> {
     let panel = require_element(document, "domain-panels")?;
@@ -65,7 +65,7 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
                   {spark}
                 </article>"#,
                 color = color,
-                domain = entry.domain,
+                domain = escape_html(&entry.domain),
                 trend = trend,
                 trend_glyph = trend_glyph(trend),
                 trend_label = trend_label,
@@ -105,4 +105,85 @@ fn empty_state() -> String {
       Aggregates populate after the first few events per domain.
     </div>"#
         .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{trend_glyph, trend_label, empty_state};
+
+    // -----------------------------------------------------------------------
+    // trend_glyph
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn trend_glyph_up() {
+        assert_eq!(trend_glyph("up"), "▲");
+    }
+
+    #[test]
+    fn trend_glyph_down() {
+        assert_eq!(trend_glyph("down"), "▼");
+    }
+
+    #[test]
+    fn trend_glyph_flat() {
+        assert_eq!(trend_glyph("flat"), "●");
+    }
+
+    #[test]
+    fn trend_glyph_unknown() {
+        assert_eq!(trend_glyph("anything_else"), "◌");
+        assert_eq!(trend_glyph(""), "◌");
+    }
+
+    #[test]
+    fn trend_glyph_all_known_variants() {
+        for (trend, glyph) in &[("up", "▲"), ("down", "▼"), ("flat", "●")] {
+            assert_eq!(trend_glyph(trend), *glyph, "mismatch for {trend}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // trend_label
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn trend_label_up() {
+        assert_eq!(trend_label("up"), "Rising");
+    }
+
+    #[test]
+    fn trend_label_down() {
+        assert_eq!(trend_label("down"), "Easing");
+    }
+
+    #[test]
+    fn trend_label_flat() {
+        assert_eq!(trend_label("flat"), "Stable");
+    }
+
+    #[test]
+    fn trend_label_unknown() {
+        assert_eq!(trend_label("anything_else"), "No data");
+        assert_eq!(trend_label(""), "No data");
+    }
+
+    #[test]
+    fn trend_label_all_known_variants() {
+        for (trend, label) in &[("up", "Rising"), ("down", "Easing"), ("flat", "Stable")] {
+            assert_eq!(trend_label(trend), *label, "mismatch for {trend}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // empty_state
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn empty_state_contains_encouragement() {
+        let html = empty_state();
+        assert!(html.contains("Awaiting first domain update"));
+        assert!(html.contains("empty-state"));
+        assert!(html.contains("Aggregates"));
+    }
 }

@@ -1,8 +1,7 @@
 /**
- * Light coordination during route changes — cancel pending dashboard work.
+ * Light coordination during route changes.
  * WebGL teardown is handled in each view's onDestroy (ThreeGlobe, WorldMap, etc.).
  */
-import { cancelScheduledDashboardFlush } from "./dashboard-flush";
 
 let routeTransitioning = false;
 
@@ -11,25 +10,5 @@ export function isRouteTransitioning(): boolean {
   return routeTransitioning;
 }
 
-/** Call before swapping routes; always completes (never throws). */
-export function beginRouteTransition(): void {
-  routeTransitioning = true;
-  cancelScheduledDashboardFlush();
-}
 
-export function endRouteTransition(): void {
-  routeTransitioning = false;
-}
 
-/** Yield one frame so Svelte can run destroy hooks before the next mount. */
-export function waitForRouteTeardown(): Promise<void> {
-  beginRouteTransition();
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        endRouteTransition();
-        resolve();
-      });
-    });
-  });
-}

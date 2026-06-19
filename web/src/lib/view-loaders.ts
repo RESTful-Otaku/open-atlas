@@ -7,7 +7,7 @@ import type { Component } from "svelte";
 type ViewModule = { default: Component };
 
 /** Max route modules kept in memory (current + previous). */
-const MAX_CACHED_VIEWS = 2;
+const MAX_CACHED_VIEWS = 5;
 
 const cache = new Map<string, Component>();
 const loadOrder: string[] = [];

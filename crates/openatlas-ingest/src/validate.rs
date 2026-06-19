@@ -42,7 +42,7 @@ pub fn filter_valid_events(events: Vec<WorldEvent>) -> (Vec<WorldEvent>, usize) 
             Ok(()) => out.push(event),
             Err(error) => {
                 rejected += 1;
-                tracing::warn!(
+                tracing::debug!(
                     event_id = %event.id,
                     domain = ?event.domain,
                     "dropping invalid event before STDB: {error:#}"

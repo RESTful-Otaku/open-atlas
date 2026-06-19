@@ -32,9 +32,18 @@ pub fn load_secrets_file() -> FeedSecretsFile {
     }
     let raw = match fs::read_to_string(&path) {
         Ok(s) => s,
-        Err(_) => return FeedSecretsFile::default(),
+        Err(e) => {
+            tracing::warn!("failed to read feed secrets file {:?}: {e}", path);
+            return FeedSecretsFile::default();
+        }
     };
-    serde_json::from_str(&raw).unwrap_or_default()
+    match serde_json::from_str(&raw) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            tracing::warn!("feed secrets file {:?} has invalid JSON: {e}", path);
+            FeedSecretsFile::default()
+        }
+    }
 }
 
 pub fn save_secrets_file(file: &FeedSecretsFile) -> Result<()> {
