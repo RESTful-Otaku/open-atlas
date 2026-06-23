@@ -1,6 +1,4 @@
-/**
- * Map ECharts click payloads to domain ids for matrix scope filtering.
- */
+
 import { DOMAIN_CATALOG, domainLabel } from "../colors";
 
 export type ChartInteractionPayload = {

@@ -5,11 +5,8 @@
   interface Props {
     open: boolean;
     onclose: () => void;
-    /** When true, render panel only (no backdrop) for mobile inline search. */
     inline?: boolean;
-    /** Mobile: fill remaining viewport below search field. */
     fullscreen?: boolean;
-    /** Parent-owned query (mobile inline search row). */
     q?: string;
   }
 

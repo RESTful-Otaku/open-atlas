@@ -1,7 +1,4 @@
 //! Outbound API rate limiting for live feed adapters.
-//!
-//! Protects upstream providers (and your API keys) from bursty traffic caused by
-//! parallel feeds, multi-request cycles (FRED, Open-Meteo), or Settings test/reconnect.
 
 use std::{
     collections::HashMap,
@@ -11,13 +8,11 @@ use std::{
 
 use tokio::sync::RwLock;
 
-/// Minimum spacing between HTTP calls to a given host (all feeds sharing that host).
 fn host_min_gap(host: &str) -> Duration {
     match host {
         "api.stlouisfed.org" => Duration::from_secs(2),
         "api.eia.gov" => Duration::from_secs(2),
         "api.coingecko.com" => Duration::from_secs(12),
-        // Anonymous /states/all is heavily capped; keep well above provider guidance.
         "opensky-network.org" => Duration::from_secs(120),
         "api.worldbank.org" => Duration::from_secs(2),
         "earthquake.usgs.gov" => Duration::from_secs(1),
@@ -40,12 +35,10 @@ fn operator_cooldown_from_env() -> Duration {
 struct Inner {
     last_feed_poll: HashMap<String, Instant>,
     last_host_request: HashMap<String, Instant>,
-    /// Earliest time a host may be contacted again after HTTP 429.
     host_quiet_until: HashMap<String, Instant>,
     last_operator_fetch: HashMap<String, Instant>,
 }
 
-/// Shared limiter installed once at process start (see `install`).
 pub struct FeedRateLimiter {
     inner: RwLock<Inner>,
     operator_cooldown: Duration,
@@ -65,7 +58,6 @@ impl FeedRateLimiter {
         }
     }
 
-    /// Wait until a scheduled poll for `feed` may run (`poll_interval` since last cycle).
     pub async fn wait_scheduled_poll(&self, feed: &str, poll_interval: Duration) {
         loop {
             let wait = {
@@ -86,7 +78,6 @@ impl FeedRateLimiter {
         }
     }
 
-    /// Enforce spacing before each HTTP call (per host).
     pub async fn wait_host_request(&self, host: &str) {
         let min_gap = host_min_gap(host);
         loop {
@@ -116,9 +107,7 @@ impl FeedRateLimiter {
         }
     }
 
-    /// Atomically check spacing (host-min-gap + quiet-until) and record the request.
-    /// This replaces the TOCTOU-prone pattern of `wait_host_request` + `record_host_request`
-    /// used separately — here the check and record are serialized under a single write lock.
+    /// Atomically check spacing and record the request (avoids TOCTOU).
     pub async fn wait_and_record_host_request(&self, host: &str) {
         let min_gap = host_min_gap(host);
         loop {
@@ -152,7 +141,6 @@ impl FeedRateLimiter {
             .insert(host.to_owned(), Instant::now());
     }
 
-    /// After HTTP 429, block this host until `cooldown` elapses.
     pub async fn penalize_host(&self, host: &str, cooldown: Duration) {
         let until = Instant::now() + cooldown;
         let mut inner = self.inner.write().await;
@@ -162,7 +150,6 @@ impl FeedRateLimiter {
             .insert(host.to_owned(), Instant::now());
     }
 
-    /// Operator test/reconnect: returns remaining cooldown if too soon.
     pub async fn operator_cooldown_remaining(&self, feed: &str) -> Option<Duration> {
         let inner = self.inner.read().await;
         let last = inner.last_operator_fetch.get(feed)?;
@@ -205,7 +192,6 @@ pub fn global() -> Option<std::sync::Arc<FeedRateLimiter>> {
     GLOBAL.get().cloned()
 }
 
-/// Extract hostname from an HTTP(S) URL for per-host throttling.
 pub fn host_from_url(url: &str) -> Option<String> {
     let after_scheme = url.split("://").nth(1)?;
     let authority = after_scheme.split('/').next()?;
@@ -218,7 +204,6 @@ pub fn host_from_url(url: &str) -> Option<String> {
     }
 }
 
-/// Default host cooldown after HTTP 429 when `Retry-After` is absent.
 pub fn default_rate_limit_cooldown(host: &str) -> Duration {
     match host {
         "opensky-network.org" => Duration::from_secs(900),
@@ -228,17 +213,14 @@ pub fn default_rate_limit_cooldown(host: &str) -> Duration {
     }
 }
 
-/// Parse `Retry-After` (seconds or HTTP-date) into a duration capped at 24h.
 pub fn retry_after_duration(header: &str) -> Option<Duration> {
     let trimmed = header.trim();
     if let Ok(secs) = trimmed.parse::<u64>() {
         return Some(Duration::from_secs(secs.min(86_400)));
     }
-    // HTTP-date — best-effort; if unparseable, fall back to provider default.
     None
 }
 
-/// True when upstream likely rate-limited us (HTTP 429 or similar body text).
 pub fn is_rate_limit_error(err: &anyhow::Error) -> bool {
     let msg = err.to_string().to_ascii_lowercase();
     msg.contains("429")

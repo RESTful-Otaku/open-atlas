@@ -1,11 +1,3 @@
-<!--
-  Shared panel header. Renders the small-caps title, optional accent
-  icon, optional actions slot, and optional kebab menu slot.
-
-  This replaces the per-panel header markup that was duplicated across
-  Panel.svelte variants; callers now get consistent typography and
-  spacing for free.
--->
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { Icon as IconComponent } from "@lucide/svelte";

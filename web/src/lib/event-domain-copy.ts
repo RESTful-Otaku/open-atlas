@@ -1,7 +1,4 @@
-/**
- * Short, operator-facing copy for the event detail view: what each domain
- * stream represents in the OpenAtlas model (synthetic or live).
- */
+
 export const DOMAIN_STREAM_EXPLANATION: Readonly<Record<string, { title: string; body: string }>> = {
   energy: {
     title: "What “Energy” means here",

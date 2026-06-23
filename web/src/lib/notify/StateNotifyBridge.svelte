@@ -1,7 +1,3 @@
-<!--
-  Maps connection + readiness into user-visible toasts. Logic lives in a
-  headless Svelte file so it can use `$effect` on reactive dashboard state.
--->
 <script lang="ts">
   import { dashboard } from "../state.svelte";
   import { readiness } from "../readiness.svelte";

@@ -1,21 +1,4 @@
-//! Render orchestrator.
-//!
-//! Each visible dashboard panel lives in its own submodule; the
-//! [`REGISTRY`] below is the single source of truth for the dashboard's
-//! composition and its grid layout. The per-frame [`render`] entry
-//! point walks the registry.
-//!
-//! # Adding a new panel
-//!
-//! 1. Create `render/<your_panel>.rs` exposing
-//!    `pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue>`.
-//! 2. Declare the module below.
-//! 3. Append one [`PanelDescriptor`] entry to [`REGISTRY`]: pick a DOM
-//!    id, a title, a 12-column span, a container shape, and whether the
-//!    section header should render.
-//!
-//! That is the entire integration surface. The HTML skeleton is built
-//! from the registry in `layout::build_dashboard_html`.
+//! Render orchestrator. Walks [`REGISTRY`] per frame.
 
 use wasm_bindgen::JsValue;
 use web_sys::Document;
@@ -33,9 +16,6 @@ pub(crate) mod panel;
 
 pub(crate) use panel::{BodyStyle, Container, PanelDescriptor};
 
-/// Ordered list of dashboard panels. Ordering defines the vertical
-/// placement of sections in the layout. Spans are expressed against a
-/// 12-column grid; responsive CSS collapses them at narrow widths.
 pub(crate) const REGISTRY: &[PanelDescriptor] = &[
     PanelDescriptor {
         id: "kpi-strip",
@@ -102,9 +82,7 @@ pub(crate) const REGISTRY: &[PanelDescriptor] = &[
     },
 ];
 
-/// Renders one frame by dispatching to every registered panel. A panel
-/// failing to mount is a hard error: it indicates a DOM/layout mismatch
-/// that should surface immediately rather than silently skip.
+/// Dispatches to every registered panel.
 pub(crate) fn render(document: &Document, state: &UiState) -> Result<(), JsValue> {
     for descriptor in REGISTRY {
         (descriptor.render)(document, state)?;
@@ -112,8 +90,7 @@ pub(crate) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
     Ok(())
 }
 
-/// HTML-escape untrusted strings before interpolating into markup.
-/// Defends against XSS even when the server sends malicious payloads.
+/// HTML-escape untrusted strings (XSS defence).
 pub(crate) fn escape_html(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for c in s.chars() {
@@ -129,7 +106,6 @@ pub(crate) fn escape_html(s: &str) -> String {
     result
 }
 
-/// Shared helper used by panel modules to look up their mount point.
 pub(crate) fn require_element(document: &Document, id: &str) -> Result<web_sys::Element, JsValue> {
     document
         .get_element_by_id(id)

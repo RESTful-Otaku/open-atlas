@@ -1,12 +1,3 @@
-/**
- * Canonical set of domain ids the UI knows about, paired with their
- * accent colour. Mirrors `openatlas_core::Domain` so filter values
- * match server-side event domains without runtime translation.
- *
- * Adding a new domain = add one entry here; panels pick it up through
- * {@link domainColor} and {@link DOMAIN_CATALOG}.
- */
-
 export interface DomainEntry {
   readonly id: string;
   readonly label: string;
@@ -39,7 +30,7 @@ export function domainColor(id: string): string {
   return COLOR_BY_ID.get(id) ?? FALLBACK_COLOR;
 }
 
-/** Parse `#RRGGBB` to rgba for MapLibre / canvas stops. */
+
 export function hexToRgba(hex: string, alpha: number): string {
   if (hex.length === 7 && hex[0] === "#") {
     const r = parseInt(hex.slice(1, 3), 16);

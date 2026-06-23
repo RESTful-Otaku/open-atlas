@@ -1,15 +1,9 @@
-//! Load gitignored dotenv-style files before reading process configuration.
-//!
-//! Precedence (highest wins):
-//!   1. Variables already in the process environment
-//!   2. `.dev/feed-secrets.json` (feed API keys only, applied in `feed_config`)
-//!   3. `.dev/local.env` then `.env` (first file wins per key; not overwritten)
+//! Gitignored dotenv files loaded before process configuration.
 
 use std::path::Path;
 
 const ENV_FILES: &[&str] = &[".dev/local.env", ".env"];
 
-/// Load `.dev/local.env` and `.env` when present. Does not override existing env vars.
 pub fn load_gitignored_env_files() {
     for path in ENV_FILES {
         load_env_file(path);
@@ -29,7 +23,6 @@ fn load_env_file(path: &str) {
     }
 }
 
-/// Parse `KEY=value` lines; supports `#` comments and optional quotes.
 fn parse_env_line(line: &str) -> Option<(String, String)> {
     let line = line.trim();
     if line.is_empty() || line.starts_with('#') {

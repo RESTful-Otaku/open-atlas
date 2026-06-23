@@ -1,7 +1,3 @@
-<!--
-  List of labelled BarBadge entries. Matches the "Geopolitical Threat
-  Index" and "Mobilization Indicators" visuals from the reference.
--->
 <script lang="ts">
   import { BarBadge } from "../../primitives";
   import type { RegionBar } from "./types";

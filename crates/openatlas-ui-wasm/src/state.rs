@@ -1,7 +1,4 @@
-//! Mutable UI state, bounded by fixed upper limits so long-lived sessions
-//! have predictable memory behaviour. All updates are deterministic and
-//! free of wall-clock reads — the incoming `timestamp` field is used for
-//! display only.
+//! Bounded, deterministic UI state — no wall-clock reads, only incoming data.
 
 use std::collections::HashMap;
 
@@ -109,10 +106,6 @@ pub(crate) fn compute_trend(series: &[f64]) -> &'static str {
 mod tests {
     use super::*;
 
-    // -----------------------------------------------------------------------
-    // trim_tail
-    // -----------------------------------------------------------------------
-
     #[test]
     fn trim_tail_empty_vec() {
         let mut v: Vec<i32> = vec![];
@@ -161,10 +154,6 @@ mod tests {
         trim_tail(&mut v, 3);
         assert_eq!(v, vec!["d", "e", "f"]);
     }
-
-    // -----------------------------------------------------------------------
-    // compute_trend
-    // -----------------------------------------------------------------------
 
     #[test]
     fn compute_trend_insufficient_data_empty() {
@@ -237,10 +226,6 @@ mod tests {
         assert_eq!(compute_trend(&[0.0, 0.0, 1.0]), "up");
     }
 
-    // -----------------------------------------------------------------------
-    // UiState::matches_domain
-    // -----------------------------------------------------------------------
-
     #[test]
     fn matches_domain_none_selected() {
         let state = UiState::default();
@@ -260,10 +245,6 @@ mod tests {
         assert!(!state.matches_domain("energy"));
         assert!(!state.matches_domain("finance"));
     }
-
-    // -----------------------------------------------------------------------
-    // apply_envelope
-    // -----------------------------------------------------------------------
 
     #[test]
     fn apply_envelope_adds_event() {
@@ -418,10 +399,6 @@ mod tests {
         }
         assert_eq!(state.events.len(), MAX_EVENTS);
     }
-
-    // -----------------------------------------------------------------------
-    // record_event (tested indirectly via apply_envelope)
-    // -----------------------------------------------------------------------
 
     #[test]
     fn record_event_maintains_severity_history() {

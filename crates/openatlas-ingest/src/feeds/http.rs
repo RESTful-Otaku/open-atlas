@@ -1,4 +1,4 @@
-//! Shared HTTP + JSON helpers for feed adapters.
+
 
 use crate::rate_limit::{
     default_rate_limit_cooldown, global as rate_limiter, host_from_url, retry_after_duration,
@@ -9,9 +9,7 @@ use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
 fn sanitize_url(url: &str) -> String {
-    url.split_once('?')
-        .map(|(base, _)| base.to_string())
-        .unwrap_or_else(|| url.to_string())
+    url.split_once('?').map(|(b, _)| b.to_owned()).unwrap_or_else(|| url.to_owned())
 }
 
 fn transport_error(url: &str, err: reqwest::Error) -> anyhow::Error {
@@ -50,19 +48,15 @@ fn upstream_error_detail(body: &str) -> String {
     }
 }
 
-/// GET + status check + JSON body as `T`.
 pub async fn fetch_json<T: DeserializeOwned>(client: &Client, feed: &str, url: &str) -> Result<T> {
     let text = fetch_text(client, feed, url).await?;
     serde_json::from_str(&text).with_context(|| format!("JSON decode failed for {}", sanitize_url(url)))
 }
 
-/// GET + status check; returns raw body text. Applies per-host throttling when the
-/// global [`rate_limit::FeedRateLimiter`] is installed (normal ingest process).
 pub async fn fetch_text(client: &Client, feed: &str, url: &str) -> Result<String> {
     fetch_text_with_request(client, feed, url, client.get(url)).await
 }
 
-/// Same as [`fetch_text`] but uses a pre-built request (e.g. basic auth).
 pub async fn fetch_text_with_request(
     client: &Client,
     _feed: &str,
@@ -120,7 +114,7 @@ pub async fn fetch_text_with_request(
         return Ok(body);
     }
 
-    // Fallback without host-based throttle (should not happen for https URLs).
+    // Fallback without host-based throttle.
     let response = client
         .get(url)
         .send()
@@ -141,7 +135,6 @@ pub async fn fetch_text_with_request(
     );
 }
 
-/// Reject HTML error pages and empty bodies before `serde_json::from_str`.
 pub fn parse_json_value(body: &str, context: &str) -> Result<serde_json::Value> {
     let trimmed = body.trim();
     if trimmed.is_empty() {
@@ -156,7 +149,6 @@ pub fn parse_json_value(body: &str, context: &str) -> Result<serde_json::Value> 
     serde_json::from_str(trimmed).with_context(|| format!("{context}: JSON parse failed"))
 }
 
-/// World Bank v2 envelope: top-level `[metadata, observations]`.
 pub fn world_bank_observations(root: &serde_json::Value) -> Result<&[serde_json::Value]> {
     let arr = root
         .as_array()
@@ -168,7 +160,6 @@ pub fn world_bank_observations(root: &serde_json::Value) -> Result<&[serde_json:
     Ok(obs.as_slice())
 }
 
-/// FRED `series/observations` latest row.
 pub fn fred_latest_observation(root: &serde_json::Value) -> Result<&serde_json::Value> {
     root.get("observations")
         .and_then(|v| v.as_array())
@@ -176,7 +167,6 @@ pub fn fred_latest_observation(root: &serde_json::Value) -> Result<&serde_json::
         .context("fred: missing observations[0]")
 }
 
-/// EIA v2 `response.data` rows.
 pub fn eia_data_rows(root: &serde_json::Value) -> Result<&[serde_json::Value]> {
     root.get("response")
         .and_then(|v| v.get("data"))

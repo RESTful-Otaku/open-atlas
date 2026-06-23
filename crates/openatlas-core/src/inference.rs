@@ -1,15 +1,11 @@
-//! Inference boundary. The `InferenceEngine` trait keeps the core independent
-//! from any specific anomaly or prediction algorithm; the default
-//! `ThresholdInferenceEngine` is intentionally trivial so that production
-//! engines can be swapped in without touching the graph.
+
 
 use crate::{
     domain::Domain,
     event::{Prediction, Signal, WorldEvent, WorldState},
 };
 
-/// Anomaly detection and forecasting hook. Implementations must be
-/// side-effect free; deterministic outputs make replay verifiable.
+/// Anomaly detection and forecasting hook. Must be side-effect free.
 pub trait InferenceEngine: Send + Sync {
     #[must_use]
     fn detect_anomaly(&self, events: &[WorldEvent]) -> Vec<Signal>;
@@ -17,8 +13,7 @@ pub trait InferenceEngine: Send + Sync {
     fn predict_state(&self, domain: Domain, current_state: Option<&WorldState>) -> Prediction;
 }
 
-/// Minimal engine used by default and in tests. Flags any event whose severity
-/// meets or exceeds `anomaly_threshold` and projects a modest linear lift.
+/// Default engine. Flags events at or above `anomaly_threshold`.
 #[derive(Debug, Clone)]
 pub struct ThresholdInferenceEngine {
     pub anomaly_threshold: f64,
@@ -85,15 +80,11 @@ mod tests {
         }
     }
 
-    // --- Default threshold ---
-
     #[test]
     fn default_threshold_is_0_85() {
         let engine = ThresholdInferenceEngine::default();
         assert!((engine.anomaly_threshold - 0.85).abs() < f64::EPSILON);
     }
-
-    // --- detect_anomaly ---
 
     #[test]
     fn detect_anomaly_below_threshold_returns_empty() {
@@ -155,8 +146,6 @@ mod tests {
         assert_eq!(signals[0].reason, "threshold_based_anomaly");
     }
 
-    // --- predict_state ---
-
     #[test]
     fn predict_state_no_current_state_returns_baseline_zero() {
         let engine = ThresholdInferenceEngine::default();
@@ -181,8 +170,6 @@ mod tests {
         assert!((prediction.projected_risk_index - 1.0).abs() < f64::EPSILON);
     }
 
-    // --- Custom threshold ---
-
     #[test]
     fn custom_threshold_works() {
         let engine = ThresholdInferenceEngine {
@@ -195,8 +182,6 @@ mod tests {
         assert!((signals[1].score - 0.6).abs() < f64::EPSILON);
     }
 
-    // --- Trait object safety ---
-
     #[test]
     fn inference_engine_is_object_safe() {
         let engine: Box<dyn InferenceEngine> = Box::new(ThresholdInferenceEngine::default());
@@ -207,8 +192,6 @@ mod tests {
         assert!((prediction.projected_risk_index - 0.0).abs() < f64::EPSILON);
     }
 
-    // --- DST: deterministic sequence ---
-
     #[test]
     fn deterministic_sequence() {
         let engine = ThresholdInferenceEngine::default();
@@ -217,8 +200,6 @@ mod tests {
         let second = engine.detect_anomaly(&events);
         assert_eq!(first, second);
     }
-
-    // --- Fuzz: random vectors never panic ---
 
     #[test]
     fn random_vectors_never_panic() {
@@ -239,8 +220,6 @@ mod tests {
             }
         }
     }
-
-    // --- Thread safety ---
 
     #[test]
     fn engine_is_send_sync() {

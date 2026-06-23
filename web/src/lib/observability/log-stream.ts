@@ -1,6 +1,4 @@
-/**
- * In-browser operator log ring buffer for Settings ops console.
- */
+
 
 export type LogLevel = "info" | "ok" | "warn" | "error";
 
@@ -28,7 +26,7 @@ export function subscribeOpsLog(cb: () => void): () => void {
   return () => listeners.delete(cb);
 }
 
-/** Trim oldest lines when over cap (deterministic). */
+
 export function trimOpsLog(lines: LogLine[], max = OPS_LOG_MAX_LINES): LogLine[] {
   if (lines.length <= max) return lines;
   return lines.slice(lines.length - max);
@@ -54,12 +52,12 @@ export function appendOpsLog(
   notify();
 }
 
-/** Snapshot for UI (newest last). */
+
 export function getOpsLogLines(): readonly LogLine[] {
   return buffer;
 }
 
-/** Clear all lines (operator action in Settings). */
+
 export function clearOpsLog(): void {
   const had = buffer.length;
   buffer.length = 0;
@@ -78,7 +76,7 @@ export function clearOpsLog(): void {
   }
 }
 
-/** Test helper — reset buffer. */
+
 export function clearOpsLogForTests(): void {
   clearOpsLog();
 }

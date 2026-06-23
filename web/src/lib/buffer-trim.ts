@@ -1,6 +1,4 @@
-/**
- * Helpers to avoid replacing reactive arrays when sort/trim yields identical data.
- */
+
 
 export function sameOrderedIds(
   a: readonly { id: string }[],

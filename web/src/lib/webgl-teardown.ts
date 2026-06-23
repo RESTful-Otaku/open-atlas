@@ -1,8 +1,4 @@
-/**
- * Best-effort WebGL context release on view destroy.
- * Only uses WEBGL_lose_context when a context already exists — never calls
- * getContext() (that can create a new context and break MapLibre/Three).
- */
+
 export function releaseWebGlCanvases(root: ParentNode | null | undefined): void {
   if (!root) return;
   for (const canvas of root.querySelectorAll("canvas")) {

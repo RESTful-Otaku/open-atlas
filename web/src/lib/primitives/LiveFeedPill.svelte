@@ -1,8 +1,3 @@
-<!--
-  Page-level SpacetimeDB / ingest status chip. The label reflects the
-  dashboard connection; the whole control links to settings for
-  WebSocket + operator notes.
--->
 <script lang="ts">
   import { dashboard } from "../state.svelte";
 

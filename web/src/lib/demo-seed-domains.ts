@@ -1,7 +1,4 @@
-/**
- * Plausible geography + language per catalog domain for demo-seed. Everything
- * is synthetic; it only needs to “read real” in maps and event detail.
- */
+
 
 import { DOMAIN_CATALOG } from "./colors";
 
@@ -10,23 +7,23 @@ type DomainId = (typeof DOMAIN_CATALOG)[number]["id"];
 type Anchor = { readonly lat: number; readonly lon: number; readonly label: string };
 
 type DomainPack = {
-  /** Preferred map anchors for this domain */
+/** Preferred map anchors for this domain */
   readonly anchors: readonly Anchor[];
-  /** When picking signal reasons, domain-specific lines */
+  
   readonly signalReasons: readonly string[];
-  /** Short insight lines for `domain_insight.narrative` */
+
   readonly insightNarratives: readonly string[];
-  /** Dominant data source label for the UI */
+
   readonly dominantSourceOptions: readonly (string | null)[];
-  /** Two-line template for `predicted_disruption` (entity sev, note) */
+
   readonly disruptionSets: ReadonlyArray<
     readonly { entity: string; severity: string; note: string }[]
   >;
-  /** `event_narrative` headline; supports {place} */
+
   readonly headlineTmpl: readonly string[];
-  /** Longer summary; {place} {domain} */
+
   readonly summaryTmpl: readonly string[];
-  /** Inference line */
+
   readonly inferenceTmpl: readonly string[];
 };
 
@@ -534,9 +531,7 @@ function pick<T>(rng: () => number, arr: readonly T[]): T {
   return arr[Math.floor(rng() * arr.length)]!;
 }
 
-/**
- * An anchor and label for events of this domain (deterministic by index).
- */
+
 export function anchorForDomain(
   domain: string,
   index: number,
@@ -557,9 +552,7 @@ function packFor(d: string): DomainPack {
   return DOMAIN_DEMO[d as DomainId] ?? DOMAIN_DEMO.infrastructure;
 }
 
-/**
- * High-severity narrative block for the event.
- */
+
 export function buildDemoNarrativeBlock(
   domain: string,
   place: string,

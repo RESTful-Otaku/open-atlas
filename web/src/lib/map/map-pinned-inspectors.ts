@@ -1,5 +1,3 @@
-/** Pinned map/globe event inspector cards (desktop comparison + mobile single dock). */
-
 export const MAX_MAP_PINS_DESKTOP = 3;
 export const MAX_MAP_PINS_COMPACT = 1;
 
@@ -24,9 +22,6 @@ export type PinInspectorResult =
   | { ok: true; pins: PinnedMapInspector[]; unpinned: boolean }
   | { ok: false; pins: PinnedMapInspector[]; reason: "max_pins" };
 
-/**
- * Toggle pin for an event. Compact replaces the sole slot; desktop allows up to three.
- */
 export function togglePinInspector(
   pins: readonly PinnedMapInspector[],
   next: PinnedMapInspector,
@@ -61,7 +56,6 @@ export function unpinLastInspector(
   return pins.slice(0, -1);
 }
 
-/** Drop pins whose events left the current map dataset. */
 export function prunePinnedInspectors(
   pins: readonly PinnedMapInspector[],
   knownEventIds: ReadonlySet<string>,

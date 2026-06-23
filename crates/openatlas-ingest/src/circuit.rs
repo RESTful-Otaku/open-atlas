@@ -1,15 +1,12 @@
-//! Per-feed circuit breaker — stops polling upstream after repeated failures,
-//! auto-recovers after a cooldown period (half-open → probe → close or re-open).
+//! Per-feed circuit breaker — stops polling after repeated failures, auto-recovers after cooldown.
 
 use chrono::Utc;
 use tracing::warn;
 
 use crate::{health, state::AppState};
 
-/// Open the circuit after this many consecutive failed poll cycles.
 pub const CIRCUIT_FAILURE_THRESHOLD: u32 = 5;
 
-/// After the circuit opens, wait this long before allowing a probe attempt.
 const AUTO_RECOVERY_DURATION_MINUTES: i64 = 5;
 
 pub async fn is_circuit_open(state: &AppState, feed: &str) -> bool {
@@ -48,8 +45,7 @@ pub async fn on_poll_failure(state: &AppState, feed: &str) {
             h.circuit_open = true;
             h.circuit_opened_since = Some(Utc::now());
         } else if h.circuit_open {
-            // Circuit was already open (half-open probe failure).
-            // Re-arm the cooldown to prevent immediate retry.
+            // Half-open probe failure: re-arm cooldown.
             h.circuit_opened_since = Some(Utc::now());
         }
     }
@@ -147,7 +143,6 @@ mod tests {
         assert!(is_circuit_open(&state, "usgs").await);
         on_poll_success(&state, "usgs").await;
         assert!(!is_circuit_open(&state, "usgs").await);
-        // After close, a single new failure should not immediately re-open.
         set_failures(&state, "usgs", 1).await;
         on_poll_failure(&state, "usgs").await;
         assert!(!is_circuit_open(&state, "usgs").await);
@@ -159,15 +154,12 @@ mod tests {
         set_failures(&state, "usgs", CIRCUIT_FAILURE_THRESHOLD).await;
         on_poll_failure(&state, "usgs").await;
         assert!(is_circuit_open(&state, "usgs").await);
-        // Simulate that the circuit opened 5+ minutes ago (half-open window).
         {
             let mut feeds = state.feed_runtime.write().await;
             let h = feeds.get_mut("usgs").expect("usgs");
             h.circuit_opened_since = Some(Utc::now() - chrono::Duration::minutes(6));
         }
-        // is_circuit_open should now return false (half-open → allow probe).
         assert!(!is_circuit_open(&state, "usgs").await);
-        // But the circuit_open flag should still be true internally.
         let feeds = state.feed_runtime.read().await;
         assert!(feeds["usgs"].circuit_open);
     }

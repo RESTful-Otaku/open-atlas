@@ -1,6 +1,3 @@
-/**
- * Shared MapLibre presentation: basemap sky/light per UI theme.
- */
 import type { Map } from "maplibre-gl";
 
 import { mapThemeFor } from "../theme-map";

@@ -1,9 +1,3 @@
-<!--
-  Horizontal progress-style bar with a label and trailing percentage.
-  Used for the Geopolitical Threat Index, Hydrological Stress,
-  Mobilization Indicators, and other "labelled ratio" displays across
-  the matrix pages.
--->
 <script lang="ts">
   interface Props {
     label: string;

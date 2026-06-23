@@ -1,4 +1,4 @@
-//! World Bank Open Data — GDP growth (annual %) for a broad country mix.
+
 
 use std::time::Duration;
 

@@ -1,7 +1,3 @@
-<!--
-  Unified operator strip for map/globe routes: STDB connection, ingest feeds,
-  and simulated UTC + solar phase.
--->
 <script lang="ts">
   import { Activity, Clock, Database, RadioTower } from "@lucide/svelte";
 
@@ -22,9 +18,7 @@
   interface Props {
     simUtcLabel?: string;
     simMinOfDay?: SimMinOfDay;
-    /** When false, hide the sim-time segment (e.g. embedded overview map). */
     showSimTime?: boolean;
-    /** Flush into map command bar (no outer chrome). */
     embeddedInCommandBar?: boolean;
   }
 

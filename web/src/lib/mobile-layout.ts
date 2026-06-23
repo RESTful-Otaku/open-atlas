@@ -1,17 +1,3 @@
-/**
- * Native shell + responsive layout detection.
- * Sets layout datasets on `<html>` for CSS hooks.
- *
- * - **Phone** (`data-mobile-layout`): width ≤768px or native app
- * - **Tablet** (`data-tablet-layout`): 769px–1024px (non-native)
- * - **Compact** (`data-compact-layout`): phone + tablet + native — touch shell
- *
- * Desktop (>1024px, non-native) has no layout datasets.
- *
- * Capacitor is detected via `window.Capacitor` so the desktop bundle does not
- * import `@capacitor/core` at startup.
- */
-
 export const MOBILE_LAYOUT_MQ = "(max-width: 768px)";
 export const TABLET_LAYOUT_MQ = "(min-width: 769px) and (max-width: 1024px)";
 export const COMPACT_LAYOUT_MQ = "(max-width: 1024px)";
@@ -38,22 +24,22 @@ export function isNativeApp(): boolean {
   return capacitorGlobal()?.isNativePlatform?.() === true;
 }
 
-/** Phone layout (≤768px or native). */
+
 export function isMobileLayout(): boolean {
   return mobileLayoutFlag;
 }
 
-/** Tablet-only layout (769–1024px, not native). */
+
 export function isTabletLayout(): boolean {
   return tabletLayoutFlag;
 }
 
-/** Compact shell: phone, tablet, or native — bottom nav, no left rail. */
+
 export function isCompactLayout(): boolean {
   return compactLayoutFlag;
 }
 
-/** Subscribe to any layout dataset change. */
+
 export function subscribeMobileLayout(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -129,7 +115,7 @@ export async function initMobileShell(): Promise<() => void> {
   };
 }
 
-/** Sync bootstrap for first paint before the shell mounts. */
+
 export function bootstrapMobileLayout(): void {
   applyLayout();
 }

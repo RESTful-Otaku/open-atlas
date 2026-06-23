@@ -1,28 +1,10 @@
-//! Plug-in surface for dashboard panels.
-//!
-//! # Goal
-//!
-//! Adding a new visualization must require touching exactly **two**
-//! places:
-//!
-//! 1. Create `render/<your_panel>.rs` with
-//!    `pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue>`.
-//! 2. Declare `mod <your_panel>;` in `render/mod.rs` and append a
-//!    [`PanelDescriptor`] to [`crate::render::REGISTRY`].
-//!
-//! The dashboard layout (section title, mount container, 12-column grid
-//! span, header visibility) is derived from the descriptor so `layout.rs`
-//! never needs a manual edit when adding a panel.
+//! Panel descriptor types and the [`PanelDescriptor`] plug-in surface.
 
 use wasm_bindgen::JsValue;
 use web_sys::Document;
 
 use crate::state::UiState;
 
-/// How to shape the panel's mount container in the generated HTML.
-/// Most panels render into a `<div>`; list-style panels (event stream,
-/// anomaly list) mount into a `<ul>` so their renderers can append
-/// `<li>` children without extra nesting.
 #[derive(Clone, Copy)]
 pub(crate) enum Container {
     Div,
@@ -38,8 +20,6 @@ impl Container {
     }
 }
 
-/// Optional body modifier classes. `Flush` drops the default padding
-/// for panels (e.g. lists) whose children own their own spacing.
 #[derive(Clone, Copy)]
 pub(crate) enum BodyStyle {
     Default,
@@ -59,32 +39,16 @@ impl BodyStyle {
     }
 }
 
-/// Plain fn pointer — keeps the descriptor `const`-constructible and
-/// avoids runtime trait-object overhead. Panels never allocate state;
-/// they read the [`UiState`] snapshot and imperatively update the DOM.
 pub(crate) type RenderFn = fn(&Document, &UiState) -> Result<(), JsValue>;
 
-/// Everything the dashboard needs to know about a panel. No behaviour
-/// lives here — only metadata and a render entry point.
 #[derive(Clone, Copy)]
 pub(crate) struct PanelDescriptor {
-    /// DOM id for the mount container. Must be unique across
-    /// [`crate::render::REGISTRY`]; the registry's unit test enforces
-    /// this at build time.
     pub id: &'static str,
-    /// Human-facing section title rendered as an `<h2>`. Ignored when
-    /// `show_header` is `false`, but kept for debugging and tests.
     pub title: &'static str,
-    /// Shape of the mount container.
     pub container: Container,
-    /// 12-column grid span (1..=12). CSS handles responsive collapse.
     pub span: u8,
-    /// When `false`, the section chrome (title + divider) is omitted —
-    /// useful for hero/KPI rows where panels own their own header.
     pub show_header: bool,
-    /// Body padding/scroll modifier.
     pub body: BodyStyle,
-    /// Per-frame render function.
     pub render: RenderFn,
 }
 

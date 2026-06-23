@@ -1,7 +1,3 @@
-<!--
-  One top-level route at a time. Views are lazy-loaded and evicted so
-  WebGL / MapLibre / ECharts memory is not retained across the whole catalog.
--->
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Component } from "svelte";
@@ -19,7 +15,6 @@
     mainScrollModeForPattern(router.match.pattern, compactLayout),
   );
 
-  /** Remount when pattern changes, or when parametric routes need a fresh instance. */
   const routeKey = $derived.by(() => {
     const { pattern, path, params } = router.match;
     if (pattern === "/events/:id") return `events:${params.id ?? path}`;

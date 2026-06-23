@@ -1,33 +1,3 @@
-/**
- * SpacetimeDB connection lifecycle.
- *
- * This module replaces the earlier `/stream` WebSocket client. Instead
- * of speaking a bespoke JSON envelope from the ingest service, we now
- * connect **directly** to SpacetimeDB using the generated module
- * bindings (`./stdb/`). The SDK maintains a local row cache (tier 4 in
- * `docs/DATA_PLANE.md`); we react to `onInsert` / `onUpdate` / `onDelete`
- * and project trimmed rows into `state.svelte.ts`. External APIs are never
- * polled from the browser in live mode.
- *
- * # Responsibilities
- *
- *   * Open (and re-open after failures) a single connection to
- *     SpacetimeDB using the module name configured via Vite env vars.
- *   * Subscribe to the tables the dashboard consumes — the SQL clauses
- *     are `SELECT *` because the module itself enforces bounded ring
- *     sizes. We trust the server's caps rather than trying to filter
- *     here.
- *   * Mirror every table row into the typed reactive store.
- *   * Expose a tiny public surface (`connectDb`, `disconnectDb`,
- *     `reducerClient`) so components never touch the SDK directly.
- *
- * # Reconnect strategy
- *
- * On disconnect the client schedules exponential backoff reconnects (max
- * 8 attempts, 2s base). Operators can still call `reconnectNow()` from
- * Settings or the status pill to reset backoff immediately.
- */
-
 import { DbConnection, type EventContext } from "./stdb";
 import {
   applyCausalEdge,
@@ -80,7 +50,7 @@ const CONNECTION_TIMEOUT_MS = 15_000;
 let narrativeHandlersInstalled = false;
 let narrativeSubscriptionActive = false;
 let narrativeSubscriptionHandle: { unsubscribe: () => void } | null = null;
-/** Views that need narrative rows (Hub, event detail, map with hover). */
+
 let narrativeConsumerCount = 0;
 
 function syncReconnectUi(): void {
@@ -138,10 +108,7 @@ function scheduleAutoReconnect(): void {
   }, delay);
 }
 
-/**
- * Kick off the initial connection. Idempotent — calling twice is a
- * no-op. Components invoke this from their root `$effect` in App.svelte.
- */
+
 export function connectDb(): void {
   if (dashboard.dataMode === "demo") return;
   if (activeConnection) return;
@@ -149,11 +116,6 @@ export function connectDb(): void {
   openConnection();
 }
 
-/**
- * User-triggered or programmatic hard reconnect: drop backoff, tear down
- * any half-open socket, and open a fresh connection. Use when the pill
- * shows offline or after changing env.
- */
 /** Operator-facing line for Settings / OpsStrip when backoff is active. */
 export function autoReconnectStatusLine(): string | null {
   if (dashboard.dataMode === "demo") return null;
@@ -194,11 +156,7 @@ export function reconnectNow(): void {
   openConnection();
 }
 
-/**
- * Explicit teardown. Primarily used by hot-module-replacement in dev
- * and by component unmount hooks in tests. Safe to call even if no
- * connection is open.
- */
+
 export function disconnectDb(): void {
   shuttingDown = true;
   clearReconnectTimer();
@@ -220,11 +178,7 @@ export function disconnectDb(): void {
   logStdbDisconnected("shutdown");
 }
 
-/**
- * Accessor exposed for components that need to *call* reducers (e.g.
- * a future "submit anomaly" button). Returns `null` while the
- * connection is in flight or lost; callers should guard for that.
- */
+
 export function activeDb(): DbConnection | null {
   return activeConnection;
 }
@@ -241,7 +195,7 @@ function openConnection(): void {
   connectionTimer = setTimeout(() => {
     connectionTimer = undefined;
     if (activeConnection) {
-      try { activeConnection.disconnect(); } catch { /* */ }
+      try { activeConnection.disconnect(); } catch { }
     }
     activeConnection = null;
     connectionOpening = false;
@@ -374,10 +328,7 @@ function installNarrativeRowHandlers(connection: DbConnection): void {
   );
 }
 
-/**
- * Subscribe to `event_narrative` only when a view needs headlines/LLM context.
- * Keeps the default WS payload small (narratives are large text blobs).
- */
+
 export function ensureNarrativeSubscription(): void {
   if (dashboard.dataMode === "demo") return;
   const connection = activeConnection;
@@ -396,10 +347,7 @@ export function ensureNarrativeSubscription(): void {
   narrativeSubscriptionHandle = handle;
 }
 
-/**
- * Call from view `onMount`; returned teardown runs on destroy so narratives
- * are not merged into dashboard state when no view is listening.
- */
+
 export function acquireNarrativeSubscription(): () => void {
   if (dashboard.dataMode === "demo") return () => {};
   narrativeConsumerCount += 1;
@@ -410,7 +358,6 @@ export function acquireNarrativeSubscription(): () => void {
       try {
         narrativeSubscriptionHandle.unsubscribe();
       } catch {
-        /* already torn down */
       }
       narrativeSubscriptionHandle = null;
       narrativeSubscriptionActive = false;
@@ -418,11 +365,7 @@ export function acquireNarrativeSubscription(): () => void {
   };
 }
 
-/**
- * Subscribe to dashboard tables (full `SELECT *` per ring/small table).
- * Trimming happens in `sync-dashboard-cache.ts` — STDB 2.1 subscription
- * SQL rejects ORDER BY and LIMIT on some tables (e.g. event_narrative).
- */
+
 function subscribeDashboardQueries(connection: DbConnection): void {
   connection
     .subscriptionBuilder()
@@ -467,11 +410,10 @@ function handleLostConnection(): void {
   const prev = activeConnection;
   activeConnection = null;
   if (prev) {
-    try {
-      prev.disconnect();
-    } catch {
-      /* already torn down */
-    }
+      try {
+        prev.disconnect();
+      } catch {
+      }
   }
   setConnection("offline");
   scheduleAutoReconnect();

@@ -1,6 +1,3 @@
-/**
- * Revision-keyed memo helpers (no Svelte) — used by chart-cache and tests.
- */
 import type { EChartsOption } from "echarts";
 
 export type RevisionCacheEntry = {

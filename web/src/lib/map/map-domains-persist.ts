@@ -1,4 +1,4 @@
-/** @deprecated Import from `map-view-persist.ts` — re-exported for existing imports. */
+/** @deprecated */
 export {
   allDomainIds,
   defaultMapDomainSet,

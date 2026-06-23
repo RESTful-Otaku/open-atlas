@@ -1,8 +1,3 @@
-<!--
-  Touch-first primary nav for native / narrow layouts. Desktop keeps LeftRail.
-  Domains sheet is rendered outside the nav bar so backdrop-filter does not
-  trap `position: fixed` children (known mobile WebView bug).
--->
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
   import { Globe2, LayoutGrid, Map as MapIcon, MoreHorizontal, Settings, X } from "@lucide/svelte";
@@ -14,7 +9,6 @@
   import { domainIcon } from "../domain-icons";
 
   let domainsOpen = $state(false);
-  /** Keeps sheet in DOM through `out:fly`; false while exiting so nav stays clickable. */
   let domainsPresent = $state(false);
 
   const tabs = [

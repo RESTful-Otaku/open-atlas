@@ -1,15 +1,5 @@
-//! Static layout scaffolding, map projection, sparklines, and the
-//! shared domain catalogue.
-//!
-//! The dashboard section list is **derived from** [`crate::render::REGISTRY`]
-//! so adding a panel never requires editing HTML here. The top-bar
-//! (brand, status, filter container) lives in `web/index.html` for
-//! first-paint speed; this module only populates:
-//!
-//! - `#domain-filter-group` with segmented buttons driven by
-//!   [`DOMAIN_CATALOG`];
-//! - `#app` with one `<section class="panel">` per entry in the
-//!   registry.
+//! Static layout scaffolding, map projection, sparklines, and the domain catalogue.
+//! Sections are derived from [`crate::render::REGISTRY`].
 
 use std::fmt::Write as _;
 
@@ -18,13 +8,6 @@ use web_sys::Document;
 
 use crate::render;
 
-/// Canonical set of domain ids the UI knows about, paired with their
-/// accent colour. This is the single source of truth consumed by the
-/// filter dropdown, [`domain_color`], and the per-row / per-card
-/// accent-colour plumbing.
-///
-/// Domain ids mirror `openatlas_core::Domain` so filter values match
-/// server-side event domains without runtime translation.
 pub(crate) const DOMAIN_CATALOG: &[(&str, &str)] = &[
     ("energy", "#f59e0b"),
     ("finance", "#22c55e"),
@@ -41,10 +24,7 @@ pub(crate) const DOMAIN_CATALOG: &[(&str, &str)] = &[
     ("infrastructure", "#0ea5e9"),
 ];
 
-/// Installs the dashboard skeleton into `#app` on first mount and the
-/// segmented filter buttons into `#domain-filter-group`. Subsequent
-/// calls are idempotent — the panel renderers own their contents and
-/// update in place.
+/// Idempotent — installs skeleton and filter buttons on first mount.
 pub(crate) fn ensure_layout(document: &Document) -> Result<(), JsValue> {
     ensure_filter(document)?;
     ensure_panels(document)?;
@@ -73,10 +53,6 @@ fn ensure_filter(document: &Document) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Generates the dashboard HTML by concatenating one `<section
-/// class="panel">` per entry in [`render::REGISTRY`]. The grid span and
-/// header visibility are driven by the descriptor fields — this module
-/// is layout plumbing only and has no panel-specific knowledge.
 fn build_dashboard_html() -> String {
     let mut html = String::with_capacity(2048);
     for descriptor in render::REGISTRY {
@@ -113,9 +89,6 @@ fn build_dashboard_html() -> String {
     html
 }
 
-/// Generates the segmented filter buttons. One "All" option is always
-/// present; the rest mirror [`DOMAIN_CATALOG`] so adding a domain is
-/// still a single-entry edit.
 fn build_filter_html() -> String {
     let mut html = String::with_capacity(512);
     html.push_str(
@@ -151,9 +124,7 @@ pub(crate) fn project_equirectangular(lat: f64, lon: f64, width: f64, height: f6
     (x, y)
 }
 
-/// Returns the accent colour for a known domain, or a neutral fallback
-/// for unknown ids. Consumers should prefer this over hardcoding hex
-/// values so [`DOMAIN_CATALOG`] stays the single source of truth.
+/// Accent colour for a domain, or a neutral fallback for unknown ids.
 pub(crate) fn domain_color(domain: &str) -> &'static str {
     for (id, color) in DOMAIN_CATALOG {
         if *id == domain {
@@ -163,15 +134,12 @@ pub(crate) fn domain_color(domain: &str) -> &'static str {
     "#cbd5e1"
 }
 
-/// Severity-bar percentage, already clamped. Centralised here so every
-/// panel produces identical visuals for the same severity.
+/// Severity as a 0–100 percentage, clamped.
 pub(crate) fn severity_percent(score: f64) -> f64 {
     (score.clamp(0.0, 1.0)) * 100.0
 }
 
-/// Renders a small inline SVG sparkline. Deterministic: given the same
-/// series and colour it always produces byte-identical markup. Empty
-/// series return a flat guide line so the panel does not shift.
+/// Small inline SVG sparkline. Empty series returns a flat guide line.
 pub(crate) fn sparkline_svg(values: &[f64], color: &str) -> String {
     const WIDTH: f64 = 240.0;
     const HEIGHT: f64 = 36.0;
@@ -217,10 +185,6 @@ pub(crate) fn sparkline_svg(values: &[f64], color: &str) -> String {
 mod tests {
     use super::*;
 
-    // -----------------------------------------------------------------------
-    // project_equirectangular
-    // -----------------------------------------------------------------------
-
     #[test]
     fn project_equirectangular_origin() {
         let (x, y) = project_equirectangular(0.0, 0.0, 800.0, 400.0);
@@ -254,9 +218,7 @@ mod tests {
     #[test]
     fn project_equirectangular_aspect_independent() {
         let (x, y) = project_equirectangular(45.0, -75.0, 1600.0, 760.0);
-        // lon=-75 → (( -75 + 180) / 360) * 1600 = 466.666…
         assert!((x - 466.6666666666667).abs() < 1e-9, "x={x}");
-        // lat=45 → ((90 - 45) / 180) * 760 = 190
         assert!((y - 190.0).abs() < 1e-9, "y={y}");
     }
 
@@ -266,10 +228,6 @@ mod tests {
         assert!((x - 0.0).abs() < 1e-9, "x={x}");
         assert!((y - 0.0).abs() < 1e-9, "y={y}");
     }
-
-    // -----------------------------------------------------------------------
-    // domain_color
-    // -----------------------------------------------------------------------
 
     #[test]
     fn domain_color_known_entries_return_accent() {
@@ -289,10 +247,6 @@ mod tests {
         assert_eq!(domain_color("Energy"), "#cbd5e1");
         assert_eq!(domain_color("energy"), "#f59e0b");
     }
-
-    // -----------------------------------------------------------------------
-    // severity_percent
-    // -----------------------------------------------------------------------
 
     #[test]
     fn severity_percent_clamps_low() {
@@ -314,10 +268,6 @@ mod tests {
         assert!((severity_percent(0.0) - 0.0).abs() < 1e-9);
         assert!((severity_percent(1.0) - 100.0).abs() < 1e-9);
     }
-
-    // -----------------------------------------------------------------------
-    // sparkline_svg
-    // -----------------------------------------------------------------------
 
     #[test]
     fn sparkline_svg_empty_returns_flat_guide() {
@@ -361,10 +311,6 @@ mod tests {
         assert!(svg.contains("viewBox=\"0 0 240 36\""));
     }
 
-    // -----------------------------------------------------------------------
-    // capitalize
-    // -----------------------------------------------------------------------
-
     #[test]
     fn capitalize_empty_string() {
         assert_eq!(capitalize(""), "");
@@ -394,10 +340,6 @@ mod tests {
     fn capitalize_leading_whitespace() {
         assert_eq!(capitalize("  hello"), "  hello");
     }
-
-    // -----------------------------------------------------------------------
-    // DOMAIN_CATALOG invariants
-    // -----------------------------------------------------------------------
 
     #[test]
     fn domain_catalog_entries_are_unique() {

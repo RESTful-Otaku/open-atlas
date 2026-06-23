@@ -1,4 +1,4 @@
-/** Pure index builder (testable without Svelte runes). */
+
 import type { UiEvent } from "./types";
 
 export function buildEventsByDomain(

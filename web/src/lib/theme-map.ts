@@ -1,7 +1,4 @@
-/**
- * Map / globe presentation tokens per UI theme. Basemaps, skies, and canvas
- * fills stay aligned with `data-theme` on `<html>`.
- */
+
 import type { LightSpecification, SkySpecification } from "maplibre-gl";
 
 import type { ThemeId } from "./theme.svelte";
@@ -10,13 +7,13 @@ const CARTO_SUBS = ["a", "b", "c", "d"] as const;
 
 export interface MapThemeSpec {
   basemapGlStyle: string;
-  /** CARTO raster XYZ for globe.gl (Web Mercator). */
+
   cartoRasterPrefix: string;
   globeBackground: string;
   globeAtmosphereColor: string;
   mapCanvasBackground: string;
   terminatorStroke: string;
-  /** Max atmosphere thickness in globe-radius units (subtle halo). */
+
   globeAtmosphereAltitude: number;
   skyGlobe: SkySpecification;
   lightGlobe: LightSpecification;
@@ -131,5 +128,4 @@ export function cartoRasterTileUrl(
   return cartoRasterUrl(mapThemeFor(theme).cartoRasterPrefix, x, y, level);
 }
 
-/** @deprecated use mapThemeFor(theme).basemapGlStyle */
 export const CARTO_DARK_MATTER_GL = DARK.basemapGlStyle;

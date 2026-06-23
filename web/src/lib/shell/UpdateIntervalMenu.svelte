@@ -1,7 +1,3 @@
-<!--
-  Top-bar control: how often live ingest is flushed to charts (revision bumps).
-  Menu uses fixed positioning so it is not clipped by the shell grid overflow.
--->
 <script lang="ts">
   import { tick } from "svelte";
   import { Timer } from "@lucide/svelte";

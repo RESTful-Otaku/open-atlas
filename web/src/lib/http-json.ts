@@ -1,7 +1,4 @@
-/**
- * Safe JSON parsing for service probes (ingest, feeds). Native builds without
- * `VITE_INGEST_BASE` hit the Capacitor origin and receive HTML — not JSON.
- */
+
 
 export async function readResponseJson<T>(
   r: Response,

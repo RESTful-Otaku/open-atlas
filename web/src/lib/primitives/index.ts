@@ -1,14 +1,4 @@
-/**
- * Shared primitives for the OpenAtlas design system.
- *
- * Primitives are small, single-purpose components with closed prop
- * enums. They are the building blocks of every matrix/panel; use them
- * in preference to rolling bespoke markup so the visual language stays
- * consistent.
- *
- * When you find yourself copying a chip, a status dot, or a bar-and-%
- * pattern across panels, promote it here instead.
- */
+
 
 export { default as SeverityChip } from "./SeverityChip.svelte";
 export { default as StatusDot } from "./StatusDot.svelte";

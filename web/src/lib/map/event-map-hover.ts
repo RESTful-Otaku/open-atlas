@@ -25,7 +25,6 @@ export function countCausalForEvent(
 
 const CARD_W = 300;
 const CARD_H_EST = 360;
-/** Taller estimate for rich inspector on compact (clamp before overlap with bottom nav). */
 const CARD_H_EST_COMPACT = 420;
 
 export type MapHoverInsets = {
@@ -35,10 +34,6 @@ export type MapHoverInsets = {
   left?: number;
 };
 
-/**
- * Keep the top-left of a fixed-size card inside a container
- * (x,y are pointer position in container local pixels).
- */
 export function clampCardPosition(
   x: number,
   y: number,
@@ -76,10 +71,6 @@ export function clampCardPosition(
 
 const MOBILE_NAV_FALLBACK_PX = 68;
 
-/**
- * Resolved bottom-nav height for map inspector clamping.
- * `--mobile-nav-height` is often `calc(...)` in CSS; measure the live nav bar when present.
- */
 export function mobileNavInsetPx(): number {
   if (typeof document === "undefined") return MOBILE_NAV_FALLBACK_PX;
   const nav = document.querySelector(".mobile-bottom-nav");
@@ -96,10 +87,8 @@ export function mobileNavInsetPx(): number {
   return MOBILE_NAV_FALLBACK_PX;
 }
 
-/** Width reserved for the map control rail on the right (compact layouts). */
 export const MAP_MOBILE_RAIL_INSET_PX = 80;
 
-/** Insets for floating hover cards on phone/tablet (clears bottom nav + map rail). */
 export function compactMapCardInsets(): MapHoverInsets {
   const nav = mobileNavInsetPx();
   return {

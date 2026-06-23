@@ -1,6 +1,4 @@
-//! HTTP client for [Ollama](https://ollama.com/)'s OpenAI-compatible API
-//! (`/v1/chat/completions`). Run `ollama serve` and `ollama pull
-//! llama3.2` (or any open model) before using this bridge.
+//! HTTP client for Ollama's OpenAI-compatible `/v1/chat/completions` endpoint.
 
 use std::time::Duration;
 
@@ -51,7 +49,6 @@ struct OllamaErrorBody {
     message: Option<String>,
 }
 
-/// User-facing hint when Ollama's CUDA backend rejects the local GPU.
 pub fn cuda_incompatibility_hint(raw: &str) -> Option<String> {
     let lower = raw.to_lowercase();
     if !lower.contains("cuda error") && !lower.contains("architectural feature absent") {
@@ -94,7 +91,6 @@ fn is_transient_error(e: &anyhow::Error) -> bool {
         || msg.contains("econnrefused")
 }
 
-/// Call Ollama and return assistant text, or a structured error string.
 /// Retries up to 3 times with exponential backoff on transient errors.
 pub async fn chat_completion(
     client: &reqwest::Client,
@@ -190,7 +186,6 @@ async fn chat_completion_attempt(
     Ok(text)
 }
 
-/// GET `/api/tags` for readiness. Retries once on transient error.
 pub async fn ping_ollama(
     client: &reqwest::Client,
     base: &str,
@@ -233,8 +228,6 @@ pub async fn ping_ollama(
 mod tests {
     use super::*;
 
-    // ── cuda_incompatibility_hint ──
-
     #[test]
     fn cuda_hint_detects_architecture_error() {
         let msg = r#"CUDA error: architectural feature absent from the device"#;
@@ -264,8 +257,6 @@ mod tests {
         assert!(hint.contains("CPU-only"));
         assert!(hint.contains("ollama serve"));
     }
-
-    // ── is_transient_error ──
 
     #[test]
     fn transient_connection_refused() {
@@ -345,8 +336,6 @@ mod tests {
         assert!(!is_transient_error(&e));
     }
 
-    // ── chat_options ──
-
     #[test]
     fn chat_options_cpu_only_returns_num_gpu_0() {
         let opts = chat_options(true);
@@ -356,7 +345,6 @@ mod tests {
 
     #[test]
     fn chat_options_not_cpu_only_returns_none_without_env() {
-        // No OPENATLAS_OLLAMA_NUM_GPU set in test environment
         let opts = chat_options(false);
         assert!(opts.is_none());
     }

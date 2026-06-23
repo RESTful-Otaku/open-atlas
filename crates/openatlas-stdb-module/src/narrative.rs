@@ -1,39 +1,10 @@
 //! Deterministic event-narrative builders.
-//!
-//! # Purpose
-//!
-//! The UI's Event Detail view wants a short operator-facing narrative
-//! (headline, summary, inference, predicted disruption list) alongside
-//! every high-severity event. We don't want to fabricate this on the
-//! client — doing so would diverge across reloads, browsers, and
-//! replays. Instead, reducers write a deterministic [`EventNarrativeFields`]
-//! row into the `event_narrative` table when an event crosses the
-//! configured severity threshold, and the Event Detail view simply
-//! renders whatever it finds.
-//!
-//! # Determinism
-//!
-//! Everything here is pure. No wall-clock reads, no RNG, no HashMap
-//! iteration. Given identical inputs the output is byte-for-byte
-//! identical — which means narratives survive a full event-log replay.
-//!
-//! # Why a separate module?
-//!
-//! `lib.rs` is already long and owns the reducer plumbing. Extracting
-//! the narrative composition here keeps the composition functions
-//! trivially unit-testable and keeps `lib.rs` focused on table/reducer
-//! wiring.
+//! Pure functions — no wall-clock reads, no RNG, no HashMap iteration.
 
-/// Severity threshold above which an event gets an `event_narrative` row.
-/// Signals still use [`crate::ANOMALY_THRESHOLD`] (0.85); narratives are
-/// written for moderate+ events so operators see inference and disruption
-/// text on typical feed severities, not only anomaly-tier spikes.
+/// Severity threshold for writing an `event_narrative` row (lower than anomaly
+/// threshold so operators see inference text on moderate+ events, not only spikes).
 pub const NARRATIVE_SEVERITY_THRESHOLD: f64 = 0.5;
 
-/// Stable numeric domain tag → human-readable domain label. Kept
-/// colocated with the narrative builders because the labels are
-/// display-facing string constants; reusing `openatlas_core::Domain`
-/// would drag in the whole `serde` stack.
 const DOMAIN_LABELS: &[&str] = &[
     "energy",
     "finance",
@@ -50,9 +21,7 @@ const DOMAIN_LABELS: &[&str] = &[
     "infrastructure",
 ];
 
-/// The fields a narrative row stores, independent of SpacetimeDB's
-/// table wrapper. Extracted so we can unit-test the builder without
-/// dragging reducer machinery into scope.
+/// Narrative fields decoupled from the SpacetimeDB table wrapper for unit testability.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EventNarrativeFields {
     pub headline: String,
@@ -61,13 +30,9 @@ pub struct EventNarrativeFields {
     pub predicted_disruption_json: String,
 }
 
-/// Inputs the narrative builder needs. Flat primitives only — no
-/// references to the SpacetimeDB row types so this stays portable.
+/// Flat-primitive inputs for the narrative builder. No references to SpacetimeDB types.
 #[derive(Debug, Clone, Copy)]
 pub struct NarrativeContext<'a> {
-    /// Primary key on the resulting `EventNarrative` row. Not rendered
-    /// in the narrative text but threaded through so callers can use a
-    /// single struct for both the builder call and the row insert.
     #[allow(dead_code)]
     pub event_id: u64,
     pub ordinal: u64,
@@ -105,8 +70,7 @@ pub fn build_domain_insight_narrative(
     )
 }
 
-/// Build a deterministic narrative from the context. Safe to call from
-/// reducers; safe to replay.
+/// Build a deterministic narrative from context. Safe to call from reducers; safe to replay.
 pub fn build_narrative(ctx: &NarrativeContext<'_>) -> EventNarrativeFields {
     let domain_label = domain_label(ctx.domain);
     let severity_pct = (ctx.severity_score.clamp(0.0, 1.0) * 100.0).round() as u32;
@@ -292,9 +256,7 @@ fn build_disruptions(domain: u8, severity: f64) -> String {
         if idx > 0 {
             out.push(',');
         }
-        // Hand-rolled JSON: dependencies already carry serde_json, but
-        // a handful of strings with no user content is cheaper and
-        // keeps the function allocation-predictable.
+        // Hand-rolled JSON to avoid serde_json overhead and keep allocation predictable.
         out.push_str(&format!(
             r#"{{"entity":"{entity}","severity":"{sev}","note":"{note}"}}"#
         ));
@@ -311,7 +273,7 @@ mod tests {
         NarrativeContext {
             event_id: 7,
             ordinal: 42,
-            domain: 8, // geopolitics
+            domain: 8,
             severity_score: 0.92,
             location: Some((34.5, -118.2)),
             dominant_source: "ACLED",

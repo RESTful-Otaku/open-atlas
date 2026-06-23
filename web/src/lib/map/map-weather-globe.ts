@@ -1,13 +1,8 @@
-/**
- * Build globe.gl `pathsData` from the same static demo weather GeoJSON
- * (wind + isobar-like contours) used by the MapLibre `SRC_DEMO` source.
- */
 import { buildDemoMapCollection } from "./map-demo-geojson";
 
 export type GlobePathDatum = {
   path: [number, number, number][];
   color: string;
-  /** Stroke width in degrees (0 = hairline) */
   stroke: number;
   dashLength?: number;
   dashGap?: number;
@@ -23,9 +18,6 @@ function lineCoordsToGlobePath(
   );
 }
 
-/**
- * One entry per line feature for per-path color/dash in globe.gl.
- */
 export function buildDemoWeatherPathsForGlobe(): GlobePathDatum[] {
   const fc = buildDemoMapCollection();
   const out: GlobePathDatum[] = [];

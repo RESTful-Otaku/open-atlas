@@ -1,6 +1,4 @@
-//! DTOs decoded from the ingest stream. Shapes must stay in sync with
-//! `openatlas_ingest::state::StreamEnvelope` and its components. All types
-//! are `Deserialize`-only; the UI never re-emits these on the wire.
+//! DTOs decoded from the ingest stream, matching the server's `StreamEnvelope`.
 
 use serde::Deserialize;
 
@@ -68,10 +66,6 @@ pub(crate) struct UiDomainInsight {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // -----------------------------------------------------------------------
-    // StreamEnvelope
-    // -----------------------------------------------------------------------
 
     #[test]
     fn deserialize_stream_envelope_full() {
@@ -148,10 +142,6 @@ mod tests {
         assert!(event.location.is_none());
     }
 
-    // -----------------------------------------------------------------------
-    // UiEvent
-    // -----------------------------------------------------------------------
-
     #[test]
     fn deserialize_ui_event_with_location() {
         let json = serde_json::json!({
@@ -193,10 +183,6 @@ mod tests {
         assert!((event.severity_score - 0.0).abs() < 1e-9);
     }
 
-    // -----------------------------------------------------------------------
-    // UiSignal
-    // -----------------------------------------------------------------------
-
     #[test]
     fn deserialize_ui_signal() {
         let json = serde_json::json!({
@@ -211,10 +197,6 @@ mod tests {
         assert!((signal.score - 0.99).abs() < 1e-9);
         assert_eq!(signal.reason, "unusual network activity");
     }
-
-    // -----------------------------------------------------------------------
-    // UiWorldState
-    // -----------------------------------------------------------------------
 
     #[test]
     fn deserialize_ui_world_state() {
@@ -243,10 +225,6 @@ mod tests {
         assert_eq!(ws.event_count, 0);
     }
 
-    // -----------------------------------------------------------------------
-    // UiCausalEdge
-    // -----------------------------------------------------------------------
-
     #[test]
     fn deserialize_ui_causal_edge() {
         let json = serde_json::json!({
@@ -262,10 +240,6 @@ mod tests {
         assert!((edge.decay_rate - 0.05).abs() < 1e-9);
     }
 
-    // -----------------------------------------------------------------------
-    // UiLocation
-    // -----------------------------------------------------------------------
-
     #[test]
     fn deserialize_ui_location() {
         let json = serde_json::json!({ "lat": -33.86, "lon": 151.21 });
@@ -273,10 +247,6 @@ mod tests {
         assert!((loc.lat - (-33.86)).abs() < 1e-9);
         assert!((loc.lon - 151.21).abs() < 1e-9);
     }
-
-    // -----------------------------------------------------------------------
-    // UiDomainInsight
-    // -----------------------------------------------------------------------
 
     #[test]
     fn deserialize_ui_domain_insight_with_source_link() {

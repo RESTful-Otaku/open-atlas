@@ -1,11 +1,3 @@
-<!--
-  Live-bound "flashpoints" panel. Reads the most recent events scoped
-  to the given domains from the reactive dashboard store and projects
-  them into a CardList.
-
-  The display-only `CardList` stays pure; this wrapper handles the
-  dashboard binding so catalog entries remain declarative.
--->
 <script lang="ts">
   import { dashboardData } from "../../dashboard-revision.svelte";
   import { dashboard } from "../../state.svelte";

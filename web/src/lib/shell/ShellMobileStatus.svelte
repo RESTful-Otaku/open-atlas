@@ -1,6 +1,3 @@
-<!--
-  Compact STDB / feeds+ingest / LLM readiness for the mobile top bar (icon + status dot).
--->
 <script lang="ts">
   import { Database, RadioTower, Sparkles } from "@lucide/svelte";
 

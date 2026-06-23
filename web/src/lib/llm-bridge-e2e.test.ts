@@ -8,8 +8,6 @@
 
 import { describe, expect, test, afterAll } from "bun:test";
 
-// ── Tiny mock bridge server ──
-
 const OLLAMA_MODEL = "llama3.2-test";
 
 function mockBridgeHandler(req: Request): Response {
@@ -28,7 +26,6 @@ function mockBridgeHandler(req: Request): Response {
   }
 
   if (req.method === "POST" && url.pathname === "/v1/insight") {
-    // Simulate the bridge logic: accept snapshot, produce analysis text
     return Response.json({
       text: [
         "## Executive Summary",
@@ -47,7 +44,6 @@ function mockBridgeHandler(req: Request): Response {
   }
 
   if (req.method === "POST" && url.pathname === "/v1/insight-timeout") {
-    // Simulate a timeout — never respond
     return new Promise(() => {});
   }
 
@@ -80,20 +76,14 @@ function mockBridgeHandler(req: Request): Response {
   return new Response("not found", { status: 404 });
 }
 
-// ── Support: override native-config's llmBaseUrl ──
-
 let serverUrl = "";
 
-// We start a Bun.serve for the mock bridge
 const server = Bun.serve({
   port: 0, // random available port
   fetch: mockBridgeHandler,
 });
 serverUrl = `http://127.0.0.1:${server.port}`;
 
-// Override llmBaseUrl to point at our mock server.
-// We do this by patching the module's exports before importing anything
-// that depends on it.
 const modulePath = "./native-config";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let origLlmBaseUrl: any;
@@ -101,23 +91,15 @@ let origLlmBaseUrl: any;
 async function patchLlmBaseUrl() {
   const config = await import(modulePath);
   origLlmBaseUrl = config.llmBaseUrl;
-  // Monkey-patch: the module's llmBaseUrl() function
-  // We can't directly set it, so we patch via the import cache approach.
-  // Instead, we'll use a different strategy — set env var that llmBaseUrl reads.
 }
 
-// Save original env var to restore after tests
 const origViteLlmBase = process.env.VITE_LLM_BASE;
-// llmBaseUrl() reads from VITE_LLM_BASE env and falls back to
-// "/api/llm" for dev proxy. Set before any module that caches it.
 process.env.VITE_LLM_BASE = serverUrl;
 
-// Re-import modules that depend on the env var
 async function importFresh<T>(name: string): Promise<T> {
   return import(name) as Promise<T>;
 }
 
-// Now actually test
 import type { LlmSnapshotInput } from "./llm-snapshot";
 import type { LlmInsightResponse } from "./llm";
 
@@ -248,7 +230,6 @@ describe("LLM bridge end-to-end pipeline", () => {
 
 describe("requestLlmInsight with mock bridge", () => {
   test("returns valid response for bridge provider", async () => {
-    // Import the LLM module — it will use our VITE_LLM_BASE env var
     const llm = await import("./llm");
     const snapshot: Record<string, unknown> = {
       schema: "openatlas.llm_snapshot/v1",
@@ -314,19 +295,16 @@ describe("buildLlmSnapshot → requestLlmInsight full pipeline", () => {
     };
 
     const snapshot = snapshotModule.buildLlmSnapshot(input);
-    // The snapshot is a plain Record — verify it has the right keys
     expect(snapshot).toHaveProperty("schema");
     expect(snapshot).toHaveProperty("captured_at");
     expect(snapshot).toHaveProperty("recent_events");
 
-    // Send through the mock bridge
     const result = await llm.requestLlmInsight(snapshot, "Summarize the energy risk.");
     expect(result.text).toBeString();
     expect(result.text.length).toBeGreaterThan(50);
   });
 });
 
-// Cleanup
 afterAll(() => {
   server.stop();
   if (origViteLlmBase !== undefined) {

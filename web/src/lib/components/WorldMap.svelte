@@ -109,18 +109,8 @@
   import Panel from "./Panel.svelte";
 
   interface Props {
-    /**
-     * When `false`, render a full-bleed map: 3D globe (MapLibre) or
-     * flat Mercator (see `projection`). When `true`, use the
-     * overview `Panel` wrapper.
-     */
     embedded?: boolean;
-    /** 12-column grid span when `embedded` and wrapped in a Panel. */
     panelSpan?: number;
-    /**
-     * When `embedded` is `false`, choose globe vs a North-up 2D map. The
-     * `/map` route uses `mercator`; the home route uses `globe`.
-     */
     projection?: "globe" | "mercator";
   }
   let { embedded = true, panelSpan = 12, projection = "globe" }: Props =
@@ -138,7 +128,6 @@
   let stickyHoverClearTimer: ReturnType<typeof setTimeout> | undefined;
   const mapViewPersisted = loadMapViewState();
 
-  /** Pinned inspectors — up to 3 on desktop, 1 docked on compact. */
   let pinnedInspectors = $state<PinnedMapInspector[]>(mapViewPersisted.pins);
 
   const shownMapPointHover = $derived(
@@ -254,7 +243,6 @@
     dismissMapPointHover();
   }
 
-  /** Mobile / compact: tap a point → pinned popup; detail link navigates. */
   function openEventInspectorAt(x: number, y: number, id: string): void {
     cancelStickyHoverClear();
     const hover = { x, y, id };
@@ -273,7 +261,6 @@
   });
 
   let container: HTMLDivElement | undefined = $state();
-  /** Layers panel (domains, overlays, solar) — floats over map without resizing it. */
   let mapLayersOpen = $state(false);
   let compactLayout = $state(isCompactLayout());
   let mapEmptyDismissed = $state(isMapEmptyHintDismissed());
@@ -292,26 +279,19 @@
   let simMinOfDay = $state(mapViewPersisted.simMinOfDay);
   const simUtcMs = $derived(simDayStart + simMinOfDay * 60_000);
   let showTerminator = $state(mapViewPersisted.showTerminator);
-  /** 2D night-side fill tracks solar scrub on full-page mercator (no extra terminator line). */
   const map2DNightVisible = $derived(
     !useWebGlGlobe && !embedded && projection === "mercator",
   );
   let showSubsun = $state(mapViewPersisted.showSubsun);
   let showMoon = $state(mapViewPersisted.showMoon);
   let showCausal = $state(mapViewPersisted.showCausal);
-  /** Colored NASA day/night textures (3D globe only; off = CARTO + solar shade). */
   let showPhotorealEarth = $state(mapViewPersisted.showPhotorealEarth);
-  /** Optional transport glyphs (separate from wind + pressure lines). */
   let showDemoLayers = $state(mapViewPersisted.showDemoLayers);
-  /** Wind segments + isobar-style contours (2D and 3D globe). */
   let showWeatherOverlays = $state(mapViewPersisted.showWeatherOverlays);
-  /** NORAD (TLE) + STDB aircraft + bundled maritime — see `/public/tracking/`. */
   let showPublicTracking = $state(mapViewPersisted.showPublicTracking);
   let tleCacheReady = $state(false);
-  /** Demo-only OpenSky poll; live mode uses SpacetimeDB transport events. */
   let airTrackingRowsDemo = $state<PublicTrackRow[]>([]);
   let shipTrackingRows = $state<PublicTrackRow[]>([]);
-  /** Which of the 13 catalog domains to plot on the map (session-persisted). */
   let mapDomainSet = $state<Set<string>>(mapViewPersisted.domains);
   const domainPickOrder = $derived(
     [...DOMAIN_CATALOG].sort((a, b) => a.label.localeCompare(b.label)),
@@ -401,7 +381,6 @@
     simDate.toISOString().slice(0, 16).replace("T", " "),
   );
 
-  /** Events shown on map layers (24h replay, 7d fallback when sparse). */
   const mapDisplayEvents = $derived.by(() => {
     void dashboardData.revision;
     return eventsForMapDisplay(dashboard.events, simUtcMs);
@@ -444,7 +423,6 @@
     return trackingPathsToFeatureCollection(paths);
   });
 
-  /** Count of geo events actually drawn (avoids building GeoJSON just for a number). */
   const mapGeoPointCount = $derived.by(() => {
     void dashboardData.revision;
     void simUtcMs;

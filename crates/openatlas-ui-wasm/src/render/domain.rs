@@ -1,6 +1,4 @@
-//! Per-domain aggregate cards. Each card shows the risk index as the
-//! hero metric, a trend chip, supporting numbers, and a sparkline of
-//! the recent severity history.
+//! Per-domain aggregate cards with risk index, trend, and sparkline.
 
 use wasm_bindgen::JsValue;
 use web_sys::Document;
@@ -111,10 +109,6 @@ fn empty_state() -> String {
 mod tests {
     use super::{trend_glyph, trend_label, empty_state};
 
-    // -----------------------------------------------------------------------
-    // trend_glyph
-    // -----------------------------------------------------------------------
-
     #[test]
     fn trend_glyph_up() {
         assert_eq!(trend_glyph("up"), "▲");
@@ -143,10 +137,6 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // trend_label
-    // -----------------------------------------------------------------------
-
     #[test]
     fn trend_label_up() {
         assert_eq!(trend_label("up"), "Rising");
@@ -174,10 +164,6 @@ mod tests {
             assert_eq!(trend_label(trend), *label, "mismatch for {trend}");
         }
     }
-
-    // -----------------------------------------------------------------------
-    // empty_state
-    // -----------------------------------------------------------------------
 
     #[test]
     fn empty_state_contains_encouragement() {

@@ -1,6 +1,4 @@
-/**
- * Shared client logic for Ollama-backed analysis via openatlas-llm-bridge.
- */
+
 
 import { buildLlmSnapshot, llmSnapshotCounts, type LlmSnapshotInput } from "./llm-snapshot";
 import { requestLlmInsight, type LlmInsightResponse } from "./llm";

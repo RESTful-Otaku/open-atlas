@@ -1,15 +1,7 @@
-/**
- * Client for the optional `openatlas-llm-bridge` service, which talks to
- * a self-hosted Ollama instance (OpenAI-compatible `chat/completions`).
- *
- * The bridge is not part of SpacetimeDB: reducers stay deterministic;
- * this path is for operator-facing narrative analysis only.
- */
-
 import { llmBaseUrl } from "./native-config";
 import { probeFetch } from "./probe-fetch";
 
-/** Default insight timeout (slow CPU models). Override: VITE_LLM_INSIGHT_TIMEOUT_MS */
+
 export { llmBaseUrl };
 
 export interface LlmInsightResponse {
@@ -40,9 +32,7 @@ export async function requestLlmInsight(
   throw lastErr ?? new Error("LLM request failed");
 }
 
-/**
- * `GET /v1/ready` — Ollama HTTP is up (fast; does not run inference).
- */
+
 export async function checkLlmBridgePing(): Promise<boolean> {
   try {
     const r = await probeFetch(`${llmBaseUrl()}/v1/ready`, { method: "GET" }, 8_000);
@@ -52,10 +42,7 @@ export async function checkLlmBridgePing(): Promise<boolean> {
   }
 }
 
-/**
- * `GET /v1/capable` — runs a tiny model completion (catches CUDA / load errors).
- * Used for Hub gating; may take up to ~2 minutes on cold CPU load.
- */
+
 export async function checkLlmBridgeCapable(): Promise<boolean> {
   try {
     const r = await fetch(`${llmBaseUrl()}/v1/capable`, {

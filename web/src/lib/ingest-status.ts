@@ -1,7 +1,3 @@
-/**
- * Parsed shape of `GET /status` from openatlas-ingest.
- */
-
 import { readResponseJson } from "./http-json";
 import { ingestUrl, shouldProbeIngest } from "./native-config";
 import { probeFetch } from "./probe-fetch";
@@ -34,7 +30,7 @@ export interface IngestServiceStatus {
   feeds: IngestFeedStatus[];
 }
 
-/** `GET /health` — ingest process is listening (looser than `/ready`). */
+
 export async function fetchIngestHealth(): Promise<boolean> {
   if (!shouldProbeIngest()) return false;
   try {
@@ -45,7 +41,7 @@ export async function fetchIngestHealth(): Promise<boolean> {
   }
 }
 
-/** `GET /ready` — ingest can reach SpacetimeDB (stricter than `/status` alone). */
+
 export async function fetchIngestReady(): Promise<boolean> {
   if (!shouldProbeIngest()) return false;
   try {

@@ -1,11 +1,3 @@
-/**
- * Pure projections that compose Executive Summary Hub tiles and the
- * global threat index from the reactive dashboard state.
- *
- * All functions are deterministic: given the same input store they
- * produce the same output. No wall-clock reads; no RNG.
- */
-
 import { DOMAIN_CATALOG, domainLabel } from "./colors";
 import type { UiDomainInsight, UiSignal, UiWorldState } from "./types";
 import { bucketRisk, type StatusLevel } from "./primitives/status";
@@ -14,7 +6,7 @@ export interface HubTile {
   readonly id: string;
   readonly title: string;
   readonly status: StatusLevel;
-  /** Large count shown in the tile headline (compact + hover when ≥ 1k). */
+
   readonly headlineCount: number | null;
   readonly headlineUnit: string;
   readonly subMetric: string;
@@ -22,12 +14,7 @@ export interface HubTile {
   readonly riskIndex: number;
 }
 
-/**
- * Compose one tile per domain in the catalog. Tiles are ordered by
- * `riskIndex` descending so the highest-pressure domains bubble to the
- * top of the grid — matches the "most critical first" reading order in
- * the reference design.
- */
+
 export function buildHubTiles(
   domainState: Record<string, UiWorldState>,
   domainInsights: Record<string, UiDomainInsight>,
@@ -55,12 +42,7 @@ export function buildHubTiles(
   return tiles;
 }
 
-/**
- * Deterministic, domain-specific headline metric. Falls back to the
- * event count when we have no richer signal — this keeps tiles
- * populated even for cold domains, matching the "never render blank"
- * principle.
- */
+
 function headlineFor(
   domain: string,
   state: UiWorldState | undefined,
@@ -99,21 +81,7 @@ function subMetricFor(
   return `${domain} baseline`;
 }
 
-/**
- * Compute the global threat index on a `[0, 10]` scale. Defined as the
- * event-weighted mean of per-domain risk indices, scaled up by ten.
- *
- * Tradeoff: weighting by event count means busy domains dominate. That
- * matches operator intuition (a noisy cyber feed should move the
- * needle) but means a quiet-but-critical domain contributes less than
- * its individual severity might suggest. Alternative: unweighted mean —
- * cleaner but less reactive. We pick weighted-by-events.
- */
-/**
- * Maps a domain id (tile / DOMAIN_CATALOG) to a {@link MATRIX_CATALOG}
- * matrix id. Required because matrix slugs (e.g. `threat`, `economic`)
- * are not 1:1 with domain ids (e.g. `geopolitics`, `finance`).
- */
+
 export function matrixIdForDomain(domain: string): string {
   const map: Record<string, string> = {
     energy: "resource",

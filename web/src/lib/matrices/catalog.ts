@@ -1,26 +1,4 @@
-/**
- * Matrix catalog — the plug-in registry for domain-specific command
- * pages.
- *
- * # Adding a matrix (two edits)
- *
- * 1. Append an entry to {@link MATRIX_CATALOG} below.
- * 2. If none of the existing shared panels fit, drop a new component
- *    into `./panels/` (display-only) and a matching wrapper into
- *    `./bound/` (reads the dashboard store) and reference it from the
- *    new entry.
- *
- * That's it — the generic `MatrixView.svelte` renders any entry, the
- * router handles `/matrix/:id`, and the hub tiles already link to
- * `/matrix/<id>`.
- *
- * # Why a data-driven catalog?
- *
- * We want adding a domain-specific page to be small, local, and
- * low-risk. Registering a plain object enforces a single contract,
- * means a new matrix can't accidentally diverge from the layout, and
- * lets us iterate on typography/spacing once across all matrices.
- */
+
 
 import {
   Activity,
@@ -57,10 +35,6 @@ import { matrixChartKindForTab } from "./matrix-charts";
 
 export type { MatrixCatalogEntry } from "./types";
 
-// The bound-panel components take domain-scoped props; we typecast to
-// the permissive `Component<Record<string, unknown>>` shape required by
-// MatrixCatalogEntry. Internal type-safety is preserved in each bound
-// component's own `Props` interface.
 const flashpoints = FlashpointsPanel as unknown as Component<Record<string, unknown>>;
 const riskIndex = RiskIndexPanel as unknown as Component<Record<string, unknown>>;
 const signals = SignalsPanel as unknown as Component<Record<string, unknown>>;
@@ -68,19 +42,7 @@ const domainKpi = DomainKpiPanel as unknown as Component<Record<string, unknown>
 const aiSynth = AiSynthesisPanel as unknown as Component<Record<string, unknown>>;
 const matrixChart = MatrixChartPanel as unknown as Component<Record<string, unknown>>;
 
-/**
- * Helper to produce a standard four-panel matrix layout used by most
- * templated entries. Panels:
- *   * KPI grid (primary domain)   — span 2
- *   * Risk index bars (scope)     — span 1
- *   * Flashpoints card list (scope) — span 2
- *   * Signals table (scope)       — span 1
- *
- * Counts match the reference mockups' typical "two wide + two narrow"
- * composition. Panel ordering is fixed so operators learn the rhythm
- * across matrices.
- */
-/** Tab ids shared by all templated matrices — filters which panels show. */
+
 const TAB = {
   overview: "overview",
   telemetry: "telemetry",

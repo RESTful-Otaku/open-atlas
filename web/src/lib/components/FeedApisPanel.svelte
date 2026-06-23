@@ -27,7 +27,6 @@
   let saving = $state(false);
   let saveMessage = $state<string | null>(null);
 
-  /** Draft API key values (only keys that require env). */
   let keyDrafts = $state<Record<string, string>>({});
   let busyFeed = $state<string | null>(null);
   let pollSaving = $state<string | null>(null);

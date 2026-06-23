@@ -1,8 +1,3 @@
-<!--
-  KPI grid projecting the primary domain's world-state + insight row
-  into four callouts. When the matrix spans multiple domains, the
-  caller passes the most representative one.
--->
 <script lang="ts">
   import { dashboard } from "../../state.svelte";
   import { domainKpiCells } from "../builders";

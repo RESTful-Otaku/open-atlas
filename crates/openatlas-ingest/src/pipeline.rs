@@ -1,7 +1,4 @@
-//! Canonical ingest push path: validate → batch reducer → metrics.
-//!
-//! Matches common event-pipeline design: stateless edge, idempotent sink,
-//! at-least-once delivery with duplicate detection at SpacetimeDB.
+//! Validate → batch reducer → metrics.
 
 use openatlas_core::WorldEvent;
 use tracing::{debug, warn};
@@ -12,7 +9,6 @@ use crate::{
     stdb::{IngestOutcome, StdbClient},
 };
 
-/// Events per `ingest_events_batch` HTTP call (≤ module `MAX_INGEST_BATCH_SIZE`).
 pub const STDB_BATCH_CHUNK: usize = 64;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -34,7 +30,6 @@ impl BatchPushResult {
     }
 }
 
-/// Push validated events to SpacetimeDB (preferred batch reducer, single-event fallback).
 pub async fn push_events(
     stdb: &StdbClient,
     metrics: &IngestMetrics,

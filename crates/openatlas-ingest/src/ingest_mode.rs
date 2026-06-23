@@ -1,14 +1,4 @@
-//! How the ingest service sources events before pushing them into SpacetimeDB.
-//!
-//! | Mode     | Simulators | Live open-data feeds | Static fixture burst |
-//! | -------- | ---------- | -------------------- | -------------------- |
-//! | `sim`    | yes        | no                   | no                   |
-//! | `live`   | no         | yes (when keys set)  | no                   |
-//! | `hybrid` | yes        | yes (when keys set)  | no                   |
-//! | `static` | no         | no                   | once at startup      |
-//!
-//! `OPENATLAS_INGEST_MODE` selects the mode. `OPENATLAS_ENABLE_LIVE_FEEDS=1`
-//! remains supported and implies `live` when the mode variable is unset.
+//! Ingest mode: sim, live, hybrid, or static.
 
 use std::fmt;
 
@@ -45,7 +35,6 @@ impl fmt::Display for IngestMode {
     }
 }
 
-/// Resolve ingest mode from the environment (with backward-compatible flags).
 pub fn ingest_mode() -> IngestMode {
     if let Ok(raw) = std::env::var("OPENATLAS_INGEST_MODE") {
         match raw.trim().to_ascii_lowercase().as_str() {

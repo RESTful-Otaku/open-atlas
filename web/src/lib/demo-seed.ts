@@ -1,12 +1,3 @@
-/**
- * Large, deterministic synthetic dataset for visualization QA without APIs.
- * Uses a fixed seed PRNG for reproducible screenshots and tests.
- *
- * Events are spread across ~80 days with burstier recent activity, domain
- * weights vary over the index, and severity history is a smooth random walk
- * (not IID noise) so sparklines and matrices read like real telemetry.
- */
-
 import { DOMAIN_CATALOG, domainLabel } from "./colors";
 import {
   MAX_CAUSAL_EDGES,
@@ -33,7 +24,6 @@ import type {
 
 const TRENDS = ["up", "down", "flat"] as const;
 
-/** Extra severity bias toward tails for domains that are usually “hot” in demos. */
 const DOMAIN_SEV_BIAS: Readonly<Record<string, number>> = {
   cyber: 0.14,
   seismic: 0.12,
@@ -50,9 +40,7 @@ const DOMAIN_SEV_BIAS: Readonly<Record<string, number>> = {
   demographics: 0.01,
 };
 
-/**
- * xorshift32 — seed must be > 0
- */
+
 function makeRng(seed: number): () => number {
   let x = seed >>> 0;
   return () => {
@@ -124,10 +112,7 @@ function buildSeverityHistory(
   return hist;
 }
 
-/**
- * Produces a full client-shaped snapshot. Event count matches MAX_EVENTS
- * after trimming (newest by ordinal) so the UI stays performant.
- */
+
 export function buildDemoSnapshot(seed = 0x0a7a5): {
   events: readonly UiEvent[];
   recentSignals: readonly UiSignal[];

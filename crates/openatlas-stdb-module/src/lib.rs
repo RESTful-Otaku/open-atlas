@@ -1,39 +1,3 @@
-//! # OpenAtlas SpacetimeDB module
-//!
-//! This crate is the **authoritative state** for OpenAtlas. It compiles to a
-//! WASM module that is published into a SpacetimeDB instance:
-//!
-//! ```text
-//!   spacetime publish --project-path crates/openatlas-stdb-module openatlas
-//! ```
-//!
-//! ## What lives here
-//!
-//! * `#[spacetimedb::table]` types — the tables that store every canonical
-//!   entity (events, signals, world-state snapshots, causal edges, domain
-//!   insights). All are marked `public` so clients can subscribe directly.
-//! * `#[spacetimedb::reducer]` functions — the *only* write path. Every
-//!   feed, simulator, CLI, or browser client ingests data by invoking
-//!   `ingest_event`; causal edges and insights are maintained inside the
-//!   same transaction.
-//! * Pure helpers for anomaly detection and trend labelling. These mirror
-//!   the oracle implementation in `openatlas-core::WorldGraph` so replay
-//!   determinism is trivially verifiable.
-//!
-//! ## Design notes
-//!
-//! * **Determinism.** No wall-clock reads, no `Uuid::new_v4()`, no
-//!   floating-point order sensitivity. Timestamps come from the reducer
-//!   argument (which the caller or `ReducerContext::timestamp` supplies),
-//!   and all IDs are supplied by callers.
-//! * **Bounded memory.** `prune_signals` and `prune_causal_edges` keep the
-//!   append-only tables from growing unboundedly; the bound is a constant
-//!   and enforced every ingest.
-//! * **Payload encoding.** Arbitrary feed payloads are stored as JSON
-//!   strings. Clients are responsible for parsing (`JSON.parse` on the TS
-//!   side, `serde_json::from_str` on the Rust side). This keeps the module
-//!   schema closed while preserving provider-specific richness.
-
 #![allow(clippy::too_many_arguments)]
 
 mod narrative;
@@ -44,61 +8,39 @@ use narrative::{
     build_domain_insight_narrative, build_narrative, NarrativeContext, NARRATIVE_SEVERITY_THRESHOLD,
 };
 
-/// Maximum number of signals retained across all domains. The newest
-/// `SIGNAL_RING_SIZE` rows are preserved; older rows are pruned at ingest
-/// time. This is a hard upper bound — regardless of feed volume the table
-/// never grows past this.
-/// Aligned with dashboard subscription caps + headroom (~2× client `MAX_SIGNALS`).
+/// Hard upper bound — the table never grows past this regardless of feed volume.
 const SIGNAL_RING_SIZE: u64 = 400;
 
-/// Aligned with dashboard subscription caps + headroom.
 const CAUSAL_EDGE_RING_SIZE: u64 = 600;
 
-/// Aligned with dashboard subscription caps + headroom (~2× client `MAX_EVENTS`).
 const EVENT_RING_SIZE: u64 = 800;
 
-/// Rolling window for canonical events (and linked narratives). Older rows
-/// are removed on each ingest so the store stays bounded and auditable.
+/// Rolling retention window; older rows are pruned on every ingest.
 const EVENT_RETENTION_HOURS: u64 = 24;
 
 const EVENT_RETENTION_MICROS: i64 = (EVENT_RETENTION_HOURS as i64) * 3600 * 1_000_000;
 
-/// Maximum events per `ingest_events_batch` reducer call (transaction size bound).
+/// Maximum events per batch reducer call.
 const MAX_INGEST_BATCH_SIZE: usize = 128;
 
-/// Append-only ingest audit ring (operator / HTTP only — table is private).
+/// Append-only ingest audit ring (private table).
 const INGEST_AUDIT_RING_SIZE: u64 = 2_000;
 
-/// `ingest_audit.outcome` — accepted new row.
 const AUDIT_ACCEPTED: u8 = 0;
-/// `ingest_audit.outcome` — idempotent duplicate id.
 const AUDIT_DUPLICATE: u8 = 1;
-/// `ingest_audit.outcome` — validation or business-rule rejection.
 const AUDIT_REJECTED: u8 = 2;
 
-/// Severity threshold that raises an anomaly signal. Matches the default
-/// in `openatlas-core::inference::ThresholdInferenceEngine` so the two
-/// implementations stay in agreement.
+/// Severity threshold above which an event raises an anomaly signal.
 const ANOMALY_THRESHOLD: f64 = 0.85;
 
-/// Upper bound on how many recent events per domain the insight builder
-/// considers. Strict cap to keep the cost bounded regardless of event
-/// volume.
+/// Upper bound on recent events per domain for the insight builder.
 const INSIGHT_EVENT_WINDOW: usize = 24;
 
-/// Upper bound on signals scanned for anomaly counts.
 const INSIGHT_SIGNAL_WINDOW: usize = 240;
 
-/// Trend detection threshold on newest-vs-oldest severity delta.
 const TREND_DELTA: f64 = 0.06;
 
-// ---------------------------------------------------------------------------
-// Value types (SpacetimeType)
-// ---------------------------------------------------------------------------
-
-/// Geospatial location attached to an event. Mirrors
-/// `openatlas_core::Location` but encoded with `SpacetimeType` so it can be
-/// stored in tables and passed to reducers.
+/// Geospatial location. Mirrors `openatlas_core::Location` using `SpacetimeType`.
 #[derive(SpacetimeType, Clone, Debug, PartialEq)]
 pub struct Location {
     pub lat: f64,
@@ -106,8 +48,7 @@ pub struct Location {
     pub region_tags: Vec<String>,
 }
 
-/// Wire shape for batched ingest (`ingest_events_batch`). One row per event;
-/// `source_label` / `source_url` are shared across the batch (one feed cycle).
+/// Batch ingest wire format. One per event.
 #[derive(SpacetimeType, Clone, Debug)]
 pub struct IngestEventArgs {
     pub id: u64,
@@ -118,33 +59,23 @@ pub struct IngestEventArgs {
     pub payload_json: String,
 }
 
-// ---------------------------------------------------------------------------
-// Tables
-// ---------------------------------------------------------------------------
-
-/// Canonical observation row. One per `WorldEvent`. Primary key is the
-/// caller-supplied ID so idempotent retries never split an event across
-/// rows.
+/// Canonical observation row. One per WorldEvent. Primary key is caller-supplied ID for idempotency.
 #[spacetimedb::table(name = "event", accessor = event, public)]
 pub struct Event {
     #[primary_key]
     pub id: u64,
     pub timestamp: Timestamp,
-    /// Stable numeric tag; see `domain.rs` in the ingest crate for the
-    /// mapping. An integer is used instead of a Rust enum because the
-    /// module ABI surface is narrower and easier to evolve.
+    /// Stable numeric tag; integer avoids ABI coupling.
     pub domain: u8,
     pub severity_score: f64,
     pub location: Option<Location>,
-    /// JSON-encoded payload. Kept as a string so we don't couple the
-    /// module schema to provider-specific payload shapes.
+    /// JSON string keeps schema closed regardless of provider payload shapes.
     pub payload_json: String,
-    /// Auto-increment ordinal used for "most recent N" queries. Smaller
-    /// means older. The value is assigned by `ingest_event`.
+    /// Auto-increment ordinal, monotonically increasing.
     pub ordinal: u64,
 }
 
-/// Per-domain aggregate. One row per domain.
+/// Per-domain aggregate.
 #[spacetimedb::table(name = "world_state", accessor = world_state, public)]
 pub struct WorldStateRow {
     #[primary_key]
@@ -153,8 +84,7 @@ pub struct WorldStateRow {
     pub avg_severity: f64,
     pub risk_index: f64,
     pub last_updated: Timestamp,
-    /// Running sum of severity, stored so aggregates are recomputable
-    /// without scanning the event table on every ingest.
+    /// Running sum stored so aggregates are recomputable without scanning the event table.
     pub total_severity: f64,
 }
 
@@ -171,8 +101,7 @@ pub struct Signal {
     pub created_at: Timestamp,
 }
 
-/// Directed causal edge row. Append-only ring bounded by
-/// `CAUSAL_EDGE_RING_SIZE`.
+/// Directed causal edge. Append-only ring bounded by `CAUSAL_EDGE_RING_SIZE`.
 #[spacetimedb::table(name = "causal_edge", accessor = causal_edge, public)]
 pub struct CausalEdge {
     #[primary_key]
@@ -185,8 +114,7 @@ pub struct CausalEdge {
     pub created_at: Timestamp,
 }
 
-/// Per-domain narrative insight. Overwritten on every ingest of that
-/// domain.
+/// Per-domain narrative insight. Rebuilt on every ingest of that domain.
 #[spacetimedb::table(name = "domain_insight", accessor = domain_insight, public)]
 pub struct DomainInsight {
     #[primary_key]
@@ -199,11 +127,7 @@ pub struct DomainInsight {
     pub updated_at: Timestamp,
 }
 
-/// Per-event operator narrative. Only high-severity events (above
-/// [`narrative::NARRATIVE_SEVERITY_THRESHOLD`]) get a row here; lower-
-/// severity events render from the raw signal/event data. Primary key
-/// matches `event.id` so a narrative is always pruned alongside its
-/// parent event by [`prune_events`].
+/// High-severity event narrative. PK matches `event.id` so it prunes alongside parent.
 #[spacetimedb::table(name = "event_narrative", accessor = event_narrative, public)]
 pub struct EventNarrative {
     #[primary_key]
@@ -211,17 +135,12 @@ pub struct EventNarrative {
     pub headline: String,
     pub summary: String,
     pub inference: String,
-    /// JSON array of `{entity, severity, note}` objects. Stored as a
-    /// string for the same reason as `event.payload_json` — keeps the
-    /// module schema closed while preserving structured content for
-    /// the UI to parse.
+    /// JSON array of `{entity, severity, note}` objects. Keeps schema closed.
     pub predicted_disruption_json: String,
     pub updated_at: Timestamp,
 }
 
-/// Bookkeeping: "what was the previous event in this domain?" Used to
-/// auto-link causal edges. Private because clients don't need it — the
-/// causal edges themselves are exposed via the `causal_edge` table.
+/// Tracks the previous event per domain for auto-linking causal edges. Private.
 #[spacetimedb::table(name = "last_event_in_domain", accessor = last_event_in_domain)]
 pub struct LastEventInDomain {
     #[primary_key]
@@ -230,8 +149,7 @@ pub struct LastEventInDomain {
     pub ordinal: u64,
 }
 
-/// Global monotonic ordinal counter. Single row with id=0. Used to assign
-/// `Event.ordinal` deterministically from within reducers.
+/// Global monotonic ordinal counter. Single row.
 #[spacetimedb::table(name = "ordinal_counter", accessor = ordinal_counter)]
 pub struct OrdinalCounter {
     #[primary_key]
@@ -239,8 +157,7 @@ pub struct OrdinalCounter {
     pub value: u64,
 }
 
-/// Append-only log of ingest attempts (accepted / duplicate / rejected).
-/// Private — keeps browser subscriptions lean; operators use `/status` + SQL.
+/// Append-only ingest log. Private.
 #[spacetimedb::table(name = "ingest_audit", accessor = ingest_audit)]
 pub struct IngestAudit {
     #[primary_key]
@@ -254,10 +171,7 @@ pub struct IngestAudit {
     pub detail: String,
 }
 
-/// Most recent batch ingest outcome counts. Single row (id=0) overwritten
-/// on every call to [`ingest_events_batch`]. Subscribers (ingest metrics, UI)
-/// query this table for accurate per-batch counts instead of assuming every
-/// event in the batch was accepted.
+/// Most recent batch ingest outcome counts. Single row (id=0). Overwritten on every batch call.
 #[spacetimedb::table(name = "batch_outcome", accessor = batch_outcome)]
 pub struct BatchOutcome {
     #[primary_key]
@@ -267,12 +181,7 @@ pub struct BatchOutcome {
     pub rejected: u32,
 }
 
-// ---------------------------------------------------------------------------
-// Reducers
-// ---------------------------------------------------------------------------
-
-/// First-boot initialisation. Sets up the global ordinal counter so
-/// subsequent ingest reducers can bump it.
+/// Initialises the ordinal counter.
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {
     ctx.db
@@ -281,10 +190,7 @@ pub fn init(ctx: &ReducerContext) {
     spacetimedb::log::info!("openatlas module initialised");
 }
 
-/// The single write entry point. Accepts a fully-formed event (id supplied
-/// by the caller), validates severity, writes the row, updates the domain
-/// aggregate, emits anomaly signals, auto-links a causal edge to the
-/// previous event in that domain, and rewrites the domain insight.
+/// Single write entry point. Caller supplies the event id for idempotency.
 #[reducer]
 pub fn ingest_event(
     ctx: &ReducerContext,
@@ -314,13 +220,7 @@ pub fn ingest_event(
     }
 }
 
-/// Batch ingest for one feed cycle — one transaction, one prune pass, domain
-/// insights rebuilt once per touched domain. Per-event failures are recorded
-/// in [`IngestAudit`] without aborting the whole batch (at-least-once edge).
-///
-/// Outcome counts are recorded to [`BatchOutcome`] (single-row table) so the
-/// caller can retrieve actual accepted/duplicate/rejected counts by querying
-/// that table after the call (e.g. via STDB SQL).
+/// Batch ingest. One transaction, per-event failures recorded without aborting the batch.
 #[reducer]
 pub fn ingest_events_batch(
     ctx: &ReducerContext,
@@ -379,9 +279,6 @@ pub fn ingest_events_batch(
         }
     }
 
-    // Write outcome counts so subscribers (ingest metrics, UI) can retrieve
-    // accurate per-batch counts without having to query the append-only audit log.
-    // `.insert()` on a table with a primary key upserts (insert-or-replace).
     ctx.db.batch_outcome().insert(BatchOutcome {
         id: 0,
         accepted,
@@ -404,10 +301,7 @@ pub fn ingest_events_batch(
     Ok(())
 }
 
-/// Compose the narrative for a high-severity event and insert/update
-/// its row. Pure composition lives in [`narrative::build_narrative`];
-/// this wrapper exists only to gather the reducer-side context and
-/// stamp `updated_at` from the caller-supplied timestamp.
+/// Wrapper around `build_narrative`; handles insert-or-update and timestamping.
 fn write_event_narrative(
     ctx: &ReducerContext,
     event_id: u64,
@@ -453,9 +347,7 @@ fn write_event_narrative(
     }
 }
 
-/// Explicit causal link. Kept as a public reducer because feed adapters and
-/// downstream correlation engines want to record observed causality that
-/// the naive "previous event in domain" heuristic wouldn't catch.
+/// Explicit causal link for cases the domain heuristic wouldn't catch.
 #[reducer]
 pub fn link_causal_events(
     ctx: &ReducerContext,
@@ -481,16 +373,11 @@ pub fn link_causal_events(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
 enum IngestOneOutcome {
     Accepted,
     Duplicate,
 }
 
-/// Core ingest logic shared by single- and batch-reducers.
 fn try_ingest_one(
     ctx: &ReducerContext,
     input: &IngestEventArgs,
@@ -653,9 +540,7 @@ fn record_ingest_audit(
     });
 }
 
-/// Atomically bump the global ordinal counter and return the new value.
-/// All ordinal assignments flow through this function so ordering is
-/// deterministic across reducer invocations.
+/// Bump and return next ordinal. All assignments go through here for deterministic ordering.
 fn next_ordinal(ctx: &ReducerContext) -> u64 {
     let current = ctx
         .db
@@ -672,7 +557,6 @@ fn next_ordinal(ctx: &ReducerContext) -> u64 {
     next
 }
 
-/// Insert-or-update the per-domain aggregate after an event lands.
 fn upsert_world_state(ctx: &ReducerContext, domain: u8, severity: f64, event_ts: Timestamp) {
     let existing = ctx.db.world_state().domain().find(domain);
     let (event_count, total_severity, last_updated) = match &existing {
@@ -704,9 +588,7 @@ fn upsert_world_state(ctx: &ReducerContext, domain: u8, severity: f64, event_ts:
     }
 }
 
-/// Recompute and store the domain insight. Worst-case scans
-/// `INSIGHT_EVENT_WINDOW` recent events per domain and
-/// `INSIGHT_SIGNAL_WINDOW` signals — both constants.
+/// Recompute and store the domain insight.
 fn rebuild_domain_insight(
     ctx: &ReducerContext,
     domain: u8,
@@ -714,7 +596,6 @@ fn rebuild_domain_insight(
     source_url: String,
     now: Timestamp,
 ) {
-    // Collect recent events for this domain, ordered newest → oldest.
     let mut domain_events: Vec<Event> = ctx
         .db
         .event()
@@ -782,9 +663,7 @@ fn compute_trend_label(events: &[Event]) -> &'static str {
     }
 }
 
-/// Enforce bounded memory by pruning the oldest rows from append-only
-/// tables whenever they exceed their ring size. Called from every
-/// `ingest_event` so the overhead is O(overflow), typically zero.
+/// Prune all append-only tables. Overhead is O(overflow) — typically zero.
 fn prune_rings(ctx: &ReducerContext) {
     prune_events(ctx);
     prune_signals(ctx);
@@ -797,7 +676,7 @@ fn prune_events(ctx: &ReducerContext) {
     prune_events_over_ring_size(ctx);
 }
 
-/// Drop events (and narratives) older than [`EVENT_RETENTION_HOURS`].
+/// Drop events (and narratives) older than EVENT_RETENTION_HOURS.
 fn prune_events_older_than_retention(ctx: &ReducerContext) {
     let cutoff = ctx
         .timestamp

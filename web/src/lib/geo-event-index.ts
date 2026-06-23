@@ -1,6 +1,4 @@
-/**
- * Cached geo indexes for map/globe layers — rebuilt once per dashboard revision.
- */
+
 import { dashboardData } from "./dashboard-revision.svelte";
 import { buildGeoEventIndex, type GeoEventIndex } from "./geo-event-index-build";
 import type { UiEvent } from "./types";

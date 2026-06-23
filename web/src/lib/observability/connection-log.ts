@@ -1,6 +1,4 @@
-/**
- * Bridge SpacetimeDB connection events into the ops log buffer.
- */
+
 
 import { appendOpsLog } from "./log-stream";
 import { stdbDatabaseName } from "../native-config";

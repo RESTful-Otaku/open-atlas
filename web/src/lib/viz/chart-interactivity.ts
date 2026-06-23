@@ -1,9 +1,4 @@
-/**
- * Merges zoom, brush, and toolbox defaults into ECharts options.
- * Interactions are scoped by coordinate system so sunburst/treemap drill
- * is not covered by cartesian chrome, and cartesian charts reserve margin
- * for controls (toolbox on the right, sliders at the bottom).
- */
+
 import type { EChartsOption } from "echarts";
 
 const DZ_IN_ID = "openatlas-dz-inside";
@@ -87,7 +82,7 @@ function bumpGrid(
   return bumpOne(grid as Record<string, unknown>);
 }
 
-/** Restore only — placed away from sunburst/treemap center and funnel necks. */
+
 function cornerRestoreToolbox(): EChartsOption["toolbox"] {
   return {
     id: TB_PATCHED,
@@ -110,12 +105,12 @@ function wantsRadialOrFlowToolbox(types: Set<string>): boolean {
   );
 }
 
-/** Sunburst / treemap: drill + roam — no cartesian zoom/brush; avoid top-left toolbox overlap. */
+
 function isHierarchicalPartition(types: Set<string>): boolean {
   return types.has("sunburst") || types.has("treemap");
 }
 
-/** Adds zoom/brush/toolbox and drill behaviour where the series type allows it. */
+
 export function withInteractiveDefaults(opt: EChartsOption): EChartsOption {
   const series = normalizeSeries(opt.series);
   const types = new Set(series.map((s) => (typeof s.type === "string" ? s.type : "")));

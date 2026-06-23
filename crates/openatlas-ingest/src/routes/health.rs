@@ -1,8 +1,4 @@
-//! Liveness, readiness, and aggregated service status handlers.
-//!
-//! The ingest service is a pusher, not the source of truth — readiness
-//! therefore reports whether it can *reach* SpacetimeDB, not whether any
-//! events have been ingested.
+//! Liveness, readiness, and /status handlers.
 
 use axum::{extract::State, response::IntoResponse, Json};
 use chrono::Utc;
@@ -17,7 +13,6 @@ pub(crate) async fn health() -> &'static str {
     "ok"
 }
 
-/// Prometheus text exposition of process-local ingest counters.
 pub(crate) async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     let body = state.metrics.snapshot().to_prometheus_text();
     (

@@ -1,11 +1,3 @@
-<!--
-  Slim top bar for the redesigned shell. Shows the brand, the currently
-  active view title, connection status, and a search / navigation affordance
-  (opens the command palette; ⌘K is handled in Shell.svelte).
-
-  Desktop: three-column grid (brand | search | status) — unchanged.
-  Mobile: logo + view title + STDB/Feeds/LLM status + fullscreen search overlay.
--->
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
   import { onMount } from "svelte";
@@ -256,7 +248,6 @@
     }
   }
 
-  /* —— Mobile / compact top bar —— */
   :global(html[data-compact-layout]) .shell-top--mobile {
     display: flex;
     flex-direction: column;

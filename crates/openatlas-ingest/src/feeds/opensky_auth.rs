@@ -1,6 +1,4 @@
-//! OpenSky OAuth2 client credentials (Bearer token on REST calls).
-//!
-//! See <https://openskynetwork.github.io/opensky-api/rest.html#authentication>.
+//! OpenSky OAuth2 client credentials.
 
 use std::{
     sync::OnceLock,
@@ -36,7 +34,6 @@ fn token_cache() -> &'static Mutex<Option<CachedToken>> {
     TOKEN_CACHE.get_or_init(|| Mutex::new(None))
 }
 
-/// Both env vars set and non-empty.
 pub fn client_credentials_from_env() -> Option<(String, String)> {
     let id = std::env::var(ENV_CLIENT_ID).ok()?;
     let secret = std::env::var(ENV_CLIENT_SECRET).ok()?;

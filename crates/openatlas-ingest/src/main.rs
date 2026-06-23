@@ -1,5 +1,3 @@
-//! OpenAtlas ingest service binary.
-
 use std::{collections::HashMap, panic, sync::Arc};
 
 use anyhow::Context;
@@ -25,10 +23,6 @@ use tracing::{info, warn};
 async fn main() -> anyhow::Result<()> {
     logging::init_tracing();
 
-    // Log any panics through tracing so they appear in the log output instead
-    // of only stderr. The feed worker loops are outside catch_unwind scope, so
-    // a panic in the loop body will still terminate that task, but at least the
-    // error surface is visible in the ops console.
     {
         let orig = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
@@ -37,7 +31,6 @@ async fn main() -> anyhow::Result<()> {
         }));
     }
 
-    // Load .env before StdbClient::from_env (local or cloud URI comes from here or the shell).
     local_env::load_gitignored_env_files();
     let env_files = local_env::env_file_paths();
     if !env_files.is_empty() {

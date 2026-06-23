@@ -1,16 +1,11 @@
 import { backOut, quintInOut } from "svelte/easing";
 
-/** Shared motion tokens for mobile overlays (respect prefers-reduced-motion in CSS). */
 export const MOTION_FAST_MS = 220;
 export const MOTION_PANEL_MS = 280;
-/** Settings accordion expand/collapse on compact layouts. */
 export const MOTION_SETTINGS_FOLD_MS = 260;
-/** Settings drill-down track slide (list ↔ section). */
 export const MOTION_SETTINGS_TRACK_MS = 320;
-/** Subtle overshoot for premium mobile panel slides. */
 export const settingsTrackEase = backOut;
 
-/** Smooth ease-in-out for settings folds (close to `--ease` in app.css). */
 export const appEase = quintInOut;
 
 export function prefersReducedMotion(): boolean {
@@ -21,11 +16,9 @@ export function prefersReducedMotion(): boolean {
 }
 
 export type SettingsFoldTransitionOptions = {
-  /** Desktop/web accordion — slightly longer with subtle ease-out overshoot. */
   desktop?: boolean;
 };
 
-/** Height + opacity for settings section bodies. */
 export function settingsFoldTransition(
   options: SettingsFoldTransitionOptions = {},
 ): { slide: { duration: number; easing: (t: number) => number }; fade: { duration: number; easing: (t: number) => number } } {
@@ -47,7 +40,6 @@ export const fadePanel = {
   duration: MOTION_FAST_MS,
 };
 
-/** Backdrop drops instantly on close so the bottom nav stays tappable during sheet exit. */
 export const fadePanelBackdrop = {
   duration: 0,
 };
@@ -59,7 +51,6 @@ export const flyFromRight = {
   opacity: 0,
 };
 
-/** Full-width settings drill-down (detail pushes in from the right). */
 export function settingsScreenFly(widthPx: number) {
   if (prefersReducedMotion()) {
     return { duration: 0 };

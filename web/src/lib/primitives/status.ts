@@ -1,11 +1,4 @@
-/**
- * Shared status/severity vocabulary used by the primitives.
- *
- * Keeping these as closed string-union types means components accept
- * exactly the statuses the design system knows about — typos and
- * drift fail at compile time rather than silently rendering a generic
- * fallback.
- */
+
 
 export type StatusLevel =
   | "nominal"
@@ -27,11 +20,7 @@ export type SeverityLevel =
   | "critical"
   | "ongoing";
 
-/**
- * Bucket a numeric severity score (`[0, 1]` per the core contract) to a
- * coarse [`SeverityLevel`]. Deterministic and pure so renderers can call
- * it freely.
- */
+
 export function bucketSeverity(score: number): SeverityLevel {
   if (!Number.isFinite(score)) return "nominal";
   if (score >= 0.85) return "critical";
@@ -41,11 +30,7 @@ export function bucketSeverity(score: number): SeverityLevel {
   return "nominal";
 }
 
-/**
- * Same idea as {@link bucketSeverity} but for aggregate risk (e.g. a
- * `world_state.risk_index`). Ranges are gentler because aggregates
- * average out peaks.
- */
+
 export function bucketRisk(score: number): StatusLevel {
   if (!Number.isFinite(score)) return "nominal";
   if (score >= 0.8) return "critical";

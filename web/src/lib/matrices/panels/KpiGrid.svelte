@@ -1,10 +1,3 @@
-<!--
-  Compact grid of KPI tiles. Each tile shows a small label, a large
-  numeric value, optional delta, and optional tone.
-
-  Used inside matrix panels for the "4 up / 6 up" stat callouts seen
-  across economic, health, resource, and transport mockups.
--->
 <script lang="ts">
   import CompactNumber from "../../components/CompactNumber.svelte";
   import { TrendArrow } from "../../primitives";

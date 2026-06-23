@@ -1,6 +1,4 @@
-/**
- * Compact metric display: k / m / b suffixes for large counts, full integers below 1k.
- */
+
 
 const K = 1_000;
 const M = 1_000_000;
@@ -17,7 +15,7 @@ export function formatFullNumber(n: number): string {
 
 export interface CompactNumberFormatted {
   readonly display: string;
-  /** Locale-grouped exact value for tooltips / aria. */
+
   readonly raw: string;
 }
 

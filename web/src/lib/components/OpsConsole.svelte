@@ -1,7 +1,3 @@
-<!--
-  Live diagnostics for Settings: ingest health, feeds, Prometheus counters,
-  and a monospace client log stream (STDB + poll events).
--->
 <script lang="ts">
   import { onMount } from "svelte";
   import {
@@ -35,10 +31,6 @@
   import CompactNumber from "./CompactNumber.svelte";
 
   interface Props {
-    /**
-     * Mobile settings drill-down: flat panel, no nested details (iOS/WebView jank),
-     * defer ingest polling until after the slide transition, always show body.
-     */
     mobilePanel?: boolean;
   }
 

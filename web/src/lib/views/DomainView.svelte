@@ -1,8 +1,3 @@
-<!--
-  Per-domain “desk” — a focused read on one axis of the world model:
-  rolling KPIs, LLM/insight narrative, recency, severity history, and
-  quick jumps to the map (domain filter) and the right command matrix.
--->
 <script lang="ts">
   import { ExternalLink, Map as MapIcon, Network, PanelLeftDashed } from "@lucide/svelte";
   import { DOMAIN_CATALOG, domainLabel } from "../colors";

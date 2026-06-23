@@ -1,12 +1,3 @@
-<!--
-  The app shell. Lays out the left rail, top bar, optional market ticker,
-  the active view, and the optional operator command bar.
-
-  Which chrome is shown depends on the active route: matrix pages get
-  the ticker + command bar, the legacy dashboard and settings view get
-  neither, and the hub shows the ticker only. Centralising that logic
-  here keeps individual views unaware of the shell.
--->
 <script lang="ts">
   import { onMount } from "svelte";
   import { router } from "../router.svelte";
@@ -101,11 +92,6 @@
     routeShowsCommandBar(router.match.pattern),
   );
 
-  /**
-   * The ticker is a macro-economic affordance; it belongs on views where
-   * cross-domain pulse matters (hub, map, matrix pages) but gets in the
-   * way on view-specific surfaces (settings, entity database detail).
-   */
   function routeShowsTicker(pattern: string): boolean {
     return (
       pattern === "/" ||
@@ -117,11 +103,6 @@
     );
   }
 
-  /**
-   * The operator command bar is only useful on pages where operational
-   * commands make sense. Matrices will grow a real grammar in M9; other
-   * views don't have actionable verbs yet.
-   */
   function routeShowsCommandBar(pattern: string): boolean {
     return pattern.startsWith("/matrix/");
   }
@@ -241,7 +222,6 @@
     height: 100%;
     max-height: 100%;
     overflow: hidden;
-    /* Rail column sizes from the rail component (`auto` = intrinsic width). */
     grid-template-columns: auto 1fr;
     grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
@@ -288,10 +268,6 @@
     min-height: 0;
     overflow: hidden;
   }
-  /**
-   * Route views must not shrink to the intrinsic min-content of inner grids
-   * (ECharts, etc.); they take the full `1fr` main column width.
-   */
   .shell-main.shell-main-fill > :global(*) {
     display: flex;
     flex-direction: column;

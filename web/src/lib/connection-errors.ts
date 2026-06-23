@@ -1,7 +1,4 @@
-/**
- * Maps raw SpacetimeDB / subscription error strings to short remediation
- * hints for Settings, OpsStrip, and status surfaces.
- */
+
 
 export type ConnectionErrorKind =
   | "unreachable"
@@ -69,7 +66,7 @@ const DEFAULT_GUIDE: ConnectionErrorGuide = {
     "Open Settings for the effective WebSocket URI and database name, then use Reconnect. Check browser devtools and SpacetimeDB host logs for details.",
 };
 
-/** Classify a raw `connectionLastError` string (null → null). */
+
 export function connectionErrorGuide(
   raw: string | null | undefined,
 ): ConnectionErrorGuide | null {
@@ -87,14 +84,14 @@ export function connectionErrorGuide(
   return { ...DEFAULT_GUIDE, summary: DEFAULT_GUIDE.summary };
 }
 
-/** One-line hint for `title` / `aria-describedby` on connection pills. */
+
 export function connectionErrorHint(raw: string | null | undefined): string | null {
   const guide = connectionErrorGuide(raw);
   if (!guide) return null;
   return `${guide.summary}. ${guide.remediation}`;
 }
 
-/** Settings / alert block: summary + raw detail. */
+
 export function connectionErrorDisplay(raw: string | null | undefined): {
   summary: string;
   remediation: string;

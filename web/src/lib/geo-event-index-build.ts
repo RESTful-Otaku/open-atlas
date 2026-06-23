@@ -1,6 +1,4 @@
-/**
- * Pure geo index builder (no Svelte) — shared by runtime cache and unit tests.
- */
+
 import { DOMAIN_CATALOG } from "./colors";
 import type { UiEvent } from "./types";
 

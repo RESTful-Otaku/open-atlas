@@ -1,7 +1,4 @@
-//! Operator-configurable feed poll intervals (persisted on disk).
-//!
-//! Defaults come from each feed's `FeedDescriptor::poll_interval`. The UI may
-//! override per feed using one of [`POLL_INTERVAL_OPTIONS_SECS`].
+//! Feed poll intervals persisted on disk, overrideable by the UI.
 
 use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
 
@@ -12,7 +9,6 @@ use crate::feeds::{self, adapter::FeedDescriptor};
 
 const DEFAULT_POLL_FILE: &str = ".dev/feed-poll.json";
 
-/// Selectable poll cadences (Settings UI).
 pub const POLL_INTERVAL_OPTIONS_SECS: &[u64] = &[30, 60, 300, 1800, 3600, 14_400];
 
 pub const DEFAULT_RETENTION_HOURS: u64 = 24;
@@ -66,7 +62,6 @@ pub fn poll_config_display() -> String {
     poll_config_path().display().to_string()
 }
 
-/// Provider-aware minimum interval (protects fragile APIs).
 pub fn min_interval_secs(feed: &str) -> u64 {
     match feed {
         "gdelt" => 300,
@@ -173,7 +168,6 @@ mod tests {
         ok.insert("usgs".to_owned(), 60);
         assert!(validate_poll_intervals(&ok).is_ok());
 
-        // Known defaults (e.g. 45s for USGS) are also accepted
         let mut default_ok = HashMap::new();
         default_ok.insert("usgs".to_owned(), 45);
         assert!(validate_poll_intervals(&default_ok).is_ok());

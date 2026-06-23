@@ -93,7 +93,6 @@ describe("view loaders: lazy loading and caching", () => {
   test("loadViewForPattern returns a non-empty component path for known patterns", async () => {
     const { loadViewForPattern } = await import("./view-loaders");
     const component = await loadViewForPattern("/hub");
-    // view-loaders returns component module paths as async import() results
     expect(component).toBeTruthy();
   });
 
@@ -112,17 +111,12 @@ describe("view loaders: lazy loading and caching", () => {
 });
 
 describe("navigation triggers readiness refresh signals (contract check)", () => {
-  // The readiness module depends on .svelte.ts files that use $state runes
-  // (not available in Bun). We verify the contract statically by reading
-  // the source files instead of importing them.
   test("ActiveRoute.svelte does not import flush pause/cancel/resume", async () => {
-    // Read the file directly to verify the fix contract
     const base = import.meta.dirname ?? ".";
     const src = await Bun.file(`${base}/shell/ActiveRoute.svelte`).text();
     expect(src).not.toContain("pauseDashboardFlush");
     expect(src).not.toContain("resumeDashboardFlush");
     expect(src).not.toContain("cancelScheduledDashboardFlush");
-    // But still imports the metadata refresh functions
     expect(src).toContain("refreshRemoteReadiness");
     expect(src).toContain("refreshFeedLive");
   });
@@ -130,7 +124,6 @@ describe("navigation triggers readiness refresh signals (contract check)", () =>
   test("dashboard-flush pause does not cancel scheduled flushes", async () => {
     const base = import.meta.dirname ?? ".";
     const src = await Bun.file(`${base}/dashboard-flush.ts`).text();
-    // The pause function should NOT call cancelScheduledDashboardFlush
     const pauseBody = src.match(/export function pauseDashboardFlush[^}]+}/s);
     expect(pauseBody).not.toBeNull();
     expect(pauseBody![0]).not.toContain("cancelScheduledDashboardFlush");

@@ -1,6 +1,4 @@
-/**
- * Reactive observability polling for Settings ops console.
- */
+
 
 import { appendOpsLog } from "./log-stream";
 import { fetchObservabilitySnapshot, type ObservabilitySnapshot } from "./ingest-status";
@@ -59,11 +57,11 @@ export async function refreshOpsObservability(logPoll = true): Promise<void> {
 }
 
 export type OpsPollingOptions = {
-  /** Append detailed lines to the ops log each poll (off on mobile — avoids WebView jank). */
+
   verboseLogs?: boolean;
 };
 
-/** Start interval polling while Settings console is open/expanded. */
+
 export function acquireOpsPolling(options: OpsPollingOptions = {}): () => void {
   const verboseLogs = options.verboseLogs ?? true;
   pollConsumers += 1;

@@ -1,4 +1,3 @@
-/** Minutes since UTC midnight (0–1439). */
 export type SimMinOfDay = number;
 
 export interface SolarPhase {
@@ -6,14 +5,12 @@ export interface SolarPhase {
   readonly icon: "moon" | "sunrise" | "sun" | "sunset";
 }
 
-/** Human label for scrub position (UTC). */
 export function formatUtcTimeLabel(minOfDay: SimMinOfDay): string {
   const h = Math.floor(minOfDay / 60);
   const m = minOfDay % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-/** Coarse day phase for icon + caption. */
 export function solarPhaseForMin(minOfDay: SimMinOfDay): SolarPhase {
   const h = minOfDay / 60;
   if (h < 5 || h >= 21) return { label: "Night", icon: "moon" };
@@ -23,15 +20,10 @@ export function solarPhaseForMin(minOfDay: SimMinOfDay): SolarPhase {
   return { label: "Night", icon: "moon" };
 }
 
-/** 0–100 scrub position for CSS. */
 export function scrubPercent(minOfDay: SimMinOfDay): number {
   return (minOfDay / 1439) * 100;
 }
 
-/**
- * Horizontal day-cycle track: night → dawn → day → dusk → night.
- * Used as the scrub bar background (smooth colour transitions).
- */
 export const SOLAR_TRACK_GRADIENT = `linear-gradient(
   to right,
   #0c1222 0%,

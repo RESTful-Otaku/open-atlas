@@ -1,7 +1,3 @@
-<!--
-  Client-facing integration notes: SpacetimeDB (status also in the top bar),
-  optional LLM bridge, and how operators enable live public APIs for ingest.
--->
 <script lang="ts">
   import { onMount } from "svelte";
   import { Settings as SettingsIcon } from "@lucide/svelte";
@@ -57,7 +53,6 @@
   /** Drives track slide; kept true until exit transition ends so detail content stays mounted. */
   let detailTrackOpen = $state(false);
   let detailPaneEl: HTMLDivElement | undefined = $state();
-  /** Defer heavy OpsConsole until after the mobile slide (avoids WebView crash). */
   let opsConsoleReady = $state(false);
 
   const visibleSections = $derived(

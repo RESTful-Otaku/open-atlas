@@ -1,11 +1,3 @@
-<!--
-  Horizontal timeline-bar chart — each row is a labelled track with a
-  colored segment spanning a portion of the track. Used for orbital
-  launch schedules, migration waves, mobilization stages, and similar
-  "named interval" visualisations.
-
-  Purely display-only; callers supply the computed start/end fractions.
--->
 <script lang="ts">
   export interface TimelineRow {
     readonly id: string;

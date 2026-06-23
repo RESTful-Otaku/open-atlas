@@ -1,19 +1,3 @@
-<!--
-  Detail view for a single event: `/events/:id`.
-
-  The view is deliberately resilient: any of (event, narrative,
-  location) can be missing and the surface still reads sensibly. This
-  is important because:
-
-    * Narratives are only written above a severity threshold, so
-      low-severity events will never have one.
-    * The event ring is bounded; an id from an old link may no longer
-      be in the client's projection.
-    * The subscription may not have replayed yet on first mount.
-
-  When the raw event row is missing we show a structured "not found"
-  card with a link back to the Hub rather than rendering nothing.
--->
 <script lang="ts">
   import { ArrowLeft, Activity, Clock, MapPin } from "@lucide/svelte";
 

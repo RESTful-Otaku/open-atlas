@@ -1,4 +1,4 @@
-//! Process-local ingest counters (reset on restart). Exposed on `/status`.
+//! Process-local ingest counters, exposed on `/status`.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -85,7 +85,6 @@ pub struct IngestMetricsSnapshot {
 }
 
 impl IngestMetricsSnapshot {
-    /// Prometheus exposition format (text/plain 0.0.4).
     pub fn to_prometheus_text(&self) -> String {
         let mut out = String::new();
         append_counter(

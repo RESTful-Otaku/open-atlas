@@ -1,6 +1,3 @@
-<!--
-  Compact domain-scoped AI analysis — Ollama when ready, template fallback otherwise.
--->
 <script lang="ts">
   import { Sparkles } from "@lucide/svelte";
 

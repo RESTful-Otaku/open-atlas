@@ -1,6 +1,4 @@
-//! Anomaly indicator rows. Mirrors the event-list structure so the
-//! dashboard has a consistent visual rhythm between the two firehose
-//! panels.
+//! Anomaly indicator rows.
 
 use wasm_bindgen::JsValue;
 use web_sys::Document;

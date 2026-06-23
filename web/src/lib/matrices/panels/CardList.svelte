@@ -1,11 +1,3 @@
-<!--
-  Reusable "list of cards" panel. Each card has a title, an optional
-  severity chip, an optional trailing value pair (label + value), and
-  optional sub-text. Used by Active Flashpoints, Strategic Commodities,
-  Megacity Density, Upcoming Orbital Launches, etc.
-
-  Items are supplied via props so this component stays display-only.
--->
 <script lang="ts">
   import { SeverityChip } from "../../primitives";
   import type { CardListItem } from "./types";

@@ -21,7 +21,7 @@ export const toasts = $state({
 });
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
-/** Code + dedupe key → last shown ms */
+
 const recentToast = new Map<string, number>();
 const DEDUPE_WINDOW_MS = 3_000;
 
@@ -29,9 +29,7 @@ function makeId(): string {
   return `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/**
- * @returns true if a toast was added (or scheduled)
- */
+
 export function pushToast(
   t: Omit<ToastItem, "id"> & {
     id?: string;

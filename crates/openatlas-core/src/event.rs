@@ -1,5 +1,4 @@
-//! Value-type DTOs that flow through the system. Every type here is serde-
-//! serialisable, content-addressable, and free of hidden side effects.
+
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -8,8 +7,7 @@ use uuid::Uuid;
 
 use crate::{domain::Domain, error::CoreError};
 
-/// Geospatial location tied to an event. Optional because some domains (e.g.
-/// macroeconomic indicators) lack a single point of origin.
+/// Geospatial location tied to an event.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Location {
     pub lat: f64,
@@ -19,8 +17,6 @@ pub struct Location {
 }
 
 impl Location {
-    /// Construct a validated `Location`. Returns an error if coordinates are
-    /// out of range.
     pub fn new(lat: f64, lon: f64, region_tags: Vec<String>) -> Result<Self, CoreError> {
         if !(-90.0..=90.0).contains(&lat) {
             return Err(CoreError::InvalidConfig(format!("lat {lat} out of range")));
@@ -32,8 +28,7 @@ impl Location {
     }
 }
 
-/// Canonical observation unit. Severity is clamped to `[0.0, 1.0]` at the
-/// ingest boundary; any violation is an error, never silently normalised.
+/// Canonical observation unit.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorldEvent {
     pub id: Uuid,
@@ -44,8 +39,7 @@ pub struct WorldEvent {
     pub payload: Value,
 }
 
-/// Aggregated per-domain state. `last_updated` tracks the most recent event
-/// timestamp that contributed to the aggregate, so replay is deterministic.
+/// Aggregated per-domain state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorldState {
     pub domain: Domain,
@@ -55,8 +49,7 @@ pub struct WorldState {
     pub last_updated: DateTime<Utc>,
 }
 
-/// Entity reference (e.g. a nation, sensor network, organisation). Metadata is
-/// free-form JSON but must stay bounded in size.
+/// Entity reference.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EntityNode {
     pub id: Uuid,
@@ -66,7 +59,7 @@ pub struct EntityNode {
     pub metadata: Value,
 }
 
-/// Directed causal relationship between two events.
+/// Causal relationship between two events.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CausalEdge {
     pub source_event_id: Uuid,
@@ -75,7 +68,7 @@ pub struct CausalEdge {
     pub decay_rate: f64,
 }
 
-/// An inference engine's explanation that an event is noteworthy.
+/// Inference engine signal that an event is noteworthy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Signal {
     pub event_id: Uuid,
@@ -84,7 +77,7 @@ pub struct Signal {
     pub reason: String,
 }
 
-/// Forward-looking projection for a domain's risk index.
+/// Forward-looking projection.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Prediction {
     pub domain: Domain,
@@ -92,7 +85,7 @@ pub struct Prediction {
     pub projected_risk_index: f64,
 }
 
-/// Structured filter over `WorldGraph` events.
+/// Filter over `WorldGraph` events.
 #[derive(Debug, Clone, Default)]
 pub struct QueryFilters {
     pub domain: Option<Domain>,
@@ -149,8 +142,6 @@ mod tests {
         }
     }
 
-    // --- Location ---
-
     #[test]
     fn location_construction() {
         let loc = sample_location();
@@ -173,8 +164,6 @@ mod tests {
         let loc: Location = serde_json::from_str(json).unwrap();
         assert!(loc.region_tags.is_empty());
     }
-
-    // --- WorldEvent ---
 
     #[test]
     fn world_event_construction() {
@@ -215,8 +204,6 @@ mod tests {
         assert_eq!(deserialized.severity_score, 1.0);
     }
 
-    // --- WorldState ---
-
     #[test]
     fn world_state_construction() {
         let state = sample_state();
@@ -233,8 +220,6 @@ mod tests {
         let deserialized: WorldState = serde_json::from_str(&json).unwrap();
         assert_eq!(state, deserialized);
     }
-
-    // --- EntityNode ---
 
     #[test]
     fn entity_node_construction() {
@@ -268,8 +253,6 @@ mod tests {
         assert_eq!(node, deserialized);
     }
 
-    // --- CausalEdge ---
-
     #[test]
     fn causal_edge_construction() {
         let edge = sample_causal_edge();
@@ -298,8 +281,6 @@ mod tests {
         assert!((deserialized.decay_rate - (-0.1)).abs() < 1e-10);
     }
 
-    // --- Signal ---
-
     #[test]
     fn signal_creation() {
         let signal = Signal {
@@ -325,8 +306,6 @@ mod tests {
         assert_eq!(signal, deserialized);
     }
 
-    // --- Prediction ---
-
     #[test]
     fn prediction_creation() {
         let prediction = Prediction {
@@ -350,8 +329,6 @@ mod tests {
         assert_eq!(prediction, deserialized);
     }
 
-    // --- QueryFilters ---
-
     #[test]
     fn query_filters_default() {
         let filters = QueryFilters::default();
@@ -373,8 +350,6 @@ mod tests {
         assert!(filters.region_tag.is_none());
         assert!(filters.since.is_none());
     }
-
-    // --- UUID determinism ---
 
     #[test]
     fn uuid_determinism_across_roundtrips() {

@@ -13,10 +13,6 @@ export type CausalNeighborsResult = {
   readonly counts: { readonly incoming: number; readonly outgoing: number };
 };
 
-/**
- * Related events from the causal edge ring, sorted by influence (desc).
- * Caps list length; totals reflect the full ring scan.
- */
 export function causalNeighborsForEvent(
   eventId: string,
   edges: readonly UiCausalEdge[],
@@ -56,7 +52,6 @@ export function causalNeighborsForEvent(
   };
 }
 
-/** Hash-router path for an event detail page. */
 export function eventDetailPath(eventId: string): string {
   return `/events/${encodeURIComponent(eventId)}`;
 }

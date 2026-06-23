@@ -1,6 +1,4 @@
-//! Generated insight cards. One card per domain insight emitted by
-//! the ingest service, with an attributable source link and a compact
-//! metadata row.
+//! Generated insight cards per domain with source attribution.
 
 use wasm_bindgen::JsValue;
 use web_sys::Document;

@@ -114,8 +114,6 @@ describe("readiness", () => {
   test("refreshRemoteReadiness handles null status gracefully", async () => {
     ingestStatusResult = { ok: true, status: null, err: null };
     await readinessModule.refreshRemoteReadiness();
-    // When status is null (stdb_reachable unknown) and no live STDB
-    // connection in browser, fetchIngestOk returns ok: false
     expect(readinessModule.readiness.ingestReady).toBe(false);
     expect(readinessModule.readiness.ingestStatus).toBeNull();
   });

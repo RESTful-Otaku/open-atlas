@@ -1,6 +1,3 @@
-/**
- * User-controlled cadence for dashboard trim, chart revisions, and ingest polls.
- */
 import {
   resetDashboardFlushSchedule,
   scheduleDashboardFlush,
@@ -24,7 +21,7 @@ function loadStored(): UpdateIntervalId {
       return raw as UpdateIntervalId;
     }
   } catch {
-    /* private mode */
+
   }
   return DEFAULT_UPDATE_INTERVAL_ID;
 }
@@ -35,7 +32,7 @@ export const updateInterval = $state<{ id: UpdateIntervalId }>({
 
 let cadenceInterval: number | undefined;
 
-/** Periodic flush so chart cadence applies even between sparse STDB ticks. */
+
 export function restartDashboardFlushCadence(): void {
   if (cadenceInterval !== undefined) {
     clearInterval(cadenceInterval);
@@ -76,14 +73,13 @@ export function setUpdateInterval(id: UpdateIntervalId): void {
   try {
     localStorage.setItem(STORAGE_KEY, id);
   } catch {
-    /* */
   }
   resetDashboardFlushSchedule();
   restartDashboardFlushCadence();
   void syncIngestPollCadenceFromClient(getUpdateIntervalMs()).catch(() => {});
 }
 
-/** Apply stored cadence on boot (chart timer + ingest poll config). */
+
 export function applyStoredUpdateCadence(): void {
   restartDashboardFlushCadence();
   void syncIngestPollCadenceFromClient(getUpdateIntervalMs()).catch(() => {});

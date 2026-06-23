@@ -5,7 +5,6 @@
 
   interface Props {
     value: number;
-    /** Tooltip / aria override; defaults to locale-formatted raw value when compact. */
     title?: string;
     class?: string;
   }

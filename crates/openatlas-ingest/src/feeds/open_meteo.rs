@@ -1,4 +1,4 @@
-//! Open-Meteo current-weather snapshot for a fixed sample of metro regions.
+
 
 use std::time::Duration;
 

@@ -1,19 +1,11 @@
-//! Domains categorise every `WorldEvent`. The set is closed and totally ordered
-//! so downstream aggregation remains deterministic.
+
 
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-/// All domains OpenAtlas reasons about. Keep this list closed and tiny; new
-/// domains require an intentional schema bump and a matching reducer update.
-///
-/// # Tag stability
-///
-/// Variants are ordered so the positional tag stored in SpacetimeDB
-/// (`openatlas-ingest::stdb::domain_to_u8`) is stable across releases.
-/// Only **append** new variants — reordering would silently reinterpret
-/// existing rows.
+/// All domains OpenAtlas reasons about.
+/// Only append new variants — reordering would silently reinterpret existing rows.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Domain {
@@ -33,7 +25,6 @@ pub enum Domain {
 }
 
 impl Domain {
-    /// Stable machine-readable identifier used by the API, storage, and UI.
     pub const fn as_str(&self) -> &'static str {
         match self {
             Domain::Energy => "energy",
@@ -52,8 +43,6 @@ impl Domain {
         }
     }
 
-    /// Every variant, in a stable order. Useful for presenting rankings with
-    /// deterministic tie-breaking.
     pub const ALL: [Domain; 13] = [
         Domain::Energy,
         Domain::Finance,
@@ -117,7 +106,6 @@ mod tests {
         assert!("not-a-domain".parse::<Domain>().is_err());
     }
 
-    /// SpacetimeDB module rejects `domain > 12`; keep this test when appending variants.
     #[test]
     fn domain_count_matches_stdb_tag_cap() {
         const STDB_MAX_DOMAIN_TAG: u8 = 12;

@@ -1,7 +1,3 @@
-/**
- * ADS-B map glyphs from SpacetimeDB transport events (opensky feed).
- * The browser must not poll OpenSky when live — ingest owns that cadence.
- */
 import type { UiEvent } from "../types";
 import type { PublicTrackRow } from "./public-tracking";
 

@@ -1,5 +1,4 @@
-//! Causal graph summary — a compact list of directed influence edges
-//! plus a three-tile summary above it.
+//! Causal graph summary with directed influence edges and summary tiles.
 
 use std::collections::HashMap;
 
@@ -118,10 +117,6 @@ fn short(id: &str) -> String {
 mod tests {
     use super::{short, summary_tile};
 
-    // -----------------------------------------------------------------------
-    // short
-    // -----------------------------------------------------------------------
-
     #[test]
     fn short_returns_first_segment() {
         assert_eq!(short("abc123-def456"), "abc123");
@@ -159,10 +154,6 @@ mod tests {
         assert_eq!(first, 'é');
         assert!(result.len() <= 8);
     }
-
-    // -----------------------------------------------------------------------
-    // summary_tile
-    // -----------------------------------------------------------------------
 
     #[test]
     fn summary_tile_zero_count() {

@@ -1,7 +1,4 @@
-/**
- * ECharts options for matrix tab panels — data-bound where possible,
- * synthetic fallbacks when the scoped event set is empty.
- */
+
 
 import type { EChartsOption } from "echarts";
 import type { UiEvent, UiWorldState } from "../types";
@@ -745,11 +742,7 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
   }
 }
 
-/**
- * Per-matrix chart kinds — every {@link MatrixChartKind} appears at least
- * once across the eight command boards so operators can tour the full
- * ECharts surface (sunburst → effectScatter) from live telemetry.
- */
+
 export const MATRIX_TAB_CHARTS: Readonly<
   Record<
     string,

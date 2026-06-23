@@ -1,11 +1,9 @@
-//! Shrink canonical event payloads before STDB storage (less WS + RAM).
+//! Compact canonical event payloads before STDB storage.
 
 use serde_json::{Map, Value};
 
-/// Target max serialized payload size for open-data feeds (module allows 8 KiB).
 pub const TARGET_PAYLOAD_BYTES: usize = 8_192;
 
-/// Keys always kept when compacting provider fields.
 const KEEP_KEYS: &[&str] = &[
     "icao24",
     "callsign",
@@ -20,7 +18,6 @@ const KEEP_KEYS: &[&str] = &[
     "simulated",
 ];
 
-/// Estimate serialised JSON byte-length without allocating a string.
 fn estimate_json_size(v: &Value) -> usize {
     match v {
         Value::Null => 4,
@@ -46,7 +43,6 @@ fn estimate_json_size(v: &Value) -> usize {
     }
 }
 
-/// Build minimal canonical JSON: drop redundant `source_url` (on domain_insight).
 pub fn compact_canonical_payload(
     source: &str,
     external_key: &str,

@@ -1,25 +1,4 @@
 //! The authoritative in-process world graph.
-//!
-//! # Invariants
-//! * Every stored `WorldEvent` has `severity_score ∈ [0.0, 1.0]`.
-//! * Event ids are unique; duplicate ingest is an error, never a silent merge.
-//! * `world_state.last_updated` is monotonic per domain: it only ever
-//!   advances, even when events arrive out of order.
-//! * `recent_by_domain` is a bounded ring (`recent_window_size`) — no
-//!   unbounded growth.
-//!
-//! # SpacetimeDB migration boundary
-//!
-//! This struct is a drop-in authoritative store with the same shape as the
-//! future SpacetimeDB module:
-//! * `events`, `world_state`, `entity_nodes`, `causal_edges`, `signals` each
-//!   become a `#[spacetimedb::table]`.
-//! * `ingest_event`, `update_world_state`, `link_causal_events`,
-//!   `query_state` each become a `#[spacetimedb::reducer]` or a client-side
-//!   subscription query. Time comes from `ReducerContext::timestamp`, which
-//!   is already deterministic.
-//! * `InferenceEngine` stays in-process and is invoked from within the
-//!   `ingest_event` reducer.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -60,13 +39,7 @@ impl Default for WorldGraph {
 }
 
 impl WorldGraph {
-    /// Construct a graph with an explicit inference backend and recent-event
-    /// window size. The window is a hard bound; anomaly detection only ever
-    /// inspects the last `recent_window_size` events per domain.
-    /// `signal_ring_size` and `causal_edge_ring_size` cap derivative data growth.
-    ///
-    /// # Errors
-    /// Returns `CoreError::InvalidConfig` if `recent_window_size` is 0.
+    /// Errors if `recent_window_size` is 0.
     pub fn new(
         inference: Box<dyn InferenceEngine>,
         recent_window_size: usize,
@@ -99,11 +72,7 @@ impl WorldGraph {
     pub fn causal_edges(&self) -> &[CausalEdge] { &self.causal_edges }
     pub fn signals(&self) -> &[Signal] { &self.signals }
 
-    /// Deterministic ingest reducer.
-    ///
-    /// Returns the signals raised for this event. Rejects invalid severity
-    /// and duplicate ids — this is the ONLY entry point that accepts writes,
-    /// mirroring the SpacetimeDB reducer-only model.
+    /// Ingest reducer. Returns signals raised for this event.
     pub fn ingest_event(&mut self, event: WorldEvent) -> Result<Vec<Signal>, CoreError> {
         if !(0.0..=1.0).contains(&event.severity_score) {
             return Err(CoreError::InvalidSeverity);
@@ -140,10 +109,7 @@ impl WorldGraph {
         Ok(result)
     }
 
-    /// Recompute the aggregate state for `domain` using the running totals.
-    ///
-    /// `event_timestamp` is the timestamp of the event that triggered this
-    /// update; `last_updated` advances monotonically using that value.
+    /// Recompute aggregate state for `domain`.
     pub fn update_world_state(
         &mut self,
         domain: Domain,
@@ -176,7 +142,7 @@ impl WorldGraph {
         );
     }
 
-    /// Record a directed causal edge. Both endpoints must already exist.
+    /// Record a causal edge. Both endpoints must already exist.
     pub fn link_causal_events(
         &mut self,
         source_event_id: Uuid,
@@ -200,8 +166,7 @@ impl WorldGraph {
         Ok(())
     }
 
-    /// Read-only query over all stored events. Returns an owned snapshot so
-    /// callers cannot accidentally mutate the graph.
+    /// Read-only query over all stored events.
     #[must_use]
     pub fn query_state(&self, filters: &QueryFilters) -> Vec<WorldEvent> {
         self.events

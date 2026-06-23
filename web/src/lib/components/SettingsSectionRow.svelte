@@ -1,6 +1,3 @@
-<!--
-  Mobile settings list row — navigates to a full-screen detail pane.
--->
 <script lang="ts">
   import { ChevronRight } from "@lucide/svelte";
   import type { Component } from "svelte";

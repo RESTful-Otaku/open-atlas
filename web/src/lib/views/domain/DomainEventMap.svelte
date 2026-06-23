@@ -1,7 +1,3 @@
-<!--
-  Lightweight pseudo-Mercator scatter for domain-located events — no MapLibre
-  weight; reads like a NOC “overview map” thumbnail.
--->
 <script lang="ts">
   import type { UiEvent } from "../../types";
 
@@ -9,7 +5,6 @@
     events: readonly UiEvent[];
     accent: string;
     title?: string;
-    /** Footer line under the SVG (e.g. demo vs live data source). */
     caption?: string;
   }
   const { events, accent, title, caption }: Props = $props();

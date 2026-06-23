@@ -1,7 +1,3 @@
-<!--
-  Floating map layers panel: domains, overlays, solar scrub. Parent owns open
-  state and backdrop; Escape to close is handled in WorldMap.
--->
 <script lang="ts">
   import {
     Clock,
@@ -24,7 +20,6 @@
 
   interface Props {
     open: boolean;
-    /** When true, panel is inside MapMobileSheet (no collapse animation). */
     sheet?: boolean;
     onDismiss?: () => void;
     useWebGlGlobe: boolean;

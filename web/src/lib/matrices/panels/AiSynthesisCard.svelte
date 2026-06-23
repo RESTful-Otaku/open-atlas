@@ -1,7 +1,3 @@
-<!--
-  AI synthesis card for matrix right rail — shows Ollama prose when available,
-  otherwise deterministic fallback from `ai-synthesis.ts`.
--->
 <script lang="ts">
   import { RefreshCw, Sparkles } from "@lucide/svelte";
 

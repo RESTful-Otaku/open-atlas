@@ -1,4 +1,4 @@
-//! FRED (St. Louis Fed) macro indicators. Requires `FRED_API_KEY`.
+
 
 use std::time::Duration;
 

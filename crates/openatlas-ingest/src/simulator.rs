@@ -1,10 +1,4 @@
-//! Synthetic event simulators.
-//!
-//! Used for local development, CI, and as a fallback when live feeds are
-//! disabled or unreachable. Each simulator runs on a dedicated tokio task
-//! at a fixed cadence and submits events through the `ingest_event`
-//! reducer — identical to the live-feed path, so nothing downstream can
-//! tell simulated traffic apart from production traffic.
+//! Synthetic event simulators for local dev and CI.
 
 use std::time::Duration;
 
@@ -114,15 +108,12 @@ pub fn spawn_simulators(state: AppState) {
     }
 }
 
-/// Deterministic shape checks for simulators (unit tests).
 #[cfg(test)]
 pub(crate) fn generate_event_for_test(source: &str, domain: Domain) -> WorldEvent {
     generate_event(source, domain)
 }
 
 fn generate_event(source: &str, domain: Domain) -> WorldEvent {
-    // Deterministic seed for reproducible event generation
-    // TODO: accept seed from config for full reproducibility
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let base_severity = match domain {
         Domain::Climate => 0.4,
@@ -132,8 +123,6 @@ fn generate_event(source: &str, domain: Domain) -> WorldEvent {
         _ => 0.3,
     };
     let variance: f64 = rng.random_range(0.0..0.5);
-    // ~12% cross anomaly threshold (0.85); narrative threshold is 0.5 so
-    // moderate sim events also get inference/disruption rows in the module.
     let severity_score = if rng.random_bool(0.12) {
         rng.random_range(0.86..0.99)
     } else {

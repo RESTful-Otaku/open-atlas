@@ -1,14 +1,8 @@
-//! Tiny owner of the top-bar connection-status pill.
-//!
-//! The pill is addressed exclusively through `data-state` attributes
-//! (`connecting`, `live`, `offline`). CSS does the visual work; this
-//! module only maps discrete connection events to those three states.
+//! Top-bar connection-status pill (connecting / live / offline).
 
 use wasm_bindgen::JsValue;
 use web_sys::Document;
 
-/// Discrete states the status pill can be in. Keeping this enum tiny
-/// and total makes the socket event → UI mapping obvious.
 #[derive(Clone, Copy)]
 pub(crate) enum ConnectionState {
     Connecting,
@@ -34,8 +28,7 @@ impl ConnectionState {
     }
 }
 
-/// Updates the status pill. Missing pill element is non-fatal: the
-/// dashboard still works without it.
+/// Updates the status pill. Missing element is non-fatal.
 pub(crate) fn set(document: &Document, state: ConnectionState) -> Result<(), JsValue> {
     let Some(pill) = document.get_element_by_id("connection-status") else {
         return Ok(());

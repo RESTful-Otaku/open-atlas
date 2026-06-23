@@ -1,7 +1,3 @@
-<!--
-  Legacy dashboard: grid of panels. Order and 12-col span are customizable
-  per session (sessionStorage) — see `layout/`.
--->
 <script lang="ts">
   import { onMount } from "svelte";
   import { ChevronDown, ChevronUp, GripVertical } from "@lucide/svelte";

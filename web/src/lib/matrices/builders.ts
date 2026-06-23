@@ -1,11 +1,4 @@
-/**
- * Small, pure helpers that transform the reactive dashboard state into
- * the panel-specific data shapes defined in `./panels/*.svelte`.
- *
- * Kept separate from the catalog so tests can exercise them without
- * dragging Svelte component dependencies. Each helper is pure:
- * `(state) => readonly rows` with no side effects.
- */
+
 
 import type { CardListItem, RegionBar, StatusTableRow, KpiCell } from "./panels/types";
 
@@ -18,7 +11,7 @@ import type {
   UiWorldState,
 } from "../types";
 
-/** Default limit for any "recent N" list in a matrix panel. */
+
 export const MATRIX_LIST_LIMIT = 8;
 
 export function eventsInDomains(
@@ -30,7 +23,7 @@ export function eventsInDomains(
   return events.filter((e) => set.has(e.domain));
 }
 
-/** CardList items derived from the most recent events in the given domains. */
+
 export function flashpointCards(
   events: readonly UiEvent[],
   domains: readonly string[],
@@ -53,14 +46,11 @@ export function flashpointCards(
         : "—",
     },
     accent: domainColor(e.domain),
-    // Hash-style link so the card respects the app's hash router.
-    // Encoding the id keeps the URL safe even if we later switch to
-    // non-numeric identifiers.
     href: `#/events/${encodeURIComponent(e.id)}`,
   }));
 }
 
-/** Per-domain risk index as a bar badge list. */
+
 export function domainRiskBars(
   domainState: Record<string, UiWorldState>,
   domains: readonly string[],
@@ -85,7 +75,7 @@ export function domainRiskBars(
     });
 }
 
-/** Status table rows from recent signals in given domains. */
+
 export function signalRows(
   signals: readonly UiSignal[],
   domains: readonly string[],
@@ -106,7 +96,7 @@ export function signalRows(
   }));
 }
 
-/** KPI cells summarising a domain from world-state. */
+
 export function domainKpiCells(
   domainState: Record<string, UiWorldState>,
   insights: Record<string, UiDomainInsight>,

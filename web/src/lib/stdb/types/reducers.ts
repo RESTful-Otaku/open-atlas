@@ -5,7 +5,6 @@
 /* tslint:disable */
 import { type Infer as __Infer } from "spacetimedb";
 
-// Import all reducer arg schemas
 import IngestEventReducer from "../ingest_event_reducer";
 import LinkCausalEventsReducer from "../link_causal_events_reducer";
 

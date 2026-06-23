@@ -23,7 +23,6 @@ export function activeLlmProviderLabel(id: LlmProviderId): string {
   }
 }
 
-/** Whether the selected provider can run without a reachable local bridge. */
 export function usesClientSideLlm(settings = loadLlmProviderSettings()): boolean {
   return settings.provider === "gemini" || settings.provider === "openai_compat";
 }

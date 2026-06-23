@@ -1,7 +1,3 @@
-<!--
-  Tab-scoped analytic chart for matrix pages. Reads live events + domain
-  state and renders one {@link MatrixChartKind} per tab / matrix id.
--->
 <script lang="ts">
   import { memoMatrixChart } from "../../chart-cache";
   import { dashboardData } from "../../dashboard-revision.svelte";

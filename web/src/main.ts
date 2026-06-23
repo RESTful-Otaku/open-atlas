@@ -1,10 +1,7 @@
 import { mount } from "svelte";
 
 import "./app.css";
-// maplibre-gl/dist/maplibre-gl.css is eagerly bundled here.
-// If the map view were lazy-loaded, this import could move into a
-// dynamic import inside that view to shave ~200 kB from the critical
-// path for users who never open the globe.
+
 
 import App from "./App.svelte";
 import { installRouter } from "./lib/router.svelte";
@@ -51,7 +48,7 @@ async function hideNativeSplashWhenReady(): Promise<void> {
     const { SplashScreen } = await import("@capacitor/splash-screen");
     await SplashScreen.hide();
   } catch {
-    /* web-only or plugin unavailable */
+
   }
 }
 

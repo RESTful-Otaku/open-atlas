@@ -1,7 +1,3 @@
-/**
- * Coalesce SpacetimeDB row mutations into bounded trim/sort work so live
- * ingest cannot schedule unbounded O(n log n) passes per animation frame.
- */
 import { sortAndTrimDashboardBuffers } from "./sync-dashboard-cache";
 import { logDebug } from "./telemetry/log";
 import { getUpdateIntervalMs } from "./update-interval.svelte";
@@ -44,7 +40,7 @@ function scheduleFlushTick(): void {
   const elapsed = performance.now() - lastFlushAt;
   const wait = Math.max(0, minFlushIntervalMs() - elapsed);
   const runSoon = (): void => {
-    // Safari/Firefox: requestIdleCallback unavailable → fallback to rAF
+
     if (HAS_IDLE_CALLBACK) {
       flushIdle = requestIdleCallback(
         () => {
@@ -93,15 +89,7 @@ export function cancelScheduledDashboardFlush(): void {
   flushScheduled = false;
 }
 
-/**
- * Pause trim/revision bumps.
- *
- * IMPORTANT: Do NOT cancel the scheduled flush here. The running flush
- * will check `flushPaused` and set `flushPendingWhilePaused = true`
- * instead, preserving the pending data. If we cancelled, data that
- * arrived mid-navigation could be permanently lost when the effect
- * cleanup / new-effect racing in ActiveRoute.svelte drops the schedule.
- */
+
 export function pauseDashboardFlush(): void {
   flushPaused = true;
 }
@@ -116,8 +104,7 @@ export function resumeDashboardFlush(): void {
 
 let visibilityHookInstalled = false;
 
-/** Call once at app boot — defers ingest work while the tab is in the background. */
-/** After the user changes refresh cadence, allow an immediate flush on next ingest. */
+
 export function resetDashboardFlushSchedule(): void {
   lastFlushAt = 0;
   cancelScheduledDashboardFlush();

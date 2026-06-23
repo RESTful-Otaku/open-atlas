@@ -1,6 +1,3 @@
-/**
- * Country outlines for map hover + globe polygon caps (simplified GeoJSON).
- */
 const COUNTRIES_URL =
   "https://cdn.jsdelivr.net/gh/datasets/geo-countries-master/data/countries.geojson";
 

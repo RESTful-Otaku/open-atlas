@@ -1,10 +1,3 @@
-/**
- * Structured client logging for dev, tests, and optional production diagnostics.
- *
- * Enable verbose output: `localStorage.setItem('openatlas-log-level', 'debug')`
- * Disable: remove the key or set to `error`.
- */
-
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 const LEVEL_RANK: Record<LogLevel, number> = {
@@ -39,7 +32,6 @@ export type LogRecord = {
   [key: string]: unknown;
 };
 
-/** Emit a single JSON line (console method matches severity). */
 export function log(
   scope: string,
   level: LogLevel,

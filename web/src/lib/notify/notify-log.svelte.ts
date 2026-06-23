@@ -10,15 +10,15 @@ export type NotifyLogEntry = {
   code: NotifyCode | string;
   title: string;
   message: string;
-  /** Technical detail, stack line, or raw error text */
+
   detail?: string;
-  /** What the user can try */
+
   action?: string;
   source: "app" | "spacetimedb" | "ingest" | "llm";
 };
 
 export const notifyLog = $state({
-  /** Newest at index 0 */
+
   entries: [] as NotifyLogEntry[],
 });
 
@@ -46,10 +46,7 @@ function inferSource(
   return "app";
 }
 
-/**
- * Ring buffer: append a row for every notification (toasts, silent logs).
- * Used for debugging and a future “Activity / diagnostics” view.
- */
+
 export function appendNotifyLog(
   e: Omit<NotifyLogEntry, "id" | "at" | "source"> & { source?: NotifyLogEntry["source"] },
 ): NotifyLogEntry {

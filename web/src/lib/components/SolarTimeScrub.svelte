@@ -10,7 +10,6 @@
 
   interface Props {
     minOfDay: SimMinOfDay;
-    /** Full ISO-ish label from parent (date + time). */
     utcLabel?: string;
     onNow?: () => void;
   }

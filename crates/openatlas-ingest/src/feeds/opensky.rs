@@ -1,12 +1,4 @@
 //! OpenSky Network — live aircraft state vectors.
-//!
-//! State vector column order is fixed by the OpenSky REST API; see
-//! <https://openskynetwork.github.io/opensky-api/rest.html#all-state-vectors>.
-//!
-//! Anonymous `/states/all` is heavily rate-limited. Configure
-//! `OPENSKY_CLIENT_ID` + `OPENSKY_CLIENT_SECRET` (Settings → API keys) for
-//! OAuth2 client credentials. On HTTP 429 the feed skips the cycle without
-//! tripping the failure circuit.
 
 use std::time::Duration;
 
@@ -44,7 +36,6 @@ const SAMPLE_SIZE: usize = 40;
 const ANOMALY_ALTITUDE_M: f64 = 20_000.0;
 const ANOMALY_VELOCITY_MPS: f64 = 500.0;
 
-/// OpenSky state vector indices (API v1).
 mod idx {
     pub const ICAO24: usize = 0;
     pub const CALLSIGN: usize = 1;

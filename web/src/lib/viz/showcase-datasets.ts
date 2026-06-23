@@ -1,13 +1,9 @@
-/**
- * Realistic static datasets for the `/viz` gallery — logistics, traffic,
- * energy, and orbital paths — so charts and maps can be reviewed without
- * SpacetimeDB or external API keys.
- */
+
 import { chartPalette } from "./chart-theme";
 
 export const WEEKS = ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"] as const;
 
-/** Minimal GeoJSON for {@link showcase-options} map choropleth (three fictive zones). */
+
 export const demoZonesGeo = {
   type: "FeatureCollection",
   features: [
@@ -82,7 +78,7 @@ export const crossDockMinutes = {
 
 export const trafficByHour = {
   hours: Array.from({ length: 24 }, (_, h) => `${h.toString().padStart(2, "0")}:00`),
-  /** index-hour vehicles / 100 for downtown ring road */
+
   volume: [
     12, 9, 7, 6, 8, 18, 42, 68, 72, 58, 52, 55, 56, 54, 59, 64, 78, 92, 88, 70,
     55, 40, 28, 18,
@@ -255,7 +251,7 @@ export function boxplotFromSample(values: readonly number[]): {
   };
 }
 
-/** Demo cities with severity-like weights for map heat. */
+
 export function demoPointFeatures(): GeoJSON.FeatureCollection<GeoJSON.Point> {
   const points: [number, number, number][] = [
     [121.47, 31.23, 0.9],
@@ -281,7 +277,7 @@ export function demoPointFeatures(): GeoJSON.FeatureCollection<GeoJSON.Point> {
   };
 }
 
-/** Great-circle-ish polyline: synthetic LEO ground track (not Kepler). */
+
 export function demoLeoOrbitLine(): GeoJSON.Feature<GeoJSON.LineString> {
   const coords: [number, number][] = [];
   for (let i = 0; i <= 64; i += 1) {

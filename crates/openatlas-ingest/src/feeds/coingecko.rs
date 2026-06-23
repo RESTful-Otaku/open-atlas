@@ -1,4 +1,4 @@
-//! CoinGecko simple-price feed for a small fixed asset basket.
+
 
 use std::{collections::HashMap, time::Duration};
 
@@ -13,7 +13,6 @@ use super::{
     normalize::{daily_external_key, drafts_to_events, ratio_severity, ObservationDraft},
 };
 
-/// CoinGecko free tier: keep well under documented per-minute caps.
 const POLL_INTERVAL: Duration = Duration::from_secs(90);
 const SOURCE_URL: &str = "https://www.coingecko.com/";
 

@@ -1,7 +1,3 @@
-<!--
-  Global “entity” surface: the live `event` row set projected from
-  SpacetimeDB, filterable the same way the map respects domain scoping.
--->
 <script lang="ts">
   import { Database, Search } from "@lucide/svelte";
 

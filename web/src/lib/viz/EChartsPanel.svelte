@@ -122,7 +122,7 @@
     try {
       c.dispatchAction({ type: "restore" });
     } catch {
-      /* no-op */
+
     }
     try {
       c.dispatchAction({
@@ -131,7 +131,7 @@
         areas: [],
       } as never);
     } catch {
-      /* brush may be unavailable */
+
     }
   }
 

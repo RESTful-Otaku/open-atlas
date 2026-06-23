@@ -1,7 +1,4 @@
-/**
- * User-facing strings that depend on whether the dashboard is driven by
- * SpacetimeDB (`live`) or client-side demo seed (`demo`).
- */
+
 
 export type DataMode = "live" | "demo";
 

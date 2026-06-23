@@ -1,7 +1,4 @@
-//! Live event stream list. Each row shows a domain dot, a monospaced
-//! timestamp, a domain tag, an identifier, and a severity bar. The
-//! rendered markup intentionally stays close to the DOM-level `<li>`
-//! template so no React-style reconciliation is required.
+//! Live event stream list with domain-coloured rows and severity bars.
 
 use wasm_bindgen::JsValue;
 use web_sys::Document;
@@ -14,9 +11,6 @@ use crate::{
 
 use super::{escape_html, require_element};
 
-/// Upper bound on rows rendered per frame. `UiState::events` is already
-/// bounded at `MAX_EVENTS`; this is a second cap so the stream panel
-/// never paints more than fits comfortably on screen.
 const MAX_ROWS: usize = 60;
 
 pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue> {
@@ -68,16 +62,11 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
     Ok(())
 }
 
-/// Displays the trailing 8 chars of the id as a humane handle. Full id
-/// remains queryable via the row's `title` attribute.
 fn short_id(id: &str) -> String {
     let head = id.split('-').next().unwrap_or(id);
     head.chars().take(8).collect()
 }
 
-/// Extracts `HH:MM:SS` from an ISO-8601 timestamp. Falls back to the
-/// original string on parse mismatch — we never show a stale / wrong
-/// time silently.
 fn short_time(ts: &str) -> &str {
     ts.split('T')
         .nth(1)
@@ -96,10 +85,6 @@ fn empty_state() -> String {
 #[cfg(test)]
 mod tests {
     use super::{short_id, short_time, empty_state};
-
-    // -----------------------------------------------------------------------
-    // short_id
-    // -----------------------------------------------------------------------
 
     #[test]
     fn short_id_returns_first_segment() {
@@ -131,13 +116,8 @@ mod tests {
         assert_eq!(short_id("a-b-c"), "a");
     }
 
-    // -----------------------------------------------------------------------
-    // short_time
-    // -----------------------------------------------------------------------
-
     #[test]
     fn short_time_extracts_hh_mm_ss() {
-        // short_time splits on 'T' and '.'; trailing 'Z' / offset remains
         assert_eq!(
             short_time("2024-06-01T14:30:00Z"),
             "14:30:00Z"
@@ -182,10 +162,6 @@ mod tests {
     fn short_time_just_date() {
         assert_eq!(short_time("2024-06-01"), "2024-06-01");
     }
-
-    // -----------------------------------------------------------------------
-    // empty_state
-    // -----------------------------------------------------------------------
 
     #[test]
     fn empty_state_contains_message() {

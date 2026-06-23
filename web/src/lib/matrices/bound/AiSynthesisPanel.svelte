@@ -1,7 +1,3 @@
-<!--
-  AI synthesis panel: Ollama-backed when the LLM bridge is ready, otherwise
-  deterministic rules from `../ai-synthesis.ts`.
--->
 <script lang="ts">
   import { onMount } from "svelte";
 

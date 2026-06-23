@@ -1,36 +1,4 @@
-//! Thin HTTP client for the SpacetimeDB reducer surface.
-//!
-//! # Why HTTP, not the typed SDK?
-//!
-//! SpacetimeDB exposes a simple HTTP endpoint for every reducer:
-//!
-//! ```text
-//! POST {base}/v1/database/{db}/call/{reducer}
-//! body: <JSON array of reducer args>
-//! ```
-//!
-//! For the ingest service we only need the *write* path — feeds and the
-//! simulator call [`StdbClient::ingest_event`] and never subscribe to live
-//! state. Using the full `spacetimedb-sdk` crate here would pull in the
-//! websocket subscription machinery, a background thread, generated
-//! bindings, and a compile-time coupling to the module version, all for a
-//! one-way call we can express in ~30 lines of `reqwest`.
-//!
-//! The Svelte frontend, which *does* need live subscriptions, uses the
-//! TypeScript SDK with generated bindings (`web/src/lib/stdb/`). That's
-//! where the SDK pays for itself.
-//!
-//! # Failure model
-//!
-//! A `StdbClient::ingest_event` call returns an error for any of:
-//!   * network failure, DNS failure, connection refused;
-//!   * 4xx/5xx HTTP status from SpacetimeDB;
-//!   * reducer-side validation error ("invalid severity", duplicate id, …).
-//!
-//! The caller (feeds / simulator) decides how to react (retry, log, drop).
-//! Duplicates are detected by the module itself and surface as
-//! `"duplicate event id: …"` — callers can treat that as idempotent
-//! success.
+//! Thin HTTP client for SpacetimeDB reducers.
 
 use std::time::Duration;
 
@@ -43,12 +11,10 @@ use serde_json::json;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
-/// Default SpacetimeDB URI. Aligns with `./dev.sh spacetime:start`.
 const DEFAULT_URI: &str = "http://127.0.0.1:3000";
 const DEFAULT_DB: &str = "openatlas";
 const REQUEST_TIMEOUT_SECS: u64 = 10;
 
-/// Matches `openatlas-stdb-module::MAX_INGEST_BATCH_SIZE`.
 const MAX_BATCH_REDUCER_SIZE: usize = 128;
 
 #[derive(Debug, Clone)]
@@ -59,8 +25,6 @@ pub struct StdbClient {
 }
 
 impl StdbClient {
-    /// Read connection details from the environment, falling back to
-    /// localhost defaults that match the dev harness.
     pub fn from_env() -> anyhow::Result<Self> {
         let uri = std::env::var("OPENATLAS_STDB_URI").unwrap_or_else(|_| DEFAULT_URI.to_owned());
         let db = std::env::var("OPENATLAS_STDB_DB").unwrap_or_else(|_| DEFAULT_DB.to_owned());
@@ -80,8 +44,6 @@ impl StdbClient {
         &self.db
     }
 
-    /// Row count via the SQL endpoint (`COUNT(*) AS c`). Returns `None` on
-    /// transport or parse failure — status reporting stays best-effort.
     pub(crate) async fn count_rows(&self, table: &str) -> Option<u64> {
         let url = format!(
             "{}/v1/database/{}/sql",
@@ -100,7 +62,6 @@ impl StdbClient {
         row.first()?.as_u64()
     }
 
-    /// Ping the SpacetimeDB instance. Used by the `/ready` check.
     pub async fn is_reachable(&self) -> bool {
         let url = format!("{}/v1/ping", self.uri.trim_end_matches('/'));
         match self.http.get(&url).send().await {
@@ -109,10 +70,6 @@ impl StdbClient {
         }
     }
 
-    /// Call the `ingest_event` reducer. Returns `Ok(IngestOutcome::Accepted)`
-    /// on a 2xx response, `Ok(IngestOutcome::Duplicate)` when the module
-    /// rejects the event because the id already exists, and `Err` for any
-    /// other failure.
     pub(crate) async fn ingest_event(
         &self,
         event: &WorldEvent,
@@ -124,7 +81,6 @@ impl StdbClient {
         self.call_reducer("ingest_event", &args).await
     }
 
-    /// Push up to [`MAX_BATCH_REDUCER_SIZE`] events in one reducer transaction.
     pub(crate) async fn ingest_events_batch(
         &self,
         events: &[WorldEvent],
@@ -159,11 +115,6 @@ impl StdbClient {
             .await
     }
 
-    /// Call the `link_causal_events` reducer. Kept for explicit causal
-    /// observations from cross-domain correlators; auto-linking within a
-    /// single domain already happens server-side. Not currently wired up
-    /// to any feed but kept on the public client surface so that work can
-    /// land without touching this file.
     #[allow(dead_code)]
     pub(crate) async fn link_causal_events(
         &self,
@@ -181,7 +132,6 @@ impl StdbClient {
         self.call_reducer("link_causal_events", &args).await
     }
 
-    /// Common transport: POST reducer args to STDB, return (status, body).
     async fn call_reducer_raw(
         &self,
         reducer: &str,
@@ -219,15 +169,6 @@ impl StdbClient {
     ) -> anyhow::Result<BatchIngestSummary> {
         let (status, body) = self.call_reducer_raw(reducer, args).await?;
         if status.is_success() {
-            // The STDB module records per-event outcomes to `batch_outcome`
-            // and `ingest_audit` tables. For exact counts the caller could
-            // query those tables; for metrics we are optimistic — the
-            // accepted/duplicate split is cosmetic for feed health, and the
-            // total processed count is what matters for rate-limiting.
-            //
-            // TODO: batch endpoint does not return per-event outcomes;
-            // accepted assumes all were accepted — duplicates inflate this count.
-            // Future: query batch_outcome table for actual counts.
             debug!(reducer, count = event_count, "batch reducer accepted");
             return Ok(BatchIngestSummary {
                 accepted: event_count as u32,
@@ -256,8 +197,7 @@ impl StdbClient {
             debug!(reducer, "reducer call accepted");
             return Ok(IngestOutcome::Accepted);
         }
-        // SpacetimeDB returns reducer business errors as non-2xx (often 530), not always 400.
-        // The body may be a plain error string or a JSON object like `{"error": "..."}`.
+        // STDB returns business errors as non-2xx (often 530), body may be `{"error":"..."}`.
         let error_msg = serde_json::from_str::<serde_json::Value>(&body)
             .ok()
             .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(|s| s.to_owned()))
@@ -278,17 +218,12 @@ impl StdbClient {
     }
 }
 
-/// Outcome of a reducer call that we treat as a success at the caller
-/// layer (both "accepted" and "duplicate id" mean "this event is now in
-/// SpacetimeDB"). Anything else bubbles up as an `anyhow::Error`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IngestOutcome {
     Accepted,
     Duplicate,
 }
 
-/// Outcome tallies after a successful `ingest_events_batch` call (audit rows
-/// in STDB hold per-event detail).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct BatchIngestSummary {
     pub accepted: u32,
@@ -306,10 +241,6 @@ struct BatchEventWire {
     payload_json: String,
 }
 
-/// The SpacetimeDB reducer wire shape for `ingest_event`. We keep this as
-/// a local struct (mirroring the module reducer signature exactly) rather
-/// than building `serde_json::json!(...)` inline so the field order and
-/// types are checked by the compiler and easy to diff against the module.
 #[derive(Debug, Serialize)]
 struct TimestampWire {
     #[serde(rename = "__timestamp_micros_since_unix_epoch__")]
@@ -353,10 +284,7 @@ fn ingest_args(
     ]))
 }
 
-/// Wrap a value in SATS's JSON encoding for `Option<T>`, which is a
-/// tagged sum type with variants `some` and `none` — *not* the JSON
-/// `null` / value convention. The distinction is subtle but strict on
-/// the server side.
+/// SATS JSON encoding for `Option<T>`: `{"some": v}` or `{"none": []}`.
 fn option_wire(value: Option<serde_json::Value>) -> serde_json::Value {
     match value {
         Some(v) => json!({ "some": v }),
@@ -364,22 +292,12 @@ fn option_wire(value: Option<serde_json::Value>) -> serde_json::Value {
     }
 }
 
-/// Collapse a `Uuid` (128 bits) into a stable `u64` by XOR-folding the
-/// two halves. We use this because SpacetimeDB's JSON reducer endpoint
-/// rejects `u128` literals, and u64 gives us 2^64 distinct events —
-/// dwarfing the module's `EVENT_RING_SIZE` by many orders of magnitude.
-/// Fold-XOR (rather than truncation) preserves full entropy so birthday
-/// collisions stay astronomically improbable even for adversarial input.
+/// XOR-fold a Uuid into a u64 (STDB JSON endpoint rejects u128).
 pub(crate) fn uuid_to_u64(id: Uuid) -> u64 {
     let n = id.as_u128();
     ((n >> 64) as u64) ^ (n as u64)
 }
 
-/// Deterministic mapping from [`Domain`] to the `u8` tag stored in the
-/// SpacetimeDB `event.domain` column. Keep this in sync with the module's
-/// `ingest_event` validator (`domain > 12` rejects unknown tags). Appending
-/// a new variant here requires a matching append to the validator and to
-/// every `DOMAIN_BY_TAG` in the workspace.
 pub(crate) fn domain_to_u8(domain: &Domain) -> u8 {
     match domain {
         Domain::Energy => 0,

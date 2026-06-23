@@ -1,7 +1,3 @@
-<!--
-  Rich contextual preview for a map point: metrics, domain spark, narrative,
-  signals, causal. Pointer-events enabled so the card stays open for clicks.
--->
 <script lang="ts">
   import { fade } from "svelte/transition";
   import { Pin, PinOff, X } from "@lucide/svelte";
@@ -28,24 +24,15 @@
   import CompactNumber from "./CompactNumber.svelte";
 
   interface Props {
-    /** Active event under the cursor; `null` hides. */
     event: UiEvent | null;
-    /** Pointer in the map container (local px). */
     x: number;
     y: number;
-    /** Map area element (`position: relative`); used for layout bounds. */
     container: HTMLElement | null;
-    /** True while the pointer is over the card (keeps it open after leaving the point). */
     onCardPointerChange?: (inside: boolean) => void;
-    /** Pinned inspector — card stays open for clicks and keyboard focus. */
     pinned?: boolean;
-    /** Fixed dock position (used when pinned). */
     docked?: boolean;
-    /** Desktop comparison dock lays out in a bottom flex row. */
     dockLayout?: "flex" | "compact";
-    /** Pin disabled because the desktop comparison limit is reached. */
     pinAtCapacity?: boolean;
-    /** Active pinned count (for button hint). */
     pinCount?: number;
     onPinChange?: (pinned: boolean) => void;
     onDismiss?: () => void;
