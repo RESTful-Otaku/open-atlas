@@ -1,8 +1,3 @@
-/**
- * Great-circle / propagated paths for public tracking on the 3D globe:
- * satellite orbits, aircraft velocity trails, shipping lanes.
- */
-
 import type { GlobePathDatum } from "./map-weather-globe";
 import type { PublicTrackClass, PublicTrackRow } from "../tracking/public-tracking";
 import { getTleWorkList, propagateTleAt } from "../tracking/public-tracking";
@@ -46,7 +41,6 @@ function greatCircleRad(
   return 2 * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-/** Arc peak altitude in globe-radius units — modest lift; must stay above the surface. */
 export function arcAltitudeForGlobe(
   startLat: number,
   startLng: number,
@@ -100,7 +94,6 @@ function pathColor(cls: PublicTrackClass): string {
   return PATH_COLORS[cls];
 }
 
-/** SGP4 orbit track for each cached NORAD TLE. */
 export function buildSatelliteOrbitPaths(when: Date): GlobePathDatum[] {
   const work = getTleWorkList();
   if (!work.length) return [];
@@ -134,7 +127,6 @@ export function buildSatelliteOrbitPaths(when: Date): GlobePathDatum[] {
   return out;
 }
 
-/** Short great-circle trail in direction of flight (OpenSky velocity / track). */
 export function buildFlightTrailPaths(rows: readonly PublicTrackRow[]): GlobePathDatum[] {
   const out: GlobePathDatum[] = [];
   for (const r of rows) {
@@ -178,7 +170,6 @@ export function buildFlightTrailPaths(rows: readonly PublicTrackRow[]): GlobePat
   return out;
 }
 
-/** Deterministic shipping lane toward a synthetic waypoint (bundled AIS sample). */
 export function buildShipRoutePaths(rows: readonly PublicTrackRow[]): GlobePathDatum[] {
   const out: GlobePathDatum[] = [];
   for (const r of rows) {
@@ -211,7 +202,6 @@ export function buildAllTrackingPaths(
   ];
 }
 
-/** MapLibre line layer for orbit rings, flight trails, and shipping lanes. */
 export function trackingPathsToFeatureCollection(
   paths: readonly GlobePathDatum[],
 ): GeoJSON.FeatureCollection<GeoJSON.LineString> {
@@ -232,5 +222,4 @@ export function trackingPathsToFeatureCollection(
   };
 }
 
-/** Re-export for tests — propagate without full row shape. */
 export { greatCircleRad };

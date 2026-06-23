@@ -1,7 +1,3 @@
-/**
- * Monochrome CARTO globe + transparent solar shell (terminator shade + city lights).
- * Keeps raster tiles visible; unlike the full NASA day/night globe material.
- */
 import {
   DoubleSide,
   Group,

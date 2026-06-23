@@ -1,7 +1,3 @@
-<!--
-  Development gallery: ECharts series families + MapLibre geo overlays. Uses
-  static `showcase-datasets` only — no SpacetimeDB traffic.
--->
 <script lang="ts">
   import { ChartSpline } from "@lucide/svelte";
 
@@ -148,10 +144,6 @@
     font-size: 0.92em;
     color: var(--text-2);
   }
-  /**
-   * Wide column minimums + generous gap so chart toolbars, sliders, and
-   * legends do not collide; `min-width: 0` keeps tracks shrinkable in flex.
-   */
   .viz-grid {
     display: grid;
     width: 100%;

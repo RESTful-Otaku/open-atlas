@@ -1,7 +1,4 @@
-//! OpenAtlas ingest library — feed adapters, validation, and SpacetimeDB client.
-//!
-//! The binary (`main.rs`) is a thin wrapper; integration tests and tools
-//! import this crate.
+//! Feed adapters, validation, and SpacetimeDB client.
 
 pub mod auth;
 pub(crate) mod circuit;

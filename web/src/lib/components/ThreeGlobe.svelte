@@ -1,7 +1,3 @@
-<!--
-  3D Earth: globe.gl — CARTO-aligned “instrument” look by default,
-  CARTO monochrome tiles; optional solar shell (shade + city lights) or NASA photoreal.
--->
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import type { GlobeInstance } from "globe.gl";
@@ -82,21 +78,16 @@
     showSubsun: boolean;
     showMoon: boolean;
     showCausal: boolean;
-    /** NASA day/night textures (replaces CARTO tiles). */
     showPhotorealEarth?: boolean;
-    /** Orbit rings, flight trails, shipping lanes. */
     showTrackingPaths?: boolean;
     mapDomainSet: ReadonlySet<string>;
     simUtcMs: number;
     publicTracking: GlobeEventPoint[];
     trackingPathRows?: readonly import("../tracking/public-tracking").PublicTrackRow[];
     showWeatherOverlays?: boolean;
-    /** Terminator shade + city lights over CARTO tiles (off when photoreal is on). */
     showSolarShading?: boolean;
     onMapPointScreen?: (d: MapPointScreen | null) => void;
-    /** Compact/mobile: tap event point → show inspector instead of navigating. */
     onEventPointTap?: (d: MapPointScreen) => void;
-    /** Fired when the user taps the globe without hitting an event point (mobile dismiss). */
     onMapBackgroundTap?: () => void;
   }
   let {
@@ -135,7 +126,6 @@
   let cameraAltitude = $state(2.28);
   let lastLayerFingerprint = "";
   let offVisibility: (() => void) | undefined;
-  /** Stylized cloud shell — rotates slowly when weather overlays are on. */
   let cloudStylizedRoot: Group | null = null;
   let lastCloudSyncSig = "";
   let adminFeatures = $state<AdminFeature[]>([]);
@@ -151,8 +141,8 @@
       try {
         g.scene().remove(cloudStylizedRoot);
       } catch {
-        /* */
-      }
+
+    }
       disposeStylizedCloudLayer(cloudStylizedRoot);
       cloudStylizedRoot = null;
     }
@@ -164,7 +154,6 @@
       cloudStylizedRoot = group;
       g.scene().add(group);
     } catch {
-      /* */
     }
   }
 
@@ -184,7 +173,7 @@
     try {
       g.scene().remove(solarShellRoot);
     } catch {
-      /* */
+
     }
     disposeMonochromeSolarShell(solarShellRoot);
     solarShellRoot = null;
@@ -215,7 +204,7 @@
           solarShellRoot = group;
           g.scene().add(group);
         } catch {
-          /* */
+    
         }
       }
     }
@@ -736,7 +725,7 @@
             try {
               globe.scene().remove(cloudStylizedRoot);
             } catch {
-              /* */
+        
             }
             disposeStylizedCloudLayer(cloudStylizedRoot);
             cloudStylizedRoot = null;
@@ -748,7 +737,7 @@
           globe._destructor();
           renderer.dispose();
         } catch {
-          /* */
+    
         }
         globe = null;
       }

@@ -1,8 +1,3 @@
-<!--
-  Badge used for named numeric indices such as "GLOBAL THREAT INDEX
-  7.4 / 10", "DEFCON: Elevated", or "Kessler Index: 0.14". Renders a
-  label above a value + optional denominator.
--->
 <script lang="ts">
   interface Props {
     label: string;

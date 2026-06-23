@@ -1,12 +1,7 @@
-/**
- * Lazy-loaded route components — only the active view's chunk stays hot.
- * Evicts older entries so WebGL/ECharts/MapLibre memory can be reclaimed.
- */
 import type { Component } from "svelte";
 
 type ViewModule = { default: Component };
 
-/** Max route modules kept in memory (current + previous). */
 const MAX_CACHED_VIEWS = 5;
 
 const cache = new Map<string, Component>();
@@ -25,7 +20,7 @@ const LOADERS: Record<string, () => Promise<ViewModule>> = {
   "/events/:id": () => import("./views/EventDetailView.svelte"),
 };
 
-/** Domain desks share one component; pattern keys map to the same loader. */
+
 function loaderForPattern(pattern: string): () => Promise<ViewModule> {
   if (pattern.startsWith("/domain/")) {
     return () => import("./views/DomainView.svelte");
@@ -45,7 +40,7 @@ function touchCache(pattern: string, component: Component): Component {
   return component;
 }
 
-/** Synchronous cache hit — use to avoid flashing "Loading…" on revisits. */
+
 export function peekCachedView(pattern: string): Component | undefined {
   return cache.get(pattern);
 }
@@ -57,12 +52,12 @@ export async function loadViewForPattern(pattern: string): Promise<Component> {
   return touchCache(pattern, mod.default);
 }
 
-/** Warm common routes during idle time (dev UX: faster first matrix open). */
+
 export function prefetchView(pattern: string): void {
   if (cache.has(pattern)) return;
   const run = (): void => {
     void loadViewForPattern(pattern).catch(() => {
-      /* ignore */
+
     });
   };
   if (typeof requestIdleCallback !== "undefined") {

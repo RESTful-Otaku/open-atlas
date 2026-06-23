@@ -1,13 +1,8 @@
-/**
- * Static demo layers: isobar-like contours, wind segments, and transport
- * nodes (air + maritime + road) for symbol styling exercises.
- */
 import { chartPalette } from "../viz/chart-theme";
 
 type AssetClass = "civ" | "com" | "mil";
 type TMode = "air" | "sea" | "road";
 
-/** Single-character glyph for `symbol` layer `text-field`. */
 export function transportGlyph(
   mode: TMode,
   assetClass: AssetClass,
@@ -64,7 +59,6 @@ export function buildDemoMapCollection(): GeoJSON.FeatureCollection {
   ];
 
   const wind: GeoJSON.Feature<GeoJSON.LineString>[] = [
-    // Keep end latitude within about ±85° (curve uses spanLat * u * up to ~0.85)
     segmentWithArrow(-8, 50, 55, 38, 0.75),
     segmentWithArrow(-60, 15, 40, 25, 0.55),
     segmentWithArrow(100, 5, 40, 15, 0.65),

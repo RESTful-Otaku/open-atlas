@@ -1,9 +1,4 @@
-<!--
-  Wraps an EChartsPanel with a minimal inline “expand” affordance; fullscreen
-  mode is a fixed overlay with a styled toolbar (reset view, close) and a
-  larger interactive chart. Embed view stays clean by disabling interactive
-  Chrome unless embedInteractive is true.
--->
+
 <script lang="ts">
   import { tick } from "svelte";
   import { fade, scale } from "svelte/transition";

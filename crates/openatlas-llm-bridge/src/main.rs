@@ -1,17 +1,5 @@
-//! OpenAtlas LLM bridge — forwards **bounded** telemetry JSON from the
-//! web UI to a self-hosted Ollama instance. This keeps
-//! `openatlas-stdb-module` reducers strictly deterministic: no model
-//! calls happen inside SpacetimeDB.
-//!
-//! ## Run (recommended stack)
-//! - Install [Ollama](https://ollama.com/), then:
-//!   `ollama serve`  (in one terminal)
-//!   `ollama pull llama3.2`  (or e.g. `qwen2.5:7b`, `mistral:7b`)
-//! - `cargo run -p openatlas-llm-bridge`
-//! - In dev, Vite proxies `/api/llm/*` to this service (default :3847).
-//!
-//! The UI sends a size-capped JSON snapshot; the model is instructed to
-//! ground answers only in that data.
+//! OpenAtlas LLM bridge — forwards bounded telemetry to a local Ollama
+//! instance so SpacetimeDB reducers stay deterministic.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -36,11 +24,8 @@ const MAX_BODY: usize = 512 * 1024;
 const MAX_JSON_CHARS: usize = 120_000;
 const MAX_USER_PROMPT: usize = 4_000;
 
-/// Consecutive Ollama failures before the circuit breaker opens.
 const CB_THRESHOLD: u64 = 3;
-/// Seconds to stay open before allowing a probe.
 const CB_OPEN_SECS: u64 = 30;
-/// Max seconds for any single Axum request (margin over Ollama timeout).
 const AXUM_TIMEOUT_SECS: u64 = 130;
 
 static SYSTEM_PROMPT: &str = r"You are a senior global risk and systems analyst for the OpenAtlas command dashboard.
@@ -51,32 +36,26 @@ Rules:
 - Distinguish facts (from the data) from interpretation (your judgment).
 - Do not claim secret or classified information.";
 
-/// CLI for the local inference bridge. Defaults work with a stock Ollama install.
 #[derive(Parser, Debug)]
 #[command(name = "openatlas-llm-bridge", version)]
 struct Args {
-    /// Listen address (HTTP).
     #[arg(long, default_value = "127.0.0.1:3847", env = "OPENATLAS_LLM_LISTEN")]
     listen: String,
-    /// Ollama base URL (no path).
     #[arg(
         long,
         default_value = "http://127.0.0.1:11434",
         env = "OPENATLAS_OLLAMA_BASE"
     )]
     ollama_base: String,
-    /// Model name as known to Ollama (after `ollama pull`).
     #[arg(long, default_value = "llama3.2", env = "OPENATLAS_OLLAMA_MODEL")]
     ollama_model: String,
-    /// Upstream request timeout in seconds (raise for slow CPU models).
+    /// Upstream request timeout in seconds.
     #[arg(long, default_value = "120", env = "OPENATLAS_OLLAMA_TIMEOUT_SECS")]
     ollama_timeout_secs: u64,
 }
 
 struct CircuitState {
-    /// Consecutive /v1/insight failures.
     consecutive_failures: AtomicU64,
-    /// Timestamp (std::time::Instant ticks) when circuit was opened.
     opened_at: AtomicU64,
 }
 
@@ -232,7 +211,6 @@ async fn ready(State(s): State<Arc<AppState>>) -> impl IntoResponse {
     }
 }
 
-/// Verifies the configured model can complete a tiny chat (catches CUDA / load failures).
 async fn capable(State(s): State<Arc<AppState>>) -> impl IntoResponse {
     match ollama::chat_completion(
         &s.http,
@@ -398,8 +376,6 @@ fn truncate_chars(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
 
-    // ── truncate_chars ──
-
     #[test]
     fn truncate_chars_limits_by_char_count() {
         let s = "a".repeat(10);
@@ -424,8 +400,6 @@ mod tests {
         let s = "hello";
         assert_eq!(truncate_chars(s, 5), "hello");
     }
-
-    // ── CircuitState ──
 
     #[test]
     fn circuit_starts_closed() {
@@ -500,7 +474,6 @@ mod tests {
             c.record_failure();
         }
         assert!(c.is_open());
-        // Simulate CB_OPEN_SECS having elapsed by setting opened_at far in the past
         let past = now_ticks().saturating_sub(CB_OPEN_SECS * 1000 + 1);
         c.opened_at.store(past, Ordering::SeqCst);
         assert!(!c.is_open());
@@ -513,7 +486,6 @@ mod tests {
             c.record_failure();
         }
         assert!(c.is_open());
-        // Set opened_at just barely within the window
         let recent = now_ticks().saturating_sub(CB_OPEN_SECS * 1000 - 100);
         c.opened_at.store(recent, Ordering::SeqCst);
         assert!(c.is_open());
@@ -527,7 +499,6 @@ mod tests {
         }
         let past = now_ticks().saturating_sub(CB_OPEN_SECS * 1000 + 1);
         c.opened_at.store(past, Ordering::SeqCst);
-        // is_open() transitions to half-open and resets counter to CB_THRESHOLD - 1
         assert!(!c.is_open());
         assert_eq!(
             c.consecutive_failures.load(Ordering::SeqCst),
@@ -551,8 +522,6 @@ mod tests {
         c.record_success();
         assert_eq!(c.consecutive_failures.load(Ordering::SeqCst), 0);
     }
-
-    // ── now_ticks ──
 
     #[test]
     fn now_ticks_is_monotonic() {

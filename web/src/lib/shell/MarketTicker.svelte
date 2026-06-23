@@ -1,18 +1,9 @@
-<!--
-  Global market ticker (informational chrome, non-interactive).
-
-  Values are derived from per-domain `world_state` rows. The ticker is
-  only shown on views that opt in (`showTicker={true}` on the Shell).
-  Everything is read-only and updates reactively via the `dashboard`
-  store — no timers, no wall-clock reads.
--->
 <script lang="ts">
   import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard, setSelectedDomain } from "../state.svelte";
   import { domainLabel } from "../colors";
 
   interface Props {
-    /** Shorter ticker strip on mobile layout. */
     compact?: boolean;
   }
   const { compact = false }: Props = $props();
@@ -21,7 +12,6 @@
     readonly label: string;
     readonly value: string;
     readonly delta: number;
-    /** Domain id for filtering the dashboard when the row is activated. */
     readonly domain: string;
   }
 
@@ -42,11 +32,6 @@
     }));
   }
 
-  /**
-   * Approximate "change" as the signed difference between the most
-   * recent severity sample and the mean of the history ring. This is
-   * deterministic given the reactive inputs — no wall clock involved.
-   */
   function deltaForDomain(domain: string): number {
     const history = dashboard.domainSeverityHistory[domain];
     if (!history || history.length < 2) return 0;

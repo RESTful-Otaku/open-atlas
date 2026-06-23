@@ -1,8 +1,4 @@
-//! Per-feed health tracking plus the top-level `ServiceStatus` DTO.
-//!
-//! `FeedHealth` is both the runtime record and the wire shape exposed on
-//! `/status`. The records are small, serialisable, and bounded in number
-//! (one per feed name) so we can cheaply clone them for the status endpoint.
+//! Per-feed health tracking plus top-level `ServiceStatus` DTO.
 
 use std::time::Duration;
 
@@ -15,7 +11,6 @@ use crate::{feed_config, feed_poll, feeds, ingest_mode::IngestMode, state::AppSt
 pub struct FeedHealth {
     pub(crate) name: String,
     pub(crate) enabled: bool,
-    /// Supervisor task is running (may still be in backoff).
     pub(crate) worker_running: bool,
     pub(crate) success_count: u64,
     pub(crate) failure_count: u64,
@@ -27,22 +22,16 @@ pub struct FeedHealth {
     pub(crate) last_test_ok: Option<bool>,
     pub(crate) last_test_message: Option<String>,
     pub(crate) last_test_event_count: Option<usize>,
-    /// Configured poll cadence (seconds); may differ from descriptor default.
     pub(crate) poll_interval_secs: u64,
     pub(crate) default_poll_interval_secs: u64,
     pub(crate) last_events_accepted: u32,
     pub(crate) last_events_duplicate: u32,
     pub(crate) last_poll_at: Option<DateTime<Utc>>,
     pub(crate) next_poll_at: Option<DateTime<Utc>>,
-    /// When true, the supervisor skips upstream fetch until manual reconnect.
     pub(crate) circuit_open: bool,
-    /// When the circuit was opened (for auto-recovery cooldown).
     pub(crate) circuit_opened_since: Option<DateTime<Utc>>,
 }
 
-/// `/status` response body. The ingest service no longer owns the world
-/// state — all event/causal counts live in SpacetimeDB — so this shape
-/// is strictly about the *pusher's* own health.
 #[derive(Debug, Serialize)]
 pub(crate) struct ServiceStatus {
     pub(crate) uptime_seconds: i64,
@@ -52,16 +41,10 @@ pub(crate) struct ServiceStatus {
     pub(crate) stdb_uri: String,
     pub(crate) stdb_database: String,
     pub(crate) stdb_reachable: bool,
-    /// Best-effort row count from `SELECT COUNT(*) AS c FROM event`.
     pub(crate) stdb_event_count: Option<u64>,
     pub(crate) feeds: Vec<FeedHealth>,
 }
 
-/// Populate the runtime feed health map from the registered feed catalog.
-/// Feeds gated on env-derived API keys start disabled when the key is missing.
-/// Logic here is fully data-driven: it walks [`feeds::REGISTRY`] and
-/// consults each descriptor's `requires_env`, so adding a new feed (or a
-/// new env gate) needs no edit in this file.
 pub async fn initialize_feed_runtime(state: &AppState, mode: IngestMode) {
     let live_enabled = mode.live_feeds_enabled();
 

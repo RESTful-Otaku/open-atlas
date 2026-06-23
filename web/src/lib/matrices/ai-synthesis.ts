@@ -1,8 +1,4 @@
-/**
- * Deterministic fallback synthesis per matrix id (used when Ollama is down).
- * `AiSynthesisPanel` calls the LLM bridge when ready and shows this output
- * until the model responds.
- */
+
 
 import { domainLabel } from "../colors";
 import type {
@@ -60,11 +56,7 @@ function eventCountIn(
   return inputs.events.filter((e) => scope.includes(e.domain)).length;
 }
 
-/**
- * Generic builder shared by most matrices. Emits a short paragraph that
- * reads like analyst shorthand; kept identical in structure across
- * matrices so operators learn the rhythm once.
- */
+
 function genericBuilder(prefix: string): Builder {
   return (scope, inputs) => {
     const top = topRiskDomain(scope, inputs);
@@ -103,7 +95,7 @@ const BUILDERS: Readonly<Record<string, Builder>> = {
   compute: genericBuilder("Global compute load"),
 };
 
-/** Look up the body builder for a matrix id; defaults to the generic one. */
+
 export function synthesizeMatrix(
   id: string,
   scope: readonly string[],

@@ -1,6 +1,3 @@
-<!--
-  Lightweight Markdown-ish renderer for LLM briefing text (no extra deps).
--->
 <script lang="ts">
   type Block =
     | { kind: "h1" | "h2" | "h3"; text: string }

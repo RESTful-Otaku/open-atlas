@@ -1,8 +1,3 @@
-/**
- * Persisted map/globe UI state across route changes (sessionStorage).
- * Survives ActiveRoute remounts; cleared when the browser tab session ends.
- */
-
 import { DOMAIN_CATALOG } from "../colors";
 import type { PinnedMapInspector } from "./map-pinned-inspectors";
 
@@ -25,9 +20,7 @@ export type MapViewPersistState = {
   showDemoLayers: boolean;
   showWeatherOverlays: boolean;
   showPublicTracking: boolean;
-  /** UTC midnight ms for the solar scrub day. */
   simDayStart: number;
-  /** Minutes from midnight UTC (0–1439). */
   simMinOfDay: number;
   pins: PinnedMapInspector[];
 };
@@ -229,12 +222,12 @@ export function saveMapViewState(state: MapViewPersistState): void {
   }
 }
 
-/** @deprecated Use loadMapViewState().domains */
+/** @deprecated */
 export function loadMapDomainSet(): Set<string> {
   return loadMapViewState().domains;
 }
 
-/** @deprecated Use saveMapViewState() */
+/** @deprecated */
 export function saveMapDomainSet(s: ReadonlySet<string>): void {
   const current = loadMapViewState();
   current.domains = new Set(s);

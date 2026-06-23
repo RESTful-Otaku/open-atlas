@@ -1,7 +1,3 @@
-/**
- * globe.gl `pointAltitude` in globe-radius units — modest lift above surface
- * (no pillar spikes). Altitude in km informs class separation.
- */
 import type { PublicTrackClass } from "../tracking/public-tracking";
 
 const EARTH_R_KM = 6371;

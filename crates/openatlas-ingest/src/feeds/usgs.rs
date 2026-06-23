@@ -1,5 +1,4 @@
-//! USGS Earthquake Hazards — all earthquakes in the past hour (GeoJSON).
-//! Public feed, no auth, ~1 MiB/response.
+
 
 use std::time::Duration;
 

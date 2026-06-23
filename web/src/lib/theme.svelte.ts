@@ -1,7 +1,4 @@
-/**
- * UI theme (dark / dim / light). Persisted in localStorage and applied via
- * `data-theme` on `<html>` so CSS tokens and `color-scheme` stay in sync.
- */
+
 
 export type ThemeId = "dark" | "dim" | "light";
 
@@ -60,12 +57,11 @@ export function setTheme(theme: ThemeId): void {
   try {
     localStorage.setItem(LS_KEY, theme);
   } catch {
-    /* private mode */
   }
   applyTheme(theme);
 }
 
-/** Call once before mounting the app. */
+
 export function initTheme(): ThemeId {
   const theme = readStoredTheme();
   applyTheme(theme);

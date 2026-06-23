@@ -1,8 +1,3 @@
-/**
- * Subsolar point + terminator (great circle) for map overlays.
- * Coarse but stable for day/night UI and timeline scrubbing.
- */
-
 function sinDeg(d: number): number {
   return Math.sin((d * Math.PI) / 180);
 }
@@ -32,16 +27,11 @@ function cross(
   ];
 }
 
-/** Unit ECEF from WGS84 lat / lon (deg). */
 function toEcef(φ: number, λ: number): [number, number, number] {
   const cφ = cosDeg(φ);
   return [cφ * cosDeg(λ), cφ * sinDeg(λ), sinDeg(φ)];
 }
 
-/**
- * Subsolar lat (declination-ish) and lon for the given instant (UTC).
- * Lon in °E, range ~(-180,180].
- */
 export function subsolarPoint(date: Date): { lat: number; lon: number } {
   const doy = Math.floor(
     (Date.UTC(
@@ -64,9 +54,6 @@ export function subsolarPoint(date: Date): { lat: number; lon: number } {
   return { lat: subLat, lon: subLon };
 }
 
-/**
- * Sun at horizon: great circle perpendicular to subsolar direction n.
- */
 export function buildTerminatorLine(
   sub: { lat: number; lon: number },
   samples = 256,
@@ -111,9 +98,6 @@ export function buildSunPointFeature(sub: {
   };
 }
 
-/**
- * Rough night-side disc (antipodal to subsolar) for 2D fill — moves with solar scrub.
- */
 export function buildNightSideDisc(
   sub: { lat: number; lon: number },
   samples = 192,

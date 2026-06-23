@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-// Import pure functions that don't require network or module dependencies
 import { checkLlmBridgePing, checkLlmBridgeCapable } from "./llm";
 
 describe("checkLlmBridgePing", () => {

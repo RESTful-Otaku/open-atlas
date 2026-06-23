@@ -5,7 +5,6 @@
     editMode: boolean;
     onEditToggle: () => void;
     onReset: () => void;
-    /** Optional, e.g. "Legacy dashboard" */
     label?: string;
   }
   const {

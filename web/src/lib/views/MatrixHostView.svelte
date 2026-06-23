@@ -1,8 +1,3 @@
-<!--
-  Route handler for `/matrix/:id`. Looks the id up in MATRIX_CATALOG and
-  renders the generic MatrixView, or a structured "unknown" state if
-  the id doesn't exist.
--->
 <script lang="ts">
   import { router, navigate } from "../router.svelte";
   import { matrixById } from "../matrices/catalog";

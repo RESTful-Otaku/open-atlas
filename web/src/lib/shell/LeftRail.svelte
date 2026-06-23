@@ -1,7 +1,3 @@
-<!--
-  Primary nav: icon strip or expanded list with one-line blurb per view.
-  Width is persisted in localStorage (see `rail.svelte.ts`).
--->
 <script lang="ts">
   import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutGrid } from "@lucide/svelte";
 
@@ -21,13 +17,11 @@
     VIEW_CATALOG.filter((e) => e.nav && e.id === "settings"),
   );
 
-  /** Tracks route so nav highlight updates when the hash changes. */
   const route = $derived(router.match);
 
   function isActive(entry: ViewCatalogEntry): boolean {
     const { pattern, path } = route;
     if (pattern === entry.pattern) return true;
-    // Parametric matrix route: still highlight "Matrices" on any /matrix/… link.
     if (entry.id === "matrix" && path.startsWith("/matrix/")) {
       return true;
     }

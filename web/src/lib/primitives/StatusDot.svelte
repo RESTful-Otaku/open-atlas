@@ -1,7 +1,3 @@
-<!--
-  Monochrome status dot + optional label. Useful inside dense row
-  tables where a chip would feel too heavy.
--->
 <script lang="ts">
   import type { StatusLevel } from "./status";
 

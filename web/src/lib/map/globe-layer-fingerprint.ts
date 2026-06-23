@@ -1,6 +1,3 @@
-/**
- * Cheap fingerprint for globe layer payloads — skip WebGL uploads when unchanged.
- */
 export function globeLayerFingerprint(parts: {
   revision: number;
   simUtcMs: number;

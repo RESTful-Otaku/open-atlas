@@ -2,10 +2,6 @@ import type { PanelLayoutState } from "./panel-layout-types";
 
 const PREFIX = "openatlas-panels:";
 
-/**
- * sessionStorage: isolated per tab; cleared when the tab / session ends.
- * Matches the product ask for a “session” layout, not a long-lived profile.
- */
 function key(layoutKey: string): string {
   return `${PREFIX}${layoutKey}`;
 }

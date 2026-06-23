@@ -1,7 +1,3 @@
-<!--
-  CSS-only “instrument” strip — evokes the kind of chrome you see on NOC,
-  trading, SOC, and mission-control walls without pulling remote bitmaps.
--->
 <script lang="ts">
   import type { DeskProfile } from "./domain-desk-types";
 

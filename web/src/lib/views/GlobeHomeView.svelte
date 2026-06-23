@@ -1,7 +1,3 @@
-<!--
-  Default home: full-bleed 3D Earth (Three.js + globe.gl — textured sphere, full
-  orbit, zoom). 2D / embedded maps use MapLibre. Live data from SpacetimeDB.
--->
 <script lang="ts">
   import WorldMap from "../components/WorldMap.svelte";
 </script>

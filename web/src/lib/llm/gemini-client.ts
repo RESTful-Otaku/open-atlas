@@ -1,7 +1,4 @@
-/**
- * Direct Gemini API from the browser (mobile-friendly). API key stays in
- * localStorage on device — use a key restricted by HTTP referrer / IP in Google AI Studio.
- */
+
 
 import { LLM_SYSTEM_PROMPT, parseApiError } from "./llm-shared";
 

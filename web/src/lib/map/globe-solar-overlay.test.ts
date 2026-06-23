@@ -8,14 +8,14 @@ import {
 import { subsolarPoint } from "./solar-geometry";
 
 describe("globe-solar-overlay", () => {
-  test("monochromeSolarThemeParams uses stronger night shade on dark theme", () => {
+  test("monochromeSolarThemeParams stronger night shade on dark", () => {
     const light = monochromeSolarThemeParams("light");
     const dark = monochromeSolarThemeParams("dark");
     expect(dark.nightShadeStrength).toBeGreaterThan(light.nightShadeStrength);
     expect(dark.cityLightStrength).toBeGreaterThan(light.cityLightStrength);
   });
 
-  test("updateMonochromeSolarSun moves subsolar uniform when sim instant changes", () => {
+  test("updateMonochromeSolarSun moves subsolar uniform", () => {
     const sun = new Vector2();
     const material = {
       uniforms: { sunPosition: { value: sun } },

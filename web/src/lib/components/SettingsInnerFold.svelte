@@ -1,6 +1,3 @@
-<!--
-  Nested settings accordion (e.g. LLM bridge) — same motion as top-level folds.
--->
 <script lang="ts">
   import { fade, slide } from "svelte/transition";
   import { ChevronDown } from "@lucide/svelte";

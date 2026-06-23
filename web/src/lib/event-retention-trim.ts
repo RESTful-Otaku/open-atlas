@@ -1,6 +1,4 @@
-/**
- * Time-based event retention for the dashboard projection.
- */
+
 import {
   CLIENT_RETENTION_MS,
   MAX_EVENTS,
@@ -12,16 +10,11 @@ import type { UiEvent } from "./types";
 export type TrimEventsByRetentionOptions = {
   nowMs?: number;
   windowMs?: number;
-  /** Typical cap after retention (server ring size). */
   softMax?: number;
-  /** Hard memory ceiling (newest by ordinal). */
   hardMax?: number;
 };
 
-/**
- * Keep events with `timestamp >= now - window`, newest ordinal first.
- * Applies `softMax` when the in-window set is larger, then `hardMax`.
- */
+
 export function trimEventsByRetention(
   events: readonly UiEvent[],
   options: TrimEventsByRetentionOptions = {},

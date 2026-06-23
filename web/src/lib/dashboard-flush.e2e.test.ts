@@ -6,9 +6,6 @@
 
 import { describe, expect, test, mock, beforeEach } from "bun:test";
 
-// dashboard-flush.ts imports update-interval.svelte.ts (uses $state rune) and
-// sync-dashboard-cache.ts (uses $state rune). These modules cannot be loaded
-// in Bun's test runner. We mock both with pure JS substitutes.
 mock.module("./update-interval.svelte", () => ({
   getUpdateIntervalMs: () => 5_000,
   restartDashboardFlushCadence: () => {},
@@ -22,15 +19,13 @@ mock.module("./sync-dashboard-cache", () => ({
   commitDashboardDomainsRevision: () => {},
 }));
 
-// Bun's test runner has no requestAnimationFrame. The flush module calls it
-// via runFlush → scheduleFlushTick → runSoon. We shim it with setTimeout.
 beforeEach(() => {
   // @ts-ignore
   globalThis.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
   // @ts-ignore
   globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id);
   // @ts-ignore
-  globalThis.requestIdleCallback = undefined; // force rAF path
+  globalThis.requestIdleCallback = undefined;
   // @ts-ignore
   globalThis.performance = globalThis.performance ?? { now: () => Date.now() };
 });
@@ -71,7 +66,7 @@ describe("dashboard flush pause/resume data integrity", () => {
 
     flush.pauseDashboardFlush();
     flush.scheduleDashboardFlush();
-    flush.scheduleDashboardFlush(); // duplicate — should be no-op
+    flush.scheduleDashboardFlush();
     flush.resumeDashboardFlush();
 
     await new Promise((r) => requestAnimationFrame(r));

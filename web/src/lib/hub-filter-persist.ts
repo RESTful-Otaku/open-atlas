@@ -1,6 +1,4 @@
-/**
- * Hub / ticker domain filter — persists across in-app navigation (sessionStorage).
- */
+
 
 const KEY = "openatlas-hub-domain-filter:v1";
 
@@ -24,6 +22,6 @@ export function saveSelectedHubDomain(domain: string | null): void {
       sessionStorage.setItem(KEY, domain);
     }
   } catch {
-    /* quota */
+
   }
 }

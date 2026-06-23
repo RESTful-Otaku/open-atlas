@@ -1,8 +1,4 @@
-/**
- * Build a size-bounded JSON snapshot of live dashboard state for the
- * local LLM bridge. The server applies its own cap; this keeps payloads
- * predictable and avoids browser stalls on very large event rings.
- */
+
 
 import type {
   UiCausalEdge,
@@ -24,11 +20,8 @@ export interface LlmSnapshotInput {
   readonly domainState: Record<string, UiWorldState>;
   readonly domainInsights: Record<string, UiDomainInsight>;
   readonly recentCausalEdges: readonly UiCausalEdge[];
-  /** Sparse narrative rows; omit empty object if none. */
   readonly eventNarratives?: Readonly<Record<string, UiEventNarrative>>;
-  /** When the UI captured this view (ISO), for operator context only. */
   readonly capturedAt: string;
-  /** When set, events/signals/edges are scoped to this domain id. */
   readonly scopeDomain?: string;
 }
 
@@ -40,10 +33,6 @@ export interface LlmDeskChartStats {
   readonly causal_outbound: number;
 }
 
-/**
- * Produces a plain object suitable for `POST /v1/insight` on the
- * OpenAtlas LLM bridge. Pure — safe to call from any reactive read.
- */
 /** Human-readable counts for the hub LLM panel. */
 export function llmSnapshotCounts(input: LlmSnapshotInput): {
   events: number;
@@ -65,7 +54,6 @@ export function llmSnapshotCounts(input: LlmSnapshotInput): {
   };
 }
 
-/** Chart/desk stats for domain-scoped LLM prompts. */
 export function buildDeskChartStats(
   domainId: string,
   events: readonly UiEvent[],

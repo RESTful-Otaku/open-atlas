@@ -1,7 +1,3 @@
-<!--
-  Settings section accordion — desktop settings page (smooth expand/collapse).
-  Mobile/tablet use SettingsSectionRow + SettingsMobileDetail drill-down instead.
--->
 <script lang="ts">
   import { fade, slide } from "svelte/transition";
   import { ChevronDown } from "@lucide/svelte";
@@ -13,7 +9,6 @@
     title: string;
     icon?: Component;
     id?: string;
-    /** Extra class on the outer card / fold (e.g. card--wide card--ops). */
     class?: string;
     defaultOpen?: boolean;
     children?: import("svelte").Snippet;

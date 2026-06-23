@@ -1,8 +1,3 @@
-/**
- * Photoreal day/night Earth shader (city lights on night side) + sun/moon markers.
- * Based on globe.gl day-night-cycle example; sun position synced to `subsolarPoint`.
- */
-
 import {
   ShaderMaterial,
   TextureLoader,
@@ -107,7 +102,6 @@ export function loadDayNightGlobeMaterial(): Promise<DayNightGlobeMaterial> {
   return materialPromise;
 }
 
-/** Shader `sunPosition` uses [lng, lat] in degrees. */
 export function updateDayNightSun(
   material: DayNightGlobeMaterial,
   simUtcMs: number,
@@ -124,9 +118,6 @@ export function updateDayNightGlobeRotation(
   material.uniforms.globeRotation.value.set(lng, lat);
 }
 
-/**
- * Rough visual moon position (not ephemeris-grade) for the lit globe view.
- */
 export function approximateMoonPoint(simUtcMs: number): { lat: number; lng: number } {
   const d = new Date(simUtcMs);
   const sub = subsolarPoint(d);

@@ -1,29 +1,4 @@
 //! Live open-data feed adapters.
-//!
-//! # How to add a new feed
-//!
-//! 1. Create `feeds/<your_feed>.rs` with:
-//!    - an `async fn fetch(client: Client) -> anyhow::Result<Vec<WorldEvent>>`,
-//!    - `pub(super) const DESCRIPTOR: FeedDescriptor = FeedDescriptor { … }`.
-//! 2. Declare `mod <your_feed>;` below and append `your_feed::DESCRIPTOR`
-//!    to [`REGISTRY`].
-//!
-//! Supervision, deterministic IDs, backoff, `/status` reporting, and
-//! insight source links are all derived from the descriptor — there is
-//! nothing else to wire up.
-//!
-//! # Design invariants
-//!
-//! - **Pluggable fetchers**: each feed is a free `async fn`, kept pure
-//!   (network I/O aside) and easy to unit-test with recorded fixtures.
-//! - **Centralised supervision**: retry/backoff/health logic lives once
-//!   in [`spawn_feed`], never duplicated per feed.
-//! - **Deterministic IDs**: event UUIDs derive from `(source, external_key)`
-//!   so re-fetching the same upstream item will not produce duplicates.
-//! - **Graceful degradation**: feeds with `requires_env` stay dormant
-//!   until the named variable is present and non-empty.
-//! - **Rate-limit respect**: poll intervals are chosen per provider and
-//!   documented in-module next to the affected code.
 
 use std::time::Duration;
 
@@ -51,7 +26,6 @@ use crate::{
     validate::filter_valid_events,
 };
 
-/// Stagger feed worker start so all adapters do not hit upstream APIs at once.
 const FEED_START_STAGGER: Duration = Duration::from_secs(3);
 
 mod coingecko;
@@ -65,9 +39,6 @@ pub(crate) mod opensky_auth;
 mod usgs;
 mod world_bank;
 
-/// The complete set of feed plug-ins compiled into this build. Order is
-/// cosmetic only (affects log/startup ordering); correctness does not
-/// depend on it.
 pub(crate) const REGISTRY: &[FeedDescriptor] = &[
     usgs::DESCRIPTOR,
     open_meteo::DESCRIPTOR,
@@ -80,12 +51,10 @@ pub(crate) const REGISTRY: &[FeedDescriptor] = &[
     eia::DESCRIPTOR,
 ];
 
-/// Returns the descriptor for `name`, if any.
 pub(crate) fn descriptor_for(name: &str) -> Option<&'static FeedDescriptor> {
     REGISTRY.iter().find(|descriptor| descriptor.name == name)
 }
 
-/// Result of a one-shot feed fetch (Settings → Test).
 #[derive(Debug, Clone)]
 pub struct FeedTestResult {
     pub ok: bool,
@@ -94,14 +63,10 @@ pub struct FeedTestResult {
     pub duration_ms: u64,
 }
 
-/// Returns true when live open-data adapters should run.
 pub(crate) fn live_enabled() -> bool {
     ingest_mode().live_feeds_enabled()
 }
 
-/// Spawns every enabled live feed onto the current tokio runtime. A
-/// single shared [`Client`] is reused across feeds so connection
-/// pooling, DNS cache, and TLS session tickets amortise across requests.
 pub async fn spawn_all(state: AppState) {
     if !live_enabled() {
         info!("live open data feeds disabled (set OPENATLAS_INGEST_MODE=live or hybrid)");
@@ -133,7 +98,6 @@ pub async fn spawn_all(state: AppState) {
     );
 }
 
-/// GDELT DOC queries often take 30–60s; keep this above typical upstream latency.
 const FEED_HTTP_TIMEOUT_SECS: u64 = 60;
 
 fn build_client() -> Client {
@@ -148,10 +112,6 @@ fn env_is_set(var: &str) -> bool {
     feed_config::env_key_present(var)
 }
 
-/// A feed is dormant when it declares an env gate that is currently
-/// unsatisfied. Splitting this out keeps `spawn_all` inside the NASA
-/// "one function, one screen" budget and makes the predicate unit
-/// testable.
 fn is_dormant(descriptor: &FeedDescriptor) -> bool {
     let Some(env_name) = descriptor.requires_env else {
         return false;
@@ -166,10 +126,6 @@ fn is_dormant(descriptor: &FeedDescriptor) -> bool {
     true
 }
 
-/// Core supervised worker loop used by every feed, parametrised only by
-/// its [`FeedDescriptor`]. Any logic that might diverge per provider
-/// (cadence, data parsing, env needs) lives on the descriptor.
-/// Start the supervised worker for one feed if not already running.
 pub async fn ensure_feed_worker(state: &AppState, name: &str) -> anyhow::Result<()> {
     let descriptor = descriptor_for(name).ok_or_else(|| anyhow::anyhow!("unknown feed: {name}"))?;
     if is_dormant(descriptor) {
@@ -188,7 +144,6 @@ pub async fn ensure_feed_worker(state: &AppState, name: &str) -> anyhow::Result<
     Ok(())
 }
 
-/// One-shot fetch for operator testing (does not write to SpacetimeDB).
 pub async fn test_feed_fetch(state: &AppState, name: &str) -> anyhow::Result<FeedTestResult> {
     let descriptor = descriptor_for(name).ok_or_else(|| anyhow::anyhow!("unknown feed: {name}"))?;
     if let Some(key) = descriptor.requires_env {
@@ -238,7 +193,6 @@ pub async fn test_feed_fetch(state: &AppState, name: &str) -> anyhow::Result<Fee
     }
 }
 
-/// Clear backoff, ensure worker is running, and run a test fetch.
 pub async fn reconnect_feed(state: &AppState, name: &str) -> anyhow::Result<FeedTestResult> {
     crate::health::refresh_feed_enabled_flags(state).await;
     circuit::reset_circuit(state, name).await;
@@ -349,8 +303,6 @@ fn spawn_feed(
     });
 }
 
-/// Produces a deterministic UUID for an upstream item so repeated
-/// fetches converge to the same event identity.
 pub(crate) fn deterministic_event_id(source: &str, key: &str) -> Uuid {
     let seed = format!("{source}:{key}");
     Uuid::new_v5(&Uuid::NAMESPACE_URL, seed.as_bytes())

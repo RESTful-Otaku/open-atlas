@@ -1,7 +1,4 @@
-/**
- * Operator LLM provider settings (localStorage). Used on mobile/desktop when
- * no local Ollama bridge is reachable — e.g. Gemini API from the device.
- */
+
 
 import { isNativeApp } from "../mobile-layout";
 
@@ -14,7 +11,6 @@ export interface LlmProviderSettings {
   openaiBaseUrl: string;
   openaiApiKey: string;
   openaiModel: string;
-  /** Force CPU-only inference on the Ollama bridge (num_gpu: 0). */
   cpuOnly: boolean;
 }
 

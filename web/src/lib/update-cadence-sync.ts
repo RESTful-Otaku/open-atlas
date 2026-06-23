@@ -1,19 +1,16 @@
-/**
- * Map shell "update frequency" to ingest feed poll intervals (PUT /feeds/poll-intervals).
- * Provider minimums still apply (e.g. GDELT ≥ 5 minutes).
- */
+
 import {
   fetchFeedCatalog,
   minPollIntervalSecs,
   updateFeedPollIntervals,
 } from "./feed-config";
 
-/** Ingest-supported poll options (seconds), ascending. */
+
 export const INGEST_POLL_OPTIONS_SECS = [
   30, 60, 300, 1800, 3600, 14_400,
 ] as const;
 
-/** Smallest ingest poll interval ≥ client target, capped at 4h. */
+
 export function clientMsToPollSecs(ms: number): number {
   const want = Math.max(1, Math.ceil(ms / 1000));
   for (const opt of INGEST_POLL_OPTIONS_SECS) {
@@ -22,7 +19,7 @@ export function clientMsToPollSecs(ms: number): number {
   return INGEST_POLL_OPTIONS_SECS[INGEST_POLL_OPTIONS_SECS.length - 1]!;
 }
 
-/** Snap to an ingest-allowed poll option (PUT /feeds/poll-intervals rejects other values). */
+
 export function snapToIngestPollSecs(secs: number): number {
   const max = INGEST_POLL_OPTIONS_SECS[INGEST_POLL_OPTIONS_SECS.length - 1]!;
   let want = Math.max(INGEST_POLL_OPTIONS_SECS[0]!, secs);
@@ -38,7 +35,7 @@ export function pollSecsForFeed(feedName: string, clientMs: number): number {
   return snapToIngestPollSecs(floored);
 }
 
-/** Push chart cadence to all live feeds (best-effort; ingest may be offline in web-only dev). */
+
 export async function syncIngestPollCadenceFromClient(
   clientMs: number,
 ): Promise<void> {

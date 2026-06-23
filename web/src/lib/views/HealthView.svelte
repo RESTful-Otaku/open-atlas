@@ -141,8 +141,6 @@
     layout.widgets.filter((w) => editMode || w.visible).sort((a, b) => a.order - b.order),
   );
 
-  // ── history ──
-
   const history = $derived.by(() => {
     snapPushGen;
     return getHistory();
@@ -165,8 +163,6 @@
   const lastUpdatedLabel = $derived(
     history.length > 0 ? new Date(history[history.length - 1].at).toLocaleTimeString() : new Date().toLocaleTimeString(),
   );
-
-  // ── traffic rate chart ──
 
   interface TrafficSeriesDatum {
     name: string;
@@ -225,8 +221,6 @@
       })),
     };
   });
-
-  // ── charts ──
 
   const feedDonutOption = $derived.by((): EChartsOption | null => {
     if (!feedSummary) return null;
@@ -315,8 +309,6 @@
     };
   });
 
-  // ── layout mgmt ──
-
   function reorderWidgets(fromId: string, toId: string): void {
     const widgets = [...layout.widgets];
     const fromIdx = widgets.findIndex((w) => w.id === fromId);
@@ -395,7 +387,6 @@
     pollingDispose?.();
   });
 
-  // Refresh timer respects user's update interval; restarts on change.
   $effect(() => {
     updateInterval.id;
     const ms = Math.max(1_000, getUpdateIntervalMs());
@@ -403,7 +394,6 @@
     return () => clearInterval(timer);
   });
 
-  // Push a snapshot whenever the dashboard revision bumps (STDB data arrived).
   $effect(() => {
     const rev = dashboardData.revision;
     if (rev > 0) pushHealthSnapshot();
@@ -766,7 +756,6 @@
   .live-dot[data-live="false"] { background: var(--status-err, #ef4444); }
   @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-  /* ── timeline ── */
   .timeline-grid { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border-1); border-radius: var(--radius-sm); padding: 12px; }
   .timeline-row { display: flex; align-items: center; gap: 8px; }
   .timeline-label { font-size: 10px; font-weight: 600; color: var(--text-2); width: 44px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.04em; }

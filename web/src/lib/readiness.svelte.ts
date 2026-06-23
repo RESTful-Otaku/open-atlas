@@ -1,7 +1,3 @@
-/**
- * Shared LLM + ingest reachability checks (also shown in Settings).
- * SpacetimeDB status lives on `dashboard.connection` in `state.svelte.ts`.
- */
 import { checkLlmBridgeCapable } from "./llm";
 import { checkLlmProviderReady, usesClientSideLlm } from "./llm/llm-providers";
 import {
@@ -92,12 +88,7 @@ const CAPABLE_CACHE_MS = 5 * 60_000;
 let capableCached: boolean | null = null;
 let capableCachedAt = 0;
 
-/**
- * Refresh LLM readiness before analysis.
- * - Default (`deep=false`): fast ping via `/v1/ready` only.
- * - `deep=true`: also runs `/v1/capable` (slow on cold CPU) — use Settings test
- *   or when ping fails; result is cached for five minutes.
- */
+
 export async function ensureLlmReady(deep = false): Promise<boolean> {
   await refreshRemoteReadiness();
   if (readiness.llmReady === true && !deep) {
@@ -121,7 +112,7 @@ export async function ensureLlmReady(deep = false): Promise<boolean> {
   return readiness.llmReady === true;
 }
 
-/** GET /ready on the ingest service (proxied in Vite dev) + LLM /v1/ready + /status. */
+
 export async function refreshRemoteReadiness(): Promise<void> {
   if (readiness.readinessRefreshing) return;
   readiness.readinessRefreshing = true;

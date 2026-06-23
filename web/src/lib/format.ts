@@ -1,7 +1,4 @@
-/**
- * Small presentation helpers. Kept separate from component code so
- * they stay pure and individually testable.
- */
+
 
 export function fmtInt(value: number): string {
   return new Intl.NumberFormat("en-US").format(Math.trunc(value));
@@ -23,20 +20,20 @@ export function severityPercent(score: number): number {
   return clamp(score, 0, 1) * 100;
 }
 
-/** Take the leading segment of a UUID-ish id — compact display. */
+
 export function shortId(id: string, length = 8): string {
   const head = id.split("-")[0] ?? id;
   return head.slice(0, length);
 }
 
-/** Extract `HH:MM:SS` from an ISO-8601 timestamp. */
+
 export function shortTime(timestamp: string): string {
   const afterT = timestamp.includes("T") ? timestamp.split("T")[1] : timestamp;
   const beforeDot = afterT?.split(".")[0];
   return beforeDot ?? timestamp;
 }
 
-/** Label the compute_trend string uniformly across panels. */
+
 export function trendLabel(trend: string): string {
   switch (trend) {
     case "up":
@@ -63,7 +60,7 @@ export function trendGlyph(trend: string): string {
   }
 }
 
-/** Classify a severity series the same way the Rust UI does. */
+
 export function computeTrend(series: readonly number[]): "up" | "down" | "flat" | "insufficient-data" {
   if (series.length < 3) return "insufficient-data";
   const tail = series[series.length - 1]!;

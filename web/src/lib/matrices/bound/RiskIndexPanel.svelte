@@ -1,7 +1,3 @@
-<!--
-  Bar-badge panel showing per-domain risk index for the given domain
-  set. Empty domains means "all".
--->
 <script lang="ts">
   import { dashboard } from "../../state.svelte";
   import { DOMAIN_CATALOG } from "../../colors";

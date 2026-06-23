@@ -1,8 +1,3 @@
-<!--
-  Compact data / ingest / LLM readiness for the shell — live, degraded,
-  or offline with subtle motion. Retry refreshes HTTP checks and optionally
-  reconnects SpacetimeDB when the feed is down.
--->
 <script lang="ts">
   import {
     Activity,

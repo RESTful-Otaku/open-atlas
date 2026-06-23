@@ -1,6 +1,3 @@
-/**
- * Memoize expensive ECharts option builders across dashboard revisions.
- */
 import type { EChartsOption } from "echarts";
 import { dashboardData } from "./dashboard-revision.svelte";
 import { memoByRevisions } from "./chart-cache-memo";
@@ -94,7 +91,7 @@ function trimCache<K>(cache: Map<K, unknown>, max: number): void {
   }
 }
 
-/** Cache key must include matrix scope (domains); same kind differs per board. */
+
 export function memoMatrixChart(
   cacheKey: string,
   build: () => EChartsOption,
@@ -108,7 +105,7 @@ export function memoMatrixChart(
   return option;
 }
 
-/** Domain desk chart pack (primary + optional secondary/tertiary). */
+
 export function memoDomainDeskPack<T>(cacheKey: string, build: () => T): T {
   const revision = dashboardData.revision;
   const domainRev = dashboardData.domainsRevision;

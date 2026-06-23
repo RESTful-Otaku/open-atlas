@@ -1,4 +1,3 @@
-/** Chart refresh cadence presets (plain TS — safe for tests). */
 export const UPDATE_INTERVAL_OPTIONS = [
   { id: "1s", label: "Every second", ms: 1_000 },
   { id: "5s", label: "Every 5 seconds", ms: 5_000 },

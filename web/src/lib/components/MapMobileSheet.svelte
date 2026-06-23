@@ -1,6 +1,3 @@
-<!--
-  Map layers flyout inside .map-wrap: backdrop covers map only; panel slides in from the right rail.
--->
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
   import { X } from "@lucide/svelte";

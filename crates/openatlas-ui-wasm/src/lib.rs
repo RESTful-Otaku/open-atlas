@@ -1,16 +1,4 @@
-//! WASM entry point for the OpenAtlas live dashboard.
-//!
-//! Module layout:
-//! * [`model`] — DTOs matching the ingest `StreamEnvelope`.
-//! * [`state`] — bounded, deterministic UI state + mutations.
-//! * [`layout`] — static HTML shell, colours, map projection, sparklines.
-//! * [`render`] — per-panel DOM renderers + `PanelDescriptor` plug-in
-//!   surface.
-//! * [`stream`] — WebSocket lifecycle + connection-status plumbing.
-//! * [`status`] — tiny helper that owns the top-bar status pill.
-//!
-//! This file wires those modules together and owns the only
-//! user-interaction hook on the dashboard (the domain filter).
+//! WASM entry point wiring modules together: filter, stream, render.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -38,11 +26,6 @@ pub fn start() -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Binds click handlers to every `.segmented-btn` in the filter group.
-/// A single delegated listener on the group would be more compact, but
-/// binding per-button keeps the closure capture shape identical to the
-/// previous `<select>` implementation and avoids DOM-attribute sniffing
-/// on every click.
 fn hook_filter(document: &Document, state: Rc<RefCell<UiState>>) -> Result<(), JsValue> {
     let group = document
         .get_element_by_id("domain-filter-group")
@@ -87,8 +70,6 @@ fn bind_filter_button(
     Ok(())
 }
 
-/// Flips the `.is-active` / `aria-checked` state across the segmented
-/// group so exactly one option is selected at all times.
 fn mark_active(group: &Element, active: &HtmlElement) {
     let Some(document) = active.owner_document() else {
         return;
@@ -133,7 +114,6 @@ mod tests {
 
     #[test]
     fn module_reexports_compile() {
-        // Verify the module tree is sound by referencing each submodule name
         let _ = (crate::layout::DOMAIN_CATALOG, crate::render::REGISTRY);
     }
 }

@@ -1,9 +1,3 @@
-/**
- * Hydrate the reactive dashboard from the SpacetimeDB client table cache.
- *
- * Only projects the newest N rows (see `data-limits.ts`) so initial connect
- * does not JSON.parse thousands of payloads.
- */
 import type { DbConnection } from "./stdb";
 import type { Event, Signal, CausalEdge, EventNarrative } from "./stdb/types";
 import { bumpDashboardRevision, bumpDomainsRevision } from "./dashboard-revision.svelte";
@@ -66,7 +60,7 @@ function topNarratives(rows: Iterable<EventNarrative>, limit: number): EventNarr
   return buf.slice(0, limit);
 }
 
-/** Replace dashboard lists from the SDK cache (post-subscription). */
+
 export function hydrateDashboardFromConnection(connection: DbConnection): void {
   const db = connection.db;
 
@@ -109,7 +103,7 @@ export function hydrateDashboardFromConnection(connection: DbConnection): void {
   }
 }
 
-/** Merge only narrative rows from cache (lazy subscription). */
+
 export function hydrateNarrativesFromConnection(connection: DbConnection): void {
   beginDashboardBatch();
   for (const row of topNarratives(

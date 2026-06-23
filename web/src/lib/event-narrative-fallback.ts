@@ -1,12 +1,4 @@
-/**
- * Client-side narrative synthesis when `event_narrative` is missing.
- *
- * The SpacetimeDB module writes narratives for events at/above
- * `NARRATIVE_SEVERITY_THRESHOLD` (0.5). Older DB rows, sub-threshold
- * events before republish, or a narrative subscription race can leave
- * the dashboard without a row — this mirrors the server builder so the
- * Event Detail and map hover surfaces stay populated from live telemetry.
- */
+
 
 import { domainLabel } from "./colors";
 import type {
@@ -16,7 +8,7 @@ import type {
   UiPredictedDisruption,
 } from "./types";
 
-/** Match `openatlas-stdb-module` `NARRATIVE_SEVERITY_THRESHOLD`. */
+
 export const CLIENT_NARRATIVE_SEVERITY_THRESHOLD = 0.5;
 
 function severityPosture(score: number): string {
@@ -105,9 +97,7 @@ function buildDisruptions(
   }));
 }
 
-/**
- * Deterministic narrative from event + optional domain insight (no LLM).
- */
+
 export function synthesizeEventNarrative(
   event: UiEvent,
   insight: UiDomainInsight | null | undefined,
@@ -132,7 +122,7 @@ export function synthesizeEventNarrative(
   };
 }
 
-/** Prefer SpacetimeDB row; synthesize from telemetry when missing. */
+
 export function resolveEventNarrative(
   event: UiEvent | null,
   stored: Readonly<Record<string, UiEventNarrative>>,

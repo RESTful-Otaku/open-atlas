@@ -1,8 +1,4 @@
-//! Operator-managed API keys for feed adapters (persisted on disk for dev).
-//!
-//! Feed keys live in `.dev/feed-secrets.json` by default (gitignored). General
-//! config uses `.env` and `.dev/local.env` via `local_env`. See `docs/CONFIG.md`.
-//! Keys from the secrets file override dotenv files when ingest starts.
+//! Feed API keys persisted in `.dev/feed-secrets.json` (gitignored).
 
 use std::{collections::HashMap, fs, path::PathBuf};
 
@@ -56,7 +52,6 @@ pub fn save_secrets_file(file: &FeedSecretsFile) -> Result<()> {
     Ok(())
 }
 
-/// Apply stored secrets to the process environment (does not remove unset keys).
 pub fn apply_secrets_to_env(file: &FeedSecretsFile) {
     for (key, value) in &file.secrets {
         if value.is_empty() {
@@ -72,7 +67,6 @@ pub fn env_key_present(key: &str) -> bool {
         .is_some_and(|value| secret_value_valid(key, value.trim()).is_ok())
 }
 
-/// Validate a feed API key before persisting or treating a feed as enabled.
 pub fn secret_value_valid(key: &str, value: &str) -> Result<()> {
     if value.is_empty() {
         anyhow::bail!("{key} must not be empty");
@@ -112,7 +106,6 @@ fn validate_opensky_client_secret(value: &str) -> Result<()> {
     Ok(())
 }
 
-/// True when both OpenSky OAuth env vars are set (Settings / feed-secrets.json).
 pub fn opensky_oauth_configured() -> bool {
     env_key_present(opensky_auth::ENV_CLIENT_ID) && env_key_present(opensky_auth::ENV_CLIENT_SECRET)
 }

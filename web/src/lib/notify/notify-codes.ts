@@ -1,4 +1,4 @@
-/** Stable codes for toasts, logs, and support — keep short and SCREAMING_SNAKE. */
+
 export const NOTIFY_CODES = {
   STDB_LIVE: "STDB_LIVE",
   STDB_OFFLINE: "STDB_OFFLINE",

@@ -1,4 +1,4 @@
-/** Horizontal swipe-to-back for mobile settings drill-down. */
+
 
 const SWIPE_BACK_MIN_PX = 56;
 const SWIPE_MAX_ANGLE_RATIO = 1.4;

@@ -1,7 +1,3 @@
-<!--
-  Mounts children only while this block intersects the viewport; unmounts after
-  a short delay off-screen so quick scroll does not thrash WebGL/ECharts.
--->
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { onMount } from "svelte";
@@ -11,7 +7,6 @@
     minHeight?: string;
     class?: string;
     rootMargin?: string;
-    /** Ms off-screen before tearing down children. */
     unmountDelayMs?: number;
   }
 

@@ -1,4 +1,3 @@
-/** MapLibre source / layer ids (z-order: first listed ≈ below). */
 
 export const SRC_EVENTS = "openatlas-events";
 export const SRC_CAUSAL = "openatlas-causal";
@@ -6,13 +5,11 @@ export const SRC_SOLAR = "openatlas-solar";
 export const SRC_NIGHT = "openatlas-night";
 export const SRC_ADMIN = "openatlas-admin";
 export const SRC_DEMO = "openatlas-demo-layers";
-/** Open-Meteo climate samples in the sim window (temperature field on 2D map). */
 export const SRC_CLIMATE_WEATHER = "openatlas-climate-weather";
-/** Public NORAD TLE, OpenSky ADS-B, sample maritime (see `/public/tracking/`). */
 export const SRC_TRACKING = "openatlas-public-tracking";
 export const SRC_TRACKING_PATHS = "openatlas-public-tracking-paths";
 
-/** @deprecated use {@link layerHeatId} */
+/** @deprecated */
 export const LAYER_HEAT = "openatlas-heat";
 export const layerHeatId = (domainId: string): string =>
   `openatlas-heat-${domainId}`;

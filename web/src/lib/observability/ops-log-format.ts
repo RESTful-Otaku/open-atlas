@@ -1,6 +1,4 @@
-/**
- * Format detailed operator log lines for the Settings ops console.
- */
+
 
 import { ingestUrl, shouldProbeIngest } from "../native-config";
 import { summarizeFeeds } from "../feed-health-summary";

@@ -1,7 +1,3 @@
-/**
- * Drives globe.gl (Three.js) layers from the same event/causal/solar
- * selection rules as the MapLibre map.
- */
 import { DOMAIN_CATALOG, domainColor } from "../colors";
 import type { GeoEventIndex } from "../geo-event-index-build";
 import type { UiCausalEdge, UiEvent } from "../types";
@@ -11,16 +7,10 @@ import { buildSunPointFeature, buildTerminatorLine, subsolarPoint } from "./sola
 import { arcAltitudeForGlobe } from "./tracking-paths";
 import { approximateMoonPoint } from "./globe-day-night";
 
-/**
- * t ∈ [0, 1] is normalized density from the globe.gl heatmap shader.
- * The mesh covers the whole sphere; we must allow **alpha → 0** at low t, otherwise
- * the min-opacity floor tints the entire globe (there is no “no mesh” per vertex).
- */
 function heatColorForDomain(baseHex: string, t: number): string {
   if (!Number.isFinite(t) || t <= 0) {
     return "rgba(0,0,0,0)";
   }
-  // Aligned with three-globe’s default heatmap: opacity scales ~∛t, not a floor near 0.2
   const a = Math.min(0.9, Math.cbrt(t) * 0.88);
   if (a < 0.02) {
     return "rgba(0,0,0,0)";
@@ -69,12 +59,9 @@ export type GlobeEventPoint = {
   r: number;
   id: string;
   domain: string;
-  /** "sun" | "moon" for solar markers. */
   kind?: "event" | "sun" | "moon" | "tracking";
-  /** Public tracking layers (NORAD / ADS-B / sample AIS). */
   trackLabel?: string;
   trackClass?: string;
-  /** Exaggerated altitude in globe units (see globe.gl `pointAltitude`). */
   altitude?: number;
 };
 
@@ -111,7 +98,6 @@ export type GlobeArc = {
   color: string;
   w: number;
   id: string;
-  /** Peak altitude in globe-radius units (above surface). */
   altitude: number;
 };
 
@@ -158,16 +144,11 @@ export function buildGlobeArcs(
         b.location.lon,
       ),
     });
-    // reserve c2 for future gradient; arcColor can use [c1, c2]
     void c2;
   }
   return arcs;
 }
 
-/**
- * Great-circle terminator as path lines for globe.gl
- * (arrays of [lat, lng, alt] with alt 0).
- */
 export function buildTerminatorPath(simUtcMs: number): [number, number, number][] {
   const when = new Date(simUtcMs);
   const sub = subsolarPoint(when);

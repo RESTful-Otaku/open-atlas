@@ -1,5 +1,4 @@
-//! NASA EONET — open natural disaster events (volcanoes, wildfires, storms,
-//! floods, etc.). Public API, no auth.
+
 
 use std::time::Duration;
 

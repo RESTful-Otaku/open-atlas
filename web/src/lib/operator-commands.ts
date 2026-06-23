@@ -1,8 +1,4 @@
-/**
- * Local operator bar grammar — navigation and domain scoping in the
- * client. Intentionally does not claim server-side effects (isolation,
- * reroute) that do not exist yet; those are rejected with a clear line.
- */
+
 
 import { DOMAIN_CATALOG } from "./colors";
 import { navigate } from "./router.svelte";
@@ -26,9 +22,7 @@ export type OperatorResult =
   | { kind: "ok"; message: string }
   | { kind: "err"; message: string };
 
-/**
- * Run a line from the operator bar. Return human-readable result.
- */
+
 export function runOperatorLine(line: string): OperatorResult {
   const nl = parseNlFilterIntent(line);
   if (nl) {

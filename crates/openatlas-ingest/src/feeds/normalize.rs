@@ -1,8 +1,4 @@
-//! Normalise provider-specific rows into canonical [`WorldEvent`] values.
-//!
-//! Every feed should build an [`ObservationDraft`] (or call the helpers
-//! here) so severity, coordinates, timestamps, and payload shape are
-//! consistent before SpacetimeDB ingestion.
+//! Normalise provider rows into canonical WorldEvent values.
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
@@ -15,7 +11,6 @@ use crate::{
     validate::{clamp_severity, validate_event, validate_location},
 };
 
-/// Provider-agnostic observation before id + payload envelope are applied.
 #[derive(Debug, Clone)]
 pub struct ObservationDraft {
     pub external_key: String,
@@ -23,7 +18,6 @@ pub struct ObservationDraft {
     pub domain: Domain,
     pub severity: f64,
     pub location: Option<Location>,
-    /// Provider-specific fields merged into the canonical payload.
     pub fields: Map<String, Value>,
 }
 
@@ -75,7 +69,6 @@ impl ObservationDraft {
     }
 }
 
-/// Build many events; invalid drafts are logged and skipped.
 pub fn drafts_to_events(
     source: &str,
     source_url: &str,
@@ -93,7 +86,6 @@ pub fn drafts_to_events(
     events
 }
 
-/// Legacy verbose envelope (tests / fixtures). Production feeds use [`compact_canonical_payload`].
 pub fn canonical_payload(
     source: &str,
     source_url: &str,
@@ -165,12 +157,10 @@ pub fn parse_eia_period(s: &str) -> Option<DateTime<Utc>> {
     None
 }
 
-/// Daily bucket key for slow-moving macro series (stable id per calendar day).
 pub fn daily_external_key(prefix: &str, day: DateTime<Utc>) -> String {
     format!("{prefix}-{}", day.format("%Y-%m-%d"))
 }
 
-/// Run core [`WorldGraph`] validation in tests without STDB.
 pub fn assert_graph_accepts(event: WorldEvent) -> Result<()> {
     use openatlas_core::WorldGraph;
     validate_event(&event)?;

@@ -1,6 +1,3 @@
-<!--
-  Settings section body (mobile drill-down detail pane). Parent track handles slide motion.
--->
 <script lang="ts">
   import { ArrowLeft } from "@lucide/svelte";
   import type { Component } from "svelte";

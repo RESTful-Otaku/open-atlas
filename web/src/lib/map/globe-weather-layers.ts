@@ -1,7 +1,6 @@
 import type { ClimateWeatherPoint } from "./map-sim-time";
 import type { GlobeHeatmapDatum } from "./three-globe-data";
 
-/** Temperature field heatmap (°C) for globe.gl when weather overlays are on. */
 export function buildTemperatureHeatmap(
   points: readonly ClimateWeatherPoint[],
 ): GlobeHeatmapDatum | null {

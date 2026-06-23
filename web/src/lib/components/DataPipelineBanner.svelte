@@ -1,7 +1,3 @@
-<!--
-  Shown on the hub when SpacetimeDB is connected but the event buffer is still
-  empty — guides operators to start ingest or switch modes.
--->
 <script lang="ts">
   import { dashboard } from "../state.svelte";
   import { readiness } from "../readiness.svelte";

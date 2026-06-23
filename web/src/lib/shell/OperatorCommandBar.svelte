@@ -1,8 +1,3 @@
-<!--
-  Operator command bar on matrix pages. Client-side navigation and domain
-  scoping (see `operator-commands.ts`); type `help` for the list. Server
-  verbs (isolate / reroute) stay fail-closed until a backend path exists.
--->
 <script lang="ts">
   import { List, Settings as SettingsIcon } from "@lucide/svelte";
   import { navigate } from "../router.svelte";

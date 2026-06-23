@@ -1,13 +1,9 @@
-//! WebSocket wiring. Isolated from the rest of the UI so the message
-//! pipeline (decode → apply → render) is the only thing this module
-//! knows about. The one DOM touch-point beyond the registry-driven
-//! renderers is the connection-status pill in the top-bar, delegated
-//! to [`crate::status`].
+//! WebSocket wiring — decode → apply → render pipeline, plus reconnect logic.
 
 use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use wasm_bindgen::{closure::Closure, prelude::*, JsCast};
-use web_sys::{Document, MessageEvent, WebSocket, Window};
+use web_sys::{Document, MessageEvent, WebSocket, Window, document};
 
 use crate::{
     model::StreamEnvelope,
@@ -137,8 +133,6 @@ fn schedule_reconnect(
     cb.forget();
 }
 
-/// Build the `/stream` URL, upgrading to `wss` when the page itself is
-/// served over HTTPS. Falls back to `ws` otherwise.
 fn stream_url(window: &Window) -> Result<String, JsValue> {
     let location = window.location();
     let host = location.host()?;
@@ -149,10 +143,6 @@ fn stream_url(window: &Window) -> Result<String, JsValue> {
 
 #[cfg(test)]
 mod tests {
-    // stream_url requires a web_sys::Window which is not available on
-    // native. We test URL construction logic independently to validate
-    // the scheme-selection behaviour.
-
     fn build_url(protocol: &str, host: &str) -> String {
         let scheme = if protocol == "https:" { "wss" } else { "ws" };
         format!("{scheme}://{host}/stream")

@@ -1,23 +1,5 @@
-//! Thin SpacetimeDB SQL client.
-//!
-//! The CLI talks to SpacetimeDB through its HTTP SQL endpoint
-//! (`POST /v1/database/<name>/sql`). This is deliberately simpler than
-//! using the full Rust SDK: the CLI is a polling tool, not a live
-//! client, so we want the cheapest dependency footprint we can get.
-//!
-//! # Wire shape
-//!
-//! Requests send a raw SQL query string in the body. The server
-//! responds with a JSON array of statement results — one per `;`
-//! delimited statement. Each result is:
-//!
-//! ```json
-//! { "schema": <ProductType>, "rows": [[...], [...], ...] }
-//! ```
-//!
-//! Rows are tuples indexed positionally; we decode them into the
-//! strongly-typed structs below so the command handlers stay
-//! presentation-only.
+//! SpacetimeDB HTTP SQL client. Sends SQL via POST /v1/database/{name}/sql
+//! and decodes the JSON response into typed structs.
 
 use std::collections::HashMap;
 
@@ -26,10 +8,7 @@ use reqwest::{Client, Url};
 use serde::Deserialize;
 use serde_json::Value;
 
-/// Canonical mapping from SpacetimeDB u8 tags to the domain ids used
-/// elsewhere. Kept in lockstep with
-/// `openatlas-ingest/src/stdb.rs::domain_to_u8` and
-/// `web/src/lib/domain.ts`.
+/// Maps SpacetimeDB u8 tags to domain ids. Must stay in sync with openatlas-ingest and web.
 const DOMAIN_BY_TAG: &[&str] = &[
     "energy",
     "finance",
@@ -61,7 +40,7 @@ pub(crate) fn tag_for_domain(id: &str) -> Option<u8> {
         .map(|idx| idx as u8)
 }
 
-/// A single observation row projected from SpacetimeDB's `event` table.
+/// Row from SpacetimeDB's `event` table.
 #[derive(Debug, Clone)]
 pub(crate) struct EventRow {
     pub(crate) id: u64,
@@ -71,8 +50,7 @@ pub(crate) struct EventRow {
     pub(crate) ordinal: u64,
 }
 
-/// Per-domain aggregate row projected from SpacetimeDB's `world_state`
-/// table.
+/// Row from SpacetimeDB's `world_state` table.
 #[derive(Debug, Clone)]
 pub(crate) struct WorldStateRow {
     pub(crate) domain_tag: u8,
@@ -82,7 +60,7 @@ pub(crate) struct WorldStateRow {
     pub(crate) last_updated_micros: i64,
 }
 
-/// Anomaly signal row projected from SpacetimeDB's `signal` table.
+/// Row from SpacetimeDB's `signal` table.
 #[derive(Debug, Clone)]
 pub(crate) struct SignalRow {
     pub(crate) event_id: u64,
@@ -91,7 +69,7 @@ pub(crate) struct SignalRow {
     pub(crate) reason: String,
 }
 
-/// Causal edge row projected from SpacetimeDB's `causal_edge` table.
+/// Row from SpacetimeDB's `causal_edge` table.
 #[derive(Debug, Clone)]
 pub(crate) struct CausalEdgeRow {
     pub(crate) source_event_id: u64,
@@ -107,10 +85,7 @@ pub(crate) async fn fetch_events(
     domain: Option<&str>,
     limit: usize,
 ) -> Result<Vec<EventRow>> {
-    // SpacetimeDB 2.1 SQL does not yet support ORDER BY or aggregates,
-    // so we fetch the (bounded) table and sort newest-first client-side.
-    // The module prunes the `event` table to `EVENT_RING_SIZE`, so this
-    // is still an O(ring size) pull on the wire.
+    // SpacetimeDB SQL lacks ORDER BY — fetch ring, sort client-side.
     let mut sql = String::from("SELECT id, timestamp, domain, severity_score, ordinal FROM event");
     if let Some(domain) = domain {
         let tag = tag_for_domain(domain).ok_or_else(|| anyhow!("unknown domain id: {domain}"))?;
@@ -167,8 +142,7 @@ pub(crate) async fn fetch_signals(
     domain: Option<&str>,
     limit: usize,
 ) -> Result<Vec<SignalRow>> {
-    // See note in `fetch_events`: SpacetimeDB SQL lacks ORDER BY, so
-    // sort newest-first (by event id) after pulling the full ring.
+    // SpacetimeDB SQL lacks ORDER BY — sort client-side.
     let mut sql = String::from("SELECT event_id, domain, score, reason FROM signal");
     if let Some(domain) = domain {
         let tag = tag_for_domain(domain).ok_or_else(|| anyhow!("unknown domain id: {domain}"))?;
@@ -191,10 +165,7 @@ pub(crate) async fn fetch_causal_edges(
     event_id: u64,
     limit: usize,
 ) -> Result<Vec<CausalEdgeRow>> {
-    // Edges use a dedicated monotonic `id` column; we'd sort by that,
-    // but since SpacetimeDB SQL lacks ORDER BY we pull the (bounded)
-    // matching rows and limit client-side. Matches for a single event
-    // are already small in practice.
+    // SpacetimeDB SQL lacks ORDER BY — pull bounded rows, limit client-side.
     let sql = format!(
         "SELECT source_event_id, target_event_id, influence_score, decay_rate FROM causal_edge \
          WHERE source_event_id = {event_id} OR target_event_id = {event_id}"
@@ -207,10 +178,6 @@ pub(crate) async fn fetch_causal_edges(
     decoded.truncate(limit);
     Ok(decoded)
 }
-
-// ---------------------------------------------------------------------------
-// Wire plumbing
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 struct SqlStatementResult {
@@ -251,10 +218,6 @@ fn single_statement(results: Vec<SqlStatementResult>) -> Result<Vec<Value>> {
         .ok_or_else(|| anyhow!("SpacetimeDB returned no statement results"))?;
     Ok(first.rows)
 }
-
-// ---------------------------------------------------------------------------
-// Row decoders
-// ---------------------------------------------------------------------------
 
 fn decode_event_row(row: Value) -> Result<EventRow> {
     let arr = row
@@ -340,16 +303,7 @@ fn as_string(value: Option<&Value>) -> Result<String> {
     }
 }
 
-/// SATS encodes Timestamp values in one of three shapes depending on
-/// the server version and SQL output mode:
-///
-/// * `{"__timestamp_micros_since_unix_epoch__": N}` — tagged object
-///   (older clients/docs).
-/// * `[N]` — single-element array wrapper (SpacetimeDB 2.1 SQL shape
-///   for the newtype `Timestamp(i64)`).
-/// * `N` — raw integer in the most compact projections.
-///
-/// Handle all three so the CLI keeps working across minor releases.
+/// Handles three SATS Timestamp shapes: tagged object, array wrapper, or raw integer.
 fn as_timestamp_micros(value: Option<&Value>) -> Result<i64> {
     match value {
         Some(Value::Object(map)) => timestamp_from_map(map),

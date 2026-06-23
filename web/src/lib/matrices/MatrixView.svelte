@@ -1,9 +1,3 @@
-<!--
-  Generic matrix page renderer. Consumes one `MatrixCatalogEntry` and
-  draws the page header, tab strip, panel grid, and pinned AI synthesis
-  card. Layout responsibilities live here so individual matrices stay
-  focused on their data projections.
--->
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { flip } from "svelte/animate";

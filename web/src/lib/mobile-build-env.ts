@@ -1,7 +1,4 @@
-/**
- * Vite build-time URLs baked into Capacitor APKs (`web/.env.capacitor.local`).
- * Runtime Settings may override these when `mobileRuntimeConfigEnabled()`.
- */
+
 
 function trimUrl(raw: string | undefined): string {
   return raw?.trim().replace(/\/$/, "") ?? "";

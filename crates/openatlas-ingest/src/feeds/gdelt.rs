@@ -1,4 +1,4 @@
-//! GDELT 2.0 DOC API — global conflict/protest/disaster news firehose.
+
 
 use std::time::Duration;
 

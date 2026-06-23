@@ -1,7 +1,3 @@
-//! Non-interactive subcommands: `view events`, `state`, `anomalies`,
-//! `trace`. All of them query SpacetimeDB via
-//! `openatlas_cli::http::*` and render presentation-only output to
-//! stdout.
 
 use std::time::Duration;
 
@@ -11,10 +7,7 @@ use reqwest::{Client, Url};
 
 use crate::http::{self, domain_label, CausalEdgeRow, EventRow, SignalRow, WorldStateRow};
 
-/// Streams (polls) the latest events from SpacetimeDB. `watch` keeps
-/// the loop running forever with a short sleep between fetches — a
-/// deliberately simple "poll instead of subscribe" design so the CLI
-/// stays a single sync tool rather than a long-lived SDK client.
+/// Poll events from SpacetimeDB; with `watch`, loops with a sleep between fetches.
 pub(crate) async fn view_events(
     client: &Client,
     base_url: &Url,
@@ -156,9 +149,7 @@ fn print_causal_edge(anchor: u64, edge: &CausalEdgeRow) {
     );
 }
 
-/// Render a SpacetimeDB microsecond timestamp as RFC 3339. Any value
-/// outside the DateTime range falls back to the raw integer so we
-/// never panic in the output pipeline.
+/// Render a microsecond timestamp as RFC 3339; falls back to raw integer on overflow.
 fn format_micros(micros: i64) -> String {
     match DateTime::<Utc>::from_timestamp_micros(micros) {
         Some(ts) => ts.to_rfc3339(),

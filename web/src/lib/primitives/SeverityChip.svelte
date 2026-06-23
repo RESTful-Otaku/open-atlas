@@ -1,7 +1,3 @@
-<!--
-  Compact severity/status chip. Colour and label map from a closed
-  `SeverityLevel` enum so typos fail at compile time.
--->
 <script lang="ts">
   import type { SeverityLevel } from "./status";
 

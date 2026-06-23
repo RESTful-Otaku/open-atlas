@@ -1,4 +1,4 @@
-//! Feed catalog, API key configuration, test, and reconnect endpoints.
+
 
 use std::collections::HashMap;
 

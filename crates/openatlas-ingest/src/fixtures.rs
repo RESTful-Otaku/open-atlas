@@ -1,6 +1,4 @@
-//! Deterministic static event burst for CI, demos without simulators, and
-//! regression tests. Events are pushed once at startup; ids are stable so
-//! re-running ingest is idempotent (duplicates are ignored by the module).
+//! Deterministic static event burst for CI, demos, and regression tests.
 
 use crate::{feeds::deterministic_event_id, pipeline::push_events_via_state, state::AppState};
 use chrono::{TimeZone, Utc};
@@ -11,7 +9,6 @@ use tracing::{info, warn};
 const SOURCE: &str = "static-fixtures";
 const SOURCE_URL: &str = "internal://fixtures";
 
-/// Push the compiled fixture set into SpacetimeDB (best-effort per row).
 pub async fn push_static_fixtures(state: &AppState) {
     let events = static_events();
     let total = events.len();

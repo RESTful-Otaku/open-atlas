@@ -1,9 +1,4 @@
-//! Ingest HTTP admin authentication and bind policy.
-//!
-//! Fail-closed rules for mutating `/feeds` routes:
-//! - Non-loopback bind **requires** `OPENATLAS_API_KEY` and a matching `x-openatlas-key` header.
-//! - Loopback bind allows unauthenticated mutations only when no API key is configured (local dev).
-//! - When `OPENATLAS_API_KEY` is set, mutations always require the header (even on loopback).
+//! Admin auth for mutating /feeds routes: fail-closed for non-loopback binds.
 
 use std::net::SocketAddr;
 
@@ -14,7 +9,6 @@ use axum::{
 };
 use serde::Serialize;
 
-/// Header name operators send from Settings / curl.
 pub const ADMIN_KEY_HEADER: &str = "x-openatlas-key";
 
 const DEFAULT_BIND: &str = "127.0.0.1:8080";
@@ -24,7 +18,6 @@ pub struct ErrorBody {
     pub error: String,
 }
 
-/// Resolve listen address: `OPENATLAS_BIND` or [`DEFAULT_BIND`].
 pub fn resolve_bind_addr() -> Result<SocketAddr, std::net::AddrParseError> {
     let raw = std::env::var("OPENATLAS_BIND").unwrap_or_else(|_| DEFAULT_BIND.to_owned());
     raw.parse()
@@ -44,12 +37,10 @@ fn configured_admin_key() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// Whether mutating admin routes must present a valid API key.
 pub fn mutations_require_auth(bind: &SocketAddr) -> bool {
     !is_loopback(bind) || configured_admin_key().is_some()
 }
 
-/// Verify admin key for `PUT /feeds` and related routes.
 #[allow(clippy::result_large_err)]
 pub fn check_admin_auth(headers: &HeaderMap, bind: &SocketAddr) -> Result<(), Response> {
     if !mutations_require_auth(bind) {

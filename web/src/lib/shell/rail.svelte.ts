@@ -1,7 +1,4 @@
-/**
- * Left-rail width: collapsed (icons) vs expanded (labels + blurb). Persisted
- * so the choice survives reloads.
- */
+
 const KEY = "openatlas-rail-expanded";
 const DOMAINS_KEY = "openatlas-rail-domains-open";
 
@@ -19,7 +16,7 @@ export const leftRail = $state({
   expanded: readStorage(),
 });
 
-/** Collapsible "Domains" group in the left rail (reduces 13-item noise). */
+
 export const domainsRail = $state({
   expanded: readDomainsStorage(),
 });
@@ -34,7 +31,6 @@ export function setLeftRailExpanded(next: boolean): void {
   try {
     localStorage.setItem(KEY, next ? "1" : "0");
   } catch {
-    /* private / quota */
   }
 }
 
@@ -48,6 +44,5 @@ export function setDomainsRailExpanded(next: boolean): void {
   try {
     localStorage.setItem(DOMAINS_KEY, next ? "1" : "0");
   } catch {
-    /* private / quota */
   }
 }

@@ -1,6 +1,3 @@
-<!--
-  Tiny up/down/flat trend indicator with optional numeric delta.
--->
 <script lang="ts">
   import { ArrowDownRight, ArrowRight, ArrowUpRight } from "@lucide/svelte";
 

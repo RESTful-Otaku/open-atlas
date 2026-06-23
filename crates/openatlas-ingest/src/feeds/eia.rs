@@ -1,4 +1,4 @@
-//! U.S. Energy Information Administration — hourly lower-48 electricity demand.
+
 
 use std::time::Duration;
 

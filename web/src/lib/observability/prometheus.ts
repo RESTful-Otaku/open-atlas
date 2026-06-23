@@ -1,7 +1,4 @@
-/**
- * Minimal Prometheus text parser for ingest `GET /metrics`.
- * Handles `# TYPE name counter` + `name value` lines only.
- */
+
 
 export const INGEST_METRIC_NAMES = [
   "openatlas_ingest_events_fetched_total",
@@ -15,7 +12,7 @@ export const INGEST_METRIC_NAMES = [
 
 export type IngestMetricName = (typeof INGEST_METRIC_NAMES)[number];
 
-/** Map `/status` `ingest_metrics` JSON to Prometheus counter names. */
+
 export function ingestMetricsSnapshotToCounters(snapshot: {
   events_fetched: number;
   events_accepted: number;
@@ -36,7 +33,7 @@ export function ingestMetricsSnapshotToCounters(snapshot: {
   };
 }
 
-/** Parse counter samples from Prometheus exposition text. */
+
 export function parsePrometheusCounters(text: string): Partial<Record<IngestMetricName, number>> {
   const out: Partial<Record<IngestMetricName, number>> = {};
   for (const line of text.split("\n")) {

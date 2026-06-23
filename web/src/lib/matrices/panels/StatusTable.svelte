@@ -1,8 +1,3 @@
-<!--
-  Dense, tabular panel with per-row status dots. Used by Live Threat
-  Telemetry, Active Constellations, Strategic Commodities lists, and
-  similar "row + status" displays.
--->
 <script lang="ts">
   import { StatusDot } from "../../primitives";
   import type { StatusTableRow } from "./types";

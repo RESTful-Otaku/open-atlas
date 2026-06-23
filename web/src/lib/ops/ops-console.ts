@@ -1,8 +1,3 @@
-/**
- * Public facade for Settings live diagnostics (ops console).
- * Implementation lives under `lib/observability/`.
- */
-
 export type { LogLevel, LogLine } from "../observability/log-stream";
 export {
   appendOpsLog,
@@ -40,7 +35,6 @@ import { ingestUrl, llmBaseUrl, shouldProbeIngest } from "../native-config";
 import { checkLlmBridgePing } from "../llm";
 import { probeFetch } from "../probe-fetch";
 
-/** `GET /health` — ingest process liveness (body `ok`). */
 export async function fetchIngestHealth(): Promise<{
   ok: boolean;
   err: string | null;
@@ -61,7 +55,6 @@ export async function fetchIngestHealth(): Promise<{
   }
 }
 
-/** LLM bridge reachability (`GET …/v1/ready`). */
 export async function fetchLlmHealth(): Promise<{
   ready: boolean;
   configured: boolean;
@@ -90,7 +83,6 @@ export async function fetchLlmHealth(): Promise<{
   }
 }
 
-/** Human labels for Prometheus counter names. */
 export const METRIC_LABELS: Record<string, string> = {
   openatlas_ingest_events_fetched_total: "Events fetched",
   openatlas_ingest_events_accepted_total: "Events accepted",

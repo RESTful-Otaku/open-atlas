@@ -33,13 +33,9 @@ import {
   type SubscriptionHandleImpl as __SubscriptionHandleImpl,
 } from "spacetimedb";
 
-// Import all reducer arg schemas
 import IngestEventReducer from "./ingest_event_reducer";
 import LinkCausalEventsReducer from "./link_causal_events_reducer";
 
-// Import all procedure arg schemas
-
-// Import all table schema definitions
 import CausalEdgeRow from "./causal_edge_table";
 import DomainInsightRow from "./domain_insight_table";
 import EventRow from "./event_table";
@@ -47,9 +43,9 @@ import EventNarrativeRow from "./event_narrative_table";
 import SignalRow from "./signal_table";
 import WorldStateRow from "./world_state_table";
 
-/** Type-only namespace exports for generated type groups. */
 
-/** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
+
+
 const tablesSchema = __schema({
   causal_edge: __table({
     name: 'causal_edge',
@@ -119,17 +115,17 @@ const tablesSchema = __schema({
   }, WorldStateRow),
 });
 
-/** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
+
 const reducersSchema = __reducers(
   __reducerSchema("ingest_event", IngestEventReducer),
   __reducerSchema("link_causal_events", LinkCausalEventsReducer),
 );
 
-/** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
+
 const proceduresSchema = __procedures(
 );
 
-/** The remote SpacetimeDB module schema, both runtime and type information. */
+
 const REMOTE_MODULE = {
   versionInfo: {
     cliVersion: "2.1.0" as const,
@@ -143,37 +139,37 @@ const REMOTE_MODULE = {
   typeof proceduresSchema
 >;
 
-/** The tables available in this remote SpacetimeDB module. Each table reference doubles as a query builder. */
+
 export const tables: __QueryBuilder<typeof tablesSchema.schemaType> = __makeQueryBuilder(tablesSchema.schemaType);
 
-/** The reducers available in this remote SpacetimeDB module. */
+
 export const reducers = __convertToAccessorMap(reducersSchema.reducersType.reducers);
 
-/** The context type returned in callbacks for all possible events. */
+
 export type EventContext = __EventContextInterface<typeof REMOTE_MODULE>;
-/** The context type returned in callbacks for reducer events. */
+
 export type ReducerEventContext = __ReducerEventContextInterface<typeof REMOTE_MODULE>;
-/** The context type returned in callbacks for subscription events. */
+
 export type SubscriptionEventContext = __SubscriptionEventContextInterface<typeof REMOTE_MODULE>;
-/** The context type returned in callbacks for error events. */
+
 export type ErrorContext = __ErrorContextInterface<typeof REMOTE_MODULE>;
-/** The subscription handle type to manage active subscriptions created from a {@link SubscriptionBuilder}. */
+
 export type SubscriptionHandle = __SubscriptionHandleImpl<typeof REMOTE_MODULE>;
 
-/** Builder class to configure a new subscription to the remote SpacetimeDB instance. */
+
 export class SubscriptionBuilder extends __SubscriptionBuilderImpl<typeof REMOTE_MODULE> {}
 
-/** Builder class to configure a new database connection to the remote SpacetimeDB instance. */
+
 export class DbConnectionBuilder extends __DbConnectionBuilder<DbConnection> {}
 
-/** The typed database connection to manage connections to the remote SpacetimeDB instance. This class has type information specific to the generated module. */
+
 export class DbConnection extends __DbConnectionImpl<typeof REMOTE_MODULE> {
-  /** Creates a new {@link DbConnectionBuilder} to configure and connect to the remote SpacetimeDB instance. */
+
   static builder = (): DbConnectionBuilder => {
     return new DbConnectionBuilder(REMOTE_MODULE, (config: __DbConnectionConfig<typeof REMOTE_MODULE>) => new DbConnection(config));
   };
 
-  /** Creates a new {@link SubscriptionBuilder} to configure a subscription to the remote SpacetimeDB instance. */
+
   override subscriptionBuilder = (): SubscriptionBuilder => {
     return new SubscriptionBuilder(this);
   };

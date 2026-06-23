@@ -1,7 +1,4 @@
-/**
- * Fills the reactive dashboard with `buildDemoSnapshot()` and sets
- * `dataMode: "demo"`. SpacetimeDB is not used in this mode.
- */
+
 
 import { bumpDashboardRevision } from "./dashboard-revision.svelte";
 import { buildDemoSnapshot } from "./demo-seed";
@@ -14,10 +11,7 @@ import {
   setSelectedDomain,
 } from "./state.svelte";
 
-/**
- * Project synthetic data into the global dashboard (same shape as STDB
- * projection). Idempotent: replaces lists and domain maps.
- */
+
 export function installDemoData(): void {
   const s = buildDemoSnapshot();
   dashboard.events = [...s.events];

@@ -1,6 +1,4 @@
-/**
- * Pure NL filter parsing (no Svelte state) — safe for unit tests.
- */
+
 
 import { DOMAIN_CATALOG } from "./colors";
 
@@ -9,7 +7,7 @@ const DOMAIN_IDS = new Set(DOMAIN_CATALOG.map((d) => d.id));
 export interface NlFilterIntent {
   readonly raw: string;
   readonly domain: string | null;
-  /** Sim / recency window hint in hours (client-only; shown in ops strip). */
+
   readonly hours: number | null;
   readonly label: string;
 }
@@ -28,9 +26,7 @@ function resolveDomainToken(token: string): string | null {
   return alias?.id ?? null;
 }
 
-/**
- * Parse a short NL filter phrase. Returns null when unrecognized.
- */
+
 export function parseNlFilterIntent(line: string): NlFilterIntent | null {
   const raw = line.trim();
   if (!raw) return null;

@@ -1,8 +1,4 @@
-/**
- * Runtime deployment overrides for Capacitor / native builds.
- * Lets one APK switch demo, Maincloud, local STDB, and optional LAN ingest/LLM
- * without rebuilding.
- */
+
 
 import { buildEnvIngestBase, buildEnvLlmBase, buildEnvStdbUri } from "./mobile-build-env";
 import {
@@ -17,7 +13,7 @@ const LS_KEY = "openatlas-mobile-runtime-v1";
 
 export const MAINCLOUD_STDB_WS = "wss://maincloud.spacetimedb.com";
 
-/** Infer deployment profile from baked capacitor env (emulator vs LAN vs cloud-only). */
+
 export function inferProfileFromBakedEnv(
   ingestBase = buildEnvIngestBase(),
   stdbUri = buildEnvStdbUri(),
@@ -37,7 +33,6 @@ export function inferProfileFromBakedEnv(
   }
 }
 export const DEFAULT_STDB_DB = "openatlas";
-/** @deprecated use EMULATOR_GATEWAY_HOST */
 export const EMULATOR_HOST = EMULATOR_GATEWAY_HOST;
 export const DEFAULT_INGEST_PORT = 8080;
 export const DEFAULT_LLM_PORT = 3847;
@@ -46,7 +41,6 @@ export const DEFAULT_STDB_PORT = 3000;
 export type DeploymentProfileId =
   | "demo"
   | "cloud_live"
-  /** @deprecated use cloud_ingest_* — still loaded from saved settings */
   | "cloud_lan_ingest"
   | "cloud_ingest_sim"
   | "cloud_ingest_live"
@@ -58,7 +52,7 @@ export type DeploymentProfileId =
   | "local_emulator"
   | "custom";
 
-/** Loopback host for web dev (Vite proxies ingest/LLM on same origin). */
+
 export const WEB_DEV_HOST = "127.0.0.1";
 
 const CLOUD_INGEST_PROFILES = new Set<DeploymentProfileId>([
@@ -80,7 +74,7 @@ export function profileUsesLanIngest(profile: DeploymentProfileId): boolean {
   return CLOUD_INGEST_PROFILES.has(profile) || LOCAL_INGEST_PROFILES.has(profile);
 }
 
-/** `./dev.sh` ingest mode the operator should run on the dev machine for this profile. */
+
 export function devIngestCommandForProfile(profile: DeploymentProfileId): string | null {
   switch (profile) {
     case "cloud_ingest_sim":
@@ -108,7 +102,7 @@ export function devIngestCommandForProfile(profile: DeploymentProfileId): string
 
 export interface MobileRuntimeConfig {
   profile: DeploymentProfileId;
-  /** Used when profile is local_lan, cloud_lan_ingest, or custom ingest. */
+
   lanHost: string;
   stdbUriCustom: string;
   ingestBaseCustom: string;
@@ -187,7 +181,7 @@ export const DEPLOYMENT_PROFILES: ReadonlyArray<{
   },
 ] as const;
 
-/** True when Settings should expose deployment profiles (web + native). */
+
 export function deploymentConfigEnabled(): boolean {
   if (import.meta.env.VITE_MOBILE_RUNTIME_CONFIG === "1") return true;
   if (isNativeApp()) return true;

@@ -1,5 +1,4 @@
-//! Errors produced by core reducers. Deliberately narrow: every variant maps
-//! to a precise, actionable failure that callers can surface unchanged.
+
 
 use thiserror::Error;
 use uuid::Uuid;

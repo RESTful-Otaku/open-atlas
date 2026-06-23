@@ -1,11 +1,3 @@
-/**
- * ECharts — modular registration for tree-shaking.
- *
- * Registers the chart and coordinate system types used across the app
- * (live panels + the `/viz` gallery). Add new series kinds here so
- * `initChart()` can render them without pulling the all-in-one bundle.
- */
-
 import * as echarts from "echarts/core";
 import {
   BarChart,

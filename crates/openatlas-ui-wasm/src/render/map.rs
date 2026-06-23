@@ -1,5 +1,4 @@
-//! Global map summary, rendered as a self-contained SVG with a soft
-//! graticule, radial backdrop, and domain-coloured event markers.
+//! SVG world map with graticule and domain-coloured event markers.
 
 use std::collections::HashMap;
 
@@ -71,9 +70,6 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
 }
 
 fn render_svg(markers: &str) -> String {
-    // Soft equirectangular graticule. Lines are deliberately subtle —
-    // the markers (and eventually the basemap) carry the signal; the
-    // grid only gives spatial reference.
     let mut graticule = String::new();
     for i in 1..6 {
         let y = MAP_HEIGHT * (i as f64) / 6.0;
@@ -98,7 +94,6 @@ fn render_svg(markers: &str) -> String {
         );
     }
 
-    // Equator / prime-meridian drawn slightly stronger as orientation cues.
     let equator_y = MAP_HEIGHT / 2.0;
     let meridian_x = MAP_WIDTH / 2.0;
 
@@ -156,10 +151,6 @@ mod tests {
     use super::{render_legend, render_svg, MAP_WIDTH, MAP_HEIGHT};
     use std::collections::HashMap;
 
-    // -----------------------------------------------------------------------
-    // render_legend
-    // -----------------------------------------------------------------------
-
     #[test]
     fn legend_empty_returns_empty_string() {
         let counts: HashMap<String, usize> = HashMap::new();
@@ -183,7 +174,6 @@ mod tests {
         counts.insert("b".to_owned(), 10usize);
         counts.insert("c".to_owned(), 1usize);
         let html = render_legend(&counts);
-        // Find the "10" count for item "b" — it appears before "a" and "c"
         let count_10 = html.find(">10<").unwrap();
         let count_5 = html.find(">5<").unwrap();
         let count_1 = html.find(">1<").unwrap();
@@ -212,20 +202,14 @@ mod tests {
         assert!(html.contains("--card-accent"));
     }
 
-    // -----------------------------------------------------------------------
-    // render_svg
-    // -----------------------------------------------------------------------
-
     #[test]
     fn svg_empty_markers_has_graticule_lines() {
         let svg = render_svg("");
         assert!(svg.starts_with("<svg"));
         assert!(svg.ends_with("</svg>"));
         assert!(svg.contains("viewBox"));
-        // Has horizontal graticule lines (x1="0") and the equator / meridian
         assert!(svg.contains("<line x1=\"0\""));
         assert!(svg.contains("x2=\""));
-        // Has the equatorial line
         assert!(svg.contains("y1=\"380\""));
     }
 

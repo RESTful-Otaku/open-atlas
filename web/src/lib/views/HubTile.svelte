@@ -1,7 +1,3 @@
-<!--
-  A single tile in the Executive Summary Hub grid. Clicking the tile
-  navigates to the domain's Matrix page (routes register in M4/M5).
--->
 <script lang="ts">
   import CompactNumber from "../components/CompactNumber.svelte";
   import { matrixIdForDomain, type HubTile } from "../hub";
@@ -16,9 +12,6 @@
   const { tile }: Props = $props();
   const Icon = $derived(domainIcon(tile.id));
 
-  // Use severity bucketing for the chip in the tile corner; the tile
-  // itself already conveys status via the accent bar, so the chip picks
-  // a complementary granularity.
   const severityLevel = $derived(bucketSeverity(tile.riskIndex));
 
   function openMatrix(): void {

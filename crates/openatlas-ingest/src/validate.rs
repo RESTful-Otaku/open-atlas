@@ -1,16 +1,12 @@
-//! Ingest-boundary validation — mirrors `openatlas-stdb-module::ingest_event`
-//! rules so invalid events fail before the HTTP reducer call.
+//! Event validation mirroring the STDB module rules.
 
 use anyhow::{bail, Context, Result};
 use openatlas_core::{Location, WorldEvent};
 
-/// Must match `openatlas-ingest::stdb::domain_to_u8` and module `domain > 12`.
 pub const MAX_DOMAIN_TAG: u8 = 12;
 
-/// Reject pathological provider JSON blobs (aligned with STDB module cap).
 pub const MAX_PAYLOAD_BYTES: usize = 8_192;
 
-/// Validates a [`WorldEvent`] against STDB + core invariants.
 pub fn validate_event(event: &WorldEvent) -> Result<()> {
     if !event.severity_score.is_finite() || !(0.0..=1.0).contains(&event.severity_score) {
         bail!(
@@ -33,7 +29,6 @@ pub fn validate_event(event: &WorldEvent) -> Result<()> {
     Ok(())
 }
 
-/// Drop invalid events and log counts (used by the feed supervisor).
 pub fn filter_valid_events(events: Vec<WorldEvent>) -> (Vec<WorldEvent>, usize) {
     let mut out = Vec::with_capacity(events.len());
     let mut rejected = 0usize;

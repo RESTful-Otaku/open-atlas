@@ -1,10 +1,4 @@
-//! KPI strip — four at-a-glance stat tiles that summarise the live
-//! system state. Rendered as a flat grid (no inner panel chrome); the
-//! descriptor sets `show_header = false` so this panel is visually the
-//! hero of the dashboard.
-//!
-//! All numbers are derived from the already-bounded [`UiState`] buffers
-//! so computation is O(N) with N ≤ `MAX_EVENTS` / `MAX_SIGNALS`.
+//! KPI strip — four stat tiles summarising the live system state.
 
 use wasm_bindgen::JsValue;
 use web_sys::Document;
@@ -97,8 +91,6 @@ fn severity_summary(state: &UiState) -> (f64, Vec<f64>) {
     let sum: f64 = state.events.iter().map(|event| event.severity_score).sum();
     let avg = sum / state.events.len() as f64;
 
-    // Bucket the last N events into a small series so the sparkline
-    // stays legible even at high ingest rates.
     const BUCKETS: usize = 24;
     let count = state.events.len().min(120);
     let window = &state.events[state.events.len() - count..];

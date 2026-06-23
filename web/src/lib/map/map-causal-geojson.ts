@@ -13,7 +13,6 @@ function isValidLoc(lat: number, lon: number): boolean {
   );
 }
 
-/** True when the event has a usable geo point (same bounds as the map). */
 export function isGeoEvent(
   e: UiEvent,
 ): e is UiEvent & { location: { lat: number; lon: number } } {
@@ -22,19 +21,9 @@ export function isGeoEvent(
 }
 
 export type CausalMapOptions = {
-  /**
-   * If set, only draw edges where **both** endpoints’ domains are in this
-   * set (map overlay checkboxes). An empty set hides all domain causal lines.
-   * Also respects `matchesSelectedDomain` and geo availability.
-   */
   mapDomains: ReadonlySet<string> | null;
 };
 
-/**
- * Causal influence segments on the globe — only edges where both ends
- * are geo-located. Visibility matches `CausalGraph`: either endpoint’s
- * domain passes `matchesSelectedDomain`.
- */
 export function buildCausalLineCollection(
   events: readonly UiEvent[],
   edges: readonly UiCausalEdge[],

@@ -1,7 +1,4 @@
-/**
- * Shared ECharts look-and-feel aligned with the OpenAtlas shell
- * (dark surfaces, zinc text, domain accents in data — not in chrome).
- */
+
 import * as echarts from "echarts/core";
 import type { EChartsOption } from "echarts";
 
@@ -66,22 +63,22 @@ export function withTransparentBackground<T extends EChartsOption>(opt: T): T {
   return { ...opt, backgroundColor: "transparent" } as T;
 }
 
-/** Axis / legend labels — follows `--text-2`. */
+
 export function chartTextMuted(): string {
   return cssVar("--text-2", "#a1a1aa");
 }
 
-/** Emphasis labels — follows `--text-1`. */
+
 export function chartTextMain(): string {
   return cssVar("--text-1", "#e4e4e7");
 }
 
-/** Grid / split lines — follows `--chart-split`. */
+
 export function chartGridLine(): string {
   return cssVar("--chart-split", "rgba(148, 163, 184, 0.12)");
 }
 
-/** Pie / treemap item borders — follows `--chart-item-border`. */
+
 export function chartItemBorder(): string {
   return cssVar("--chart-item-border", "#09090b");
 }
@@ -125,7 +122,7 @@ function buildOpenAtlasEchartsTheme(isLight: boolean): object {
   };
 }
 
-/** Register `openatlas-{dark,dim,light}` ECharts themes once. */
+
 export function ensureOpenAtlasChartThemes(): void {
   if (echartsThemesReady) return;
   echarts.registerTheme("openatlas-dark", buildOpenAtlasEchartsTheme(false));

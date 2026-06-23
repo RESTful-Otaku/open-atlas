@@ -1,9 +1,4 @@
-//! Shared, clone-cheap runtime state for the ingest service.
-//!
-//! With SpacetimeDB as the authoritative store the ingest service is now
-//! a stateless pusher: it tracks only its own lifecycle (started_at) and
-//! per-feed health for `/status`. Everything domain-related lives in the
-//! SpacetimeDB module.
+//! Clone-cheap runtime state for the ingest service.
 
 use std::{collections::HashSet, net::SocketAddr, sync::Arc};
 
@@ -16,15 +11,11 @@ use crate::{
 
 type FeedRuntimeMap = std::collections::HashMap<String, FeedHealth>;
 
-/// Service-wide state handed to every feed worker, simulator, and
-/// HTTP handler. Cheap to clone (all fields are `Arc` or `Copy`).
 #[derive(Clone)]
 pub struct AppState {
-    /// HTTP listen address (drives admin auth policy for mutating routes).
     pub bind_addr: SocketAddr,
     pub started_at: DateTime<Utc>,
     pub feed_runtime: Arc<RwLock<FeedRuntimeMap>>,
-    /// Feed supervisor tasks already spawned (avoids duplicate workers).
     pub spawned_feeds: Arc<RwLock<HashSet<String>>>,
     pub stdb: StdbClient,
     pub rate_limiter: Arc<FeedRateLimiter>,

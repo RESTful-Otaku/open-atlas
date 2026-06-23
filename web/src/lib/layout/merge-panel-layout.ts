@@ -1,9 +1,5 @@
 import type { PanelLayoutState } from "./panel-layout-types";
 
-/**
- * Merges stored layout with catalog defaults. Drops unknown ids, appends
- * new ids in default order, and fills missing spans.
- */
 export function mergePanelLayout(
   stored: PanelLayoutState | null,
   defaultOrder: readonly string[],
@@ -42,10 +38,6 @@ export function mergePanelLayout(
   return { order, spans };
 }
 
-/**
- * Move `fromId` to the slot currently occupied by `toId` (same semantics as
- * drag-drop reorder between two panels).
- */
 export function reorderBetween(
   order: readonly string[],
   fromId: string,

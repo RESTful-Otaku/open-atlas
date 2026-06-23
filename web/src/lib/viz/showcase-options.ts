@@ -1,8 +1,4 @@
-/**
- * ECharts options for the `/viz` gallery — one representative config per
- * family (bar, pie, graph, treemap, …). Components copy these patterns
- * for production panels.
- */
+
 import type { EChartsOption } from "echarts";
 
 import {
@@ -33,7 +29,7 @@ import {
 } from "./showcase-datasets";
 import { echarts } from "../echarts";
 
-/** Deep-clone to satisfy ECharts option types (mutable trees vs `as const` datasets). */
+
 function mut(x: unknown): any {
   return JSON.parse(JSON.stringify(x));
 }

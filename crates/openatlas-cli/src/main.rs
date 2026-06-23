@@ -1,12 +1,4 @@
-//! Thin CLI entry point. All logic lives in:
-//! * [`http`] — SpacetimeDB SQL helpers shared across subcommands.
-//! * [`commands`] — non-interactive subcommand handlers.
-//!
-//! This module only defines the Clap surface and dispatches to the two.
-//!
-//! The CLI talks to SpacetimeDB directly via its HTTP SQL endpoint.
-//! For an interactive dashboard, run the Svelte frontend — it uses the
-//! SpacetimeDB TypeScript SDK and subscribes to live row updates.
+//! CLI entry point. Defines the Clap surface and dispatches to [`commands`] and [`http`].
 
 use std::time::Duration;
 
@@ -20,16 +12,14 @@ mod http;
 #[derive(Parser, Debug)]
 #[command(name = "openatlas", about = "OpenAtlas SpacetimeDB inspector")]
 struct Cli {
-    /// Base URL of the SpacetimeDB server. Overridden by
-    /// `OPENATLAS_STDB_URI` if set.
+    /// SpacetimeDB server URL; overridden by OPENATLAS_STDB_URI.
     #[arg(
         long,
         env = "OPENATLAS_STDB_URI",
         default_value = "http://127.0.0.1:3000"
     )]
     base_url: String,
-    /// Database (module) name to query. Overridden by
-    /// `OPENATLAS_STDB_DB` if set.
+    /// Target database; overridden by OPENATLAS_STDB_DB.
     #[arg(long, env = "OPENATLAS_STDB_DB", default_value = "openatlas")]
     database: String,
     #[command(subcommand)]
@@ -38,30 +28,30 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Read-only views of the SpacetimeDB state.
+    /// Read-only views.
     View {
         #[command(subcommand)]
         command: ViewCommand,
     },
-    /// Print the per-domain aggregate (`world_state` table).
+    /// Per-domain aggregate from world_state.
     State {
         #[arg(long)]
         domain: Option<String>,
     },
-    /// Print recent anomaly signals.
+    /// Recent anomaly signals.
     Anomalies {
         #[arg(long)]
         domain: Option<String>,
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
-    /// Show an event and every causal edge that touches it.
+    /// Show an event and its causal links.
     Trace { event_id: u64 },
 }
 
 #[derive(Subcommand, Debug)]
 enum ViewCommand {
-    /// List the most recent events, newest first.
+    /// Recent events, newest first.
     Events {
         #[arg(long)]
         domain: Option<String>,

@@ -1,11 +1,3 @@
-/**
- * Map decoration layers that are **not** in SpacetimeDB:
- *   - NORAD TLE files under `/public/tracking/` (propagated client-side)
- *   - Bundled maritime sample JSON
- *
- * **ADS-B aircraft in live mode** come from SpacetimeDB (`stdb-aircraft.ts`),
- * fed by the ingest `opensky` adapter — do not poll OpenSky from the browser.
- */
 import {
   degreesLat,
   degreesLong,
@@ -48,9 +40,7 @@ export type PublicTrackRow = {
   lat: number;
   lon: number;
   hKm: number;
-  /** OpenSky true track (degrees). */
   trueTrackDeg?: number;
-  /** OpenSky horizontal velocity (m/s). */
   velocityMs?: number;
 };
 
@@ -93,7 +83,6 @@ export function getTleWorkList(): readonly TleWork[] {
   return tleWorkList ?? [];
 }
 
-/** Propagate a single TLE at `when` (for orbit path rendering). */
 export function propagateTleAt(
   name: string,
   l1: string,
@@ -139,7 +128,6 @@ function propagateOne(
   }
 }
 
-/** Build the NORAD TLE work list once (Celestrak-bundled assets under `/public/tracking/`). */
 export async function ensureTleCache(): Promise<void> {
   if (tleWorkList) return;
   const b = import.meta.env.BASE_URL;
@@ -175,7 +163,6 @@ export async function ensureTleCache(): Promise<void> {
   tleWorkList = work;
 }
 
-/** Recompute SGP4 positions for cached TLEs (cheap; use with simulated clock). */
 export function satelliteRowsAtTime(when: Date): PublicTrackRow[] {
   if (!tleWorkList) return [];
   const out: PublicTrackRow[] = [];
@@ -197,11 +184,6 @@ export function satelliteRowsAtTime(when: Date): PublicTrackRow[] {
 
 type OpenSkyRow = (number | string | boolean | null)[] | null;
 
-/**
- * Demo-only fallback. Live dashboards must use {@link aircraftRowsFromTransportEvents}.
- *
- * @see https://opensky-network.org/apidoc/rest.html — anonymous API; rate-limited.
- */
 export async function loadOpenSkyAircraft(): Promise<PublicTrackRow[]> {
   let data: { states?: OpenSkyRow[] } | null = null;
   try {

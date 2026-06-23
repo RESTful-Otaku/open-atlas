@@ -1,7 +1,3 @@
-<!--
-  Stacked toasts: bottom-right, live region, manual dismiss, springy enter
-  and slide fade exit. Paired with `notify.ts` + `notify-log.svelte`.
--->
 <script lang="ts">
   import { X, AlertCircle, CheckCircle, Info, AlertTriangle } from "@lucide/svelte";
   import { backOut, cubicIn } from "svelte/easing";

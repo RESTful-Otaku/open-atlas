@@ -1,6 +1,4 @@
-/**
- * Observability fetches: ingest `/status`, `/feeds`, `/metrics`.
- */
+
 
 import { fetchFeedCatalog, type FeedCatalog } from "../feed-config";
 import { readResponseJson } from "../http-json";
@@ -222,7 +220,7 @@ export async function fetchObservabilitySnapshot(): Promise<ObservabilitySnapsho
   };
 }
 
-/** Re-export for metrics tab labels. */
+
 export {
   INGEST_METRIC_NAMES,
   ingestMetricsSnapshotToCounters,

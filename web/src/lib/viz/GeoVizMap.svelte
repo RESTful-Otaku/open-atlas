@@ -1,9 +1,4 @@
-<!--
-  MapLibre gallery: CARTO dark basemap, event heat, point circles, traffic
-  LineStrings, and a synthetic LEO “orbit” track — for reviewing geo
-  overlays without API keys. Satellite and streets were dropped to keep
-  focus on a consistent dark, overlay-forward look.
--->
+
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
@@ -124,7 +119,7 @@
     try {
       ex.setProjection?.({ type: "globe" });
     } catch {
-      /* */
+
     }
     applyMapPresentation(m, { projection: "globe" }, readThemeFromDocument());
     m.setMaxPitch(85);

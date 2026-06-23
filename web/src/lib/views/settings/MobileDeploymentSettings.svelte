@@ -94,7 +94,7 @@
       try {
         localStorage.removeItem("openatlas-demo-mode");
       } catch {
-        /* */
+
       }
 
       if (wasDemo) {

@@ -1,7 +1,3 @@
-<!--
-  Live signal list scoped to the matrix's domains. Rendered as a
-  StatusTable with severity-bucketed status dots per row.
--->
 <script lang="ts">
   import { dashboard } from "../../state.svelte";
   import { signalRows, MATRIX_LIST_LIMIT } from "../builders";

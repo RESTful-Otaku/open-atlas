@@ -1,5 +1,3 @@
-// Shared panel data shapes imported by builders.ts and each panel's .svelte.
-
 import type { SeverityLevel, StatusLevel } from "../../primitives/status";
 
 export interface CardListItem {

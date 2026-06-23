@@ -1,6 +1,3 @@
-/**
- * Map/globe projections keyed to the simulated UTC scrubber (24h window).
- */
 import type { UiEvent } from "../types";
 
 const MS_24H = 86_400_000;
@@ -11,7 +8,6 @@ export function parseEventMs(timestamp: string): number | null {
   return Number.isFinite(t) ? t : null;
 }
 
-/** Events with timestamp in (simUtc − 24h, simUtc] — historical replay window. */
 export function eventsInSimWindow(
   events: readonly UiEvent[],
   simUtcMs: number,
@@ -28,7 +24,6 @@ export function eventsInSimWindow(
   return out;
 }
 
-/** Latest parseable event timestamp in the buffer, or null. */
 export function latestEventMs(events: readonly UiEvent[]): number | null {
   let latest = -Infinity;
   for (const e of events) {
@@ -38,11 +33,6 @@ export function latestEventMs(events: readonly UiEvent[]): number | null {
   return latest > -Infinity ? latest : null;
 }
 
-/**
- * Events for map/globe layers: 24h replay window ending at the scrub instant.
- * When empty at “now”, anchors a 24h window on the newest cached event (demo /
- * lagging feeds) before widening to 7d.
- */
 export function eventsForMapDisplay(
   events: readonly UiEvent[],
   simUtcMs: number,
@@ -67,7 +57,6 @@ export function eventsForMapDisplay(
   return wider;
 }
 
-/** True when the 7-day sparse-data fallback is active (no 24h window at scrub or anchor). */
 export function mapUses7dFallback(
   events: readonly UiEvent[],
   simUtcMs: number,
@@ -84,7 +73,6 @@ export function mapUses7dFallback(
   return true;
 }
 
-/** 0 at window start → 1 at sim instant (for optional fade). */
 export function eventAge01(timestamp: string, simUtcMs: number, windowMs = MS_24H): number {
   const t = parseEventMs(timestamp);
   if (t === null) return 0;
@@ -101,7 +89,6 @@ export type ClimateWeatherPoint = {
   windMs: number;
 };
 
-/** Open-Meteo climate events in the sim window for weather heat / wind styling. */
 export function climateWeatherPoints(
   events: readonly UiEvent[],
   simUtcMs: number,

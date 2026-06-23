@@ -1,7 +1,3 @@
-/**
- * OpenAtlas “instrument room” globe look — not photoreal Earth marketing;
- * matches 2D map chroma (CARTO dark) + simple void backdrops + stylized cloud shell.
- */
 import {
   CanvasTexture,
   DoubleSide,
@@ -20,7 +16,6 @@ import { mapThemeFor } from "../theme-map";
 const TEX_W = 2048;
 const TEX_H = 1024;
 
-/** Slow ribbon noise — soft blobs, cool greys / cyan tints (dark) or airy whites (light). */
 export function buildStylizedCloudCanvasTexture(theme: ThemeId): CanvasTexture {
   const isLight = theme === "light";
   const canvas = document.createElement("canvas");
@@ -105,10 +100,6 @@ export function disposeStylizedCloudLayer(root: Object3D): void {
   });
 }
 
-/**
- * Minimal void behind the globe — soft radial falloff matching {@link mapThemeFor} sky tones,
- * not a star cube / Google Earth night sky.
- */
 export function minimalGlobeBackdropDataUrl(theme: ThemeId): string {
   const spec = mapThemeFor(theme);
   const isLight = theme === "light";

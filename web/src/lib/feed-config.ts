@@ -1,6 +1,4 @@
-/**
- * Ingest feed catalog + API key management (`GET/PUT /feeds`, test/reconnect).
- */
+
 
 import { readResponseJson } from "./http-json";
 import { ingestUrl, shouldProbeIngest } from "./native-config";
@@ -79,7 +77,6 @@ async function parseError(r: Response): Promise<string> {
     const body = (await r.json()) as { error?: string };
     if (body.error) return body.error;
   } catch {
-    /* */
   }
   return `${r.status} ${r.statusText}`;
 }
@@ -135,7 +132,7 @@ export async function reconnectFeed(name: string): Promise<FeedTestResult> {
   return (await r.json()) as FeedTestResult;
 }
 
-/** Human label for a poll interval option (seconds). */
+
 export function pollIntervalLabel(secs: number): string {
   switch (secs) {
     case 30:
@@ -155,7 +152,7 @@ export function pollIntervalLabel(secs: number): string {
   }
 }
 
-/** Minimum poll interval the server allows for a feed (protects upstream APIs). */
+
 export function minPollIntervalSecs(feedName: string): number {
   switch (feedName) {
     case "gdelt":
@@ -173,7 +170,7 @@ export function minPollIntervalSecs(feedName: string): number {
   }
 }
 
-/** Relative countdown until the next scheduled poll. */
+
 export function formatNextPoll(iso: string | null): string {
   if (!iso) return "—";
   const ms = new Date(iso).getTime() - Date.now();

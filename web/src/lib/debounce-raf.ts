@@ -1,9 +1,6 @@
 export type RafCoalescedFn = (() => void) & { cancel: () => void };
 
-/**
- * Run `fn` at most once per animation frame (trailing coalesce).
- * Call `.cancel()` on teardown so work does not run after unmount.
- */
+
 export function rafCoalesce(fn: () => void): RafCoalescedFn {
   let scheduled = false;
   let rafId = 0;
@@ -28,9 +25,7 @@ export type DebouncedFn<T extends unknown[]> = ((...args: T) => void) & {
   cancel: () => void;
 };
 
-/**
- * Run `fn` at most once per `ms` (trailing edge). Call `.cancel()` on teardown.
- */
+
 export function debounce<T extends unknown[]>(
   fn: (...args: T) => void,
   ms: number,

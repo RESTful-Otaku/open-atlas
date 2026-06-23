@@ -1,12 +1,7 @@
-<!--
-  Compact samples from the `/viz` gallery so the Legacy overview demonstrates
-  additional ECharts families without navigating away.
--->
 <script lang="ts">
   import EChartsPanel from "../viz/EChartsPanel.svelte";
   import { SHOWCASE_ECHARTS } from "../viz/showcase-options";
 
-  /** Preset ids from showcase-options — gauge, funnel, donut, radar. */
   const stripIds = ["gauge", "funnel", "donut", "radar"] as const;
 
   const entries = stripIds

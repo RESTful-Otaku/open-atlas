@@ -1,7 +1,3 @@
-/**
- * Live ingest feed catalog — polled from GET /feeds for shell + settings UI.
- */
-
 import { fetchFeedCatalog, type FeedCatalog } from "./feed-config";
 import { appendOpsLog } from "./observability/log-stream";
 import { formatFeedCatalogSummary } from "./observability/ops-log-format";

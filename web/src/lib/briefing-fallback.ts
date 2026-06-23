@@ -1,7 +1,4 @@
-/**
- * Deterministic executive briefing when Ollama / the LLM bridge is unavailable.
- * Grounded in the same dashboard fields the LLM snapshot uses.
- */
+
 
 import { domainLabel } from "./colors";
 import type { LlmSnapshotInput } from "./llm-snapshot";
