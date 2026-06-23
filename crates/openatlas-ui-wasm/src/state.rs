@@ -50,7 +50,9 @@ pub(crate) fn apply_envelope(state: &mut UiState, envelope: StreamEnvelope) {
     }
 
     if let Some(new_state) = world_state {
-        state.domain_state.insert(new_state.domain.clone(), new_state);
+        state
+            .domain_state
+            .insert(new_state.domain.clone(), new_state);
     }
 
     if !causal_edges.is_empty() {
@@ -235,13 +237,19 @@ mod tests {
 
     #[test]
     fn matches_domain_matching_selection() {
-        let state = UiState { selected_domain: Some("climate".to_owned()), ..Default::default() };
+        let state = UiState {
+            selected_domain: Some("climate".to_owned()),
+            ..Default::default()
+        };
         assert!(state.matches_domain("climate"));
     }
 
     #[test]
     fn matches_domain_non_matching() {
-        let state = UiState { selected_domain: Some("climate".to_owned()), ..Default::default() };
+        let state = UiState {
+            selected_domain: Some("climate".to_owned()),
+            ..Default::default()
+        };
         assert!(!state.matches_domain("energy"));
         assert!(!state.matches_domain("finance"));
     }
@@ -313,14 +321,15 @@ mod tests {
     #[test]
     fn apply_envelope_updates_existing_world_state() {
         let mut state = UiState::default();
-        state
-            .domain_state
-            .insert("energy".to_owned(), UiWorldState {
+        state.domain_state.insert(
+            "energy".to_owned(),
+            UiWorldState {
                 domain: "energy".to_owned(),
                 event_count: 10,
                 avg_severity: 0.2,
                 risk_index: 0.1,
-            });
+            },
+        );
         let envelope = StreamEnvelope {
             event: None,
             signals: vec![],
@@ -389,13 +398,16 @@ mod tests {
                 severity_score: 0.5,
                 location: None,
             };
-            apply_envelope(&mut state, StreamEnvelope {
-                event: Some(e),
-                signals: vec![],
-                world_state: None,
-                causal_edges: vec![],
-                domain_insight: None,
-            });
+            apply_envelope(
+                &mut state,
+                StreamEnvelope {
+                    event: Some(e),
+                    signals: vec![],
+                    world_state: None,
+                    causal_edges: vec![],
+                    domain_insight: None,
+                },
+            );
         }
         assert_eq!(state.events.len(), MAX_EVENTS);
     }
@@ -411,13 +423,16 @@ mod tests {
                 severity_score: i as f64 * 0.1,
                 location: None,
             };
-            apply_envelope(&mut state, StreamEnvelope {
-                event: Some(e),
-                signals: vec![],
-                world_state: None,
-                causal_edges: vec![],
-                domain_insight: None,
-            });
+            apply_envelope(
+                &mut state,
+                StreamEnvelope {
+                    event: Some(e),
+                    signals: vec![],
+                    world_state: None,
+                    causal_edges: vec![],
+                    domain_insight: None,
+                },
+            );
         }
         let history = state.domain_severity_history.get("energy").unwrap();
         assert_eq!(history.len(), MAX_SEVERITY_HISTORY);
@@ -425,15 +440,21 @@ mod tests {
 
     #[test]
     fn apply_envelope_empty_is_noop() {
-        let mut state = UiState { selected_domain: Some("test".to_owned()), ..Default::default() };
+        let mut state = UiState {
+            selected_domain: Some("test".to_owned()),
+            ..Default::default()
+        };
         let original_domain = state.selected_domain.clone();
-        apply_envelope(&mut state, StreamEnvelope {
-            event: None,
-            signals: vec![],
-            world_state: None,
-            causal_edges: vec![],
-            domain_insight: None,
-        });
+        apply_envelope(
+            &mut state,
+            StreamEnvelope {
+                event: None,
+                signals: vec![],
+                world_state: None,
+                causal_edges: vec![],
+                domain_insight: None,
+            },
+        );
         assert_eq!(state.selected_domain, original_domain);
         assert!(state.events.is_empty());
         assert!(state.recent_signals.is_empty());

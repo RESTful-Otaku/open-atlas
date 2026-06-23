@@ -70,9 +70,7 @@ fn chat_options(cpu_only: bool) -> Option<ChatOptions> {
         }
     }
     if cpu_only {
-        return Some(ChatOptions {
-            num_gpu: Some(0),
-        });
+        return Some(ChatOptions { num_gpu: Some(0) });
     }
     None
 }

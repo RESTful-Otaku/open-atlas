@@ -6,7 +6,7 @@
  *   buildLlmSnapshot → requestLlmInsight → response parsing.
  */
 
-import { describe, expect, test, afterAll } from "bun:test";
+import { describe, expect, test, afterAll, mock } from "bun:test";
 
 const OLLAMA_MODEL = "llama3.2-test";
 
@@ -84,21 +84,22 @@ const server = Bun.serve({
 });
 serverUrl = `http://127.0.0.1:${server.port}`;
 
-const modulePath = "./native-config";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let origLlmBaseUrl: any;
-
-async function patchLlmBaseUrl() {
-  const config = await import(modulePath);
-  origLlmBaseUrl = config.llmBaseUrl;
-}
-
-const origViteLlmBase = process.env.VITE_LLM_BASE;
-process.env.VITE_LLM_BASE = serverUrl;
-
-async function importFresh<T>(name: string): Promise<T> {
-  return import(name) as Promise<T>;
-}
+// Mock native-config so llmBaseUrl() returns the mock server URL
+// (import.meta.env.VITE_LLM_BASE is not populated from process.env in Bun test)
+const mockNativeConfig = () => ({
+  llmBaseUrl: () => serverUrl,
+  llmServiceConfigured: () => true,
+  shouldProbeLlm: () => true,
+  joinServiceUrl: (base: string, path: string) => `${base}${path}`,
+  ingestBaseUrl: () => "",
+  ingestUrl: (path: string) => path,
+  stdbDatabaseName: () => "openatlas",
+  stdbUriFromEnv: () => undefined,
+  ingestServiceConfigured: () => false,
+  isNativeApp: () => false,
+});
+mock.module("./native-config", mockNativeConfig);
+mock.module("../native-config", mockNativeConfig);
 
 import type { LlmSnapshotInput } from "./llm-snapshot";
 import type { LlmInsightResponse } from "./llm";
@@ -307,9 +308,4 @@ describe("buildLlmSnapshot → requestLlmInsight full pipeline", () => {
 
 afterAll(() => {
   server.stop();
-  if (origViteLlmBase !== undefined) {
-    process.env.VITE_LLM_BASE = origViteLlmBase;
-  } else {
-    delete process.env.VITE_LLM_BASE;
-  }
 });

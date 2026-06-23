@@ -861,10 +861,18 @@ mod ingest_rules_tests {
 
     #[test]
     fn ring_sizes_are_positive_and_ordered() {
-        const { assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE); }
-        const { assert!(SIGNAL_RING_SIZE > 0); }
-        const { assert!(CAUSAL_EDGE_RING_SIZE > 0); }
-        const { assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE); }
+        const {
+            assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE);
+        }
+        const {
+            assert!(SIGNAL_RING_SIZE > 0);
+        }
+        const {
+            assert!(CAUSAL_EDGE_RING_SIZE > 0);
+        }
+        const {
+            assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE);
+        }
     }
 
     #[test]

@@ -148,7 +148,7 @@ fn render_legend(counts: &HashMap<String, usize>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{render_legend, render_svg, MAP_WIDTH, MAP_HEIGHT};
+    use super::{render_legend, render_svg, MAP_HEIGHT, MAP_WIDTH};
     use std::collections::HashMap;
 
     #[test]

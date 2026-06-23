@@ -1,5 +1,3 @@
-
-
 use crate::rate_limit::{
     default_rate_limit_cooldown, global as rate_limiter, host_from_url, retry_after_duration,
 };
@@ -9,7 +7,9 @@ use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
 fn sanitize_url(url: &str) -> String {
-    url.split_once('?').map(|(b, _)| b.to_owned()).unwrap_or_else(|| url.to_owned())
+    url.split_once('?')
+        .map(|(b, _)| b.to_owned())
+        .unwrap_or_else(|| url.to_owned())
 }
 
 fn transport_error(url: &str, err: reqwest::Error) -> anyhow::Error {
@@ -50,7 +50,8 @@ fn upstream_error_detail(body: &str) -> String {
 
 pub async fn fetch_json<T: DeserializeOwned>(client: &Client, feed: &str, url: &str) -> Result<T> {
     let text = fetch_text(client, feed, url).await?;
-    serde_json::from_str(&text).with_context(|| format!("JSON decode failed for {}", sanitize_url(url)))
+    serde_json::from_str(&text)
+        .with_context(|| format!("JSON decode failed for {}", sanitize_url(url)))
 }
 
 pub async fn fetch_text(client: &Client, feed: &str, url: &str) -> Result<String> {

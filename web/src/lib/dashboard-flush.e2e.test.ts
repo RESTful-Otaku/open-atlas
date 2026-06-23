@@ -19,15 +19,29 @@ mock.module("./sync-dashboard-cache", () => ({
   commitDashboardDomainsRevision: () => {},
 }));
 
-beforeEach(() => {
+const origSetTimeout = globalThis.setTimeout;
+const origClearTimeout = globalThis.clearTimeout;
+let flush: Awaited<ReturnType<typeof import("./dashboard-flush")>>;
+
+beforeEach(async () => {
+  // Restore globals in case other test files replaced them
   // @ts-ignore
-  globalThis.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
+  globalThis.setTimeout = origSetTimeout;
   // @ts-ignore
-  globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id);
+  globalThis.clearTimeout = origClearTimeout;
+  // @ts-ignore
+  globalThis.requestAnimationFrame = (cb: () => void) => origSetTimeout(cb, 0);
+  // @ts-ignore
+  globalThis.cancelAnimationFrame = (id: number) => origClearTimeout(id);
   // @ts-ignore
   globalThis.requestIdleCallback = undefined;
   // @ts-ignore
   globalThis.performance = globalThis.performance ?? { now: () => Date.now() };
+
+  flush = await import("./dashboard-flush");
+  flush.cancelScheduledDashboardFlush();
+  flush.resumeDashboardFlush();
+  flush.cancelScheduledDashboardFlush();
 });
 
 describe("dashboard flush pause/resume data integrity", () => {

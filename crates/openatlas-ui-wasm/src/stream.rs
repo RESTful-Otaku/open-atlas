@@ -3,7 +3,7 @@
 use std::{cell::Cell, cell::RefCell, rc::Rc};
 
 use wasm_bindgen::{closure::Closure, prelude::*, JsCast};
-use web_sys::{Document, MessageEvent, WebSocket, Window, document};
+use web_sys::{document, Document, MessageEvent, WebSocket, Window};
 
 use crate::{
     model::StreamEnvelope,

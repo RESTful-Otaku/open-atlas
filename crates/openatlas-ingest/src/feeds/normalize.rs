@@ -193,7 +193,8 @@ mod tests {
 
     #[test]
     fn parse_eia_period_hourly() {
-        let dt = parse_eia_period("2024-06-01T13").expect("ratio_severity: observation_draft severity");
+        let dt =
+            parse_eia_period("2024-06-01T13").expect("ratio_severity: observation_draft severity");
         assert_eq!(dt.format("%Y-%m-%d %H").to_string(), "2024-06-01 13");
     }
 }

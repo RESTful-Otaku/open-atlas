@@ -97,7 +97,8 @@ impl CircuitState {
         }
         let elapsed = now_ticks().saturating_sub(opened);
         if elapsed >= CB_OPEN_SECS * 1000 {
-            self.consecutive_failures.store(CB_THRESHOLD - 1, Ordering::SeqCst);
+            self.consecutive_failures
+                .store(CB_THRESHOLD - 1, Ordering::SeqCst);
             return false;
         }
         true
@@ -173,8 +174,15 @@ async fn main() -> anyhow::Result<()> {
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
-                .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::OPTIONS])
-                .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]),
+                .allow_methods([
+                    axum::http::Method::GET,
+                    axum::http::Method::POST,
+                    axum::http::Method::OPTIONS,
+                ])
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                ]),
         );
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;
@@ -224,15 +232,13 @@ async fn capable(State(s): State<Arc<AppState>>) -> impl IntoResponse {
     .await
     {
         Ok(_) => (StatusCode::OK, "model inference ok").into_response(),
-        Err(e) => {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse {
-                    error: sanitize_error(&e.to_string()),
-                }),
-            )
-                .into_response()
-        }
+        Err(e) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: sanitize_error(&e.to_string()),
+            }),
+        )
+            .into_response(),
     }
 }
 
@@ -245,8 +251,7 @@ async fn insight(
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "LLM bridge circuit breaker is open after repeated failures — "
-                    .to_string()
+                error: "LLM bridge circuit breaker is open after repeated failures — ".to_string()
                     + &format!("retry in ~{}s (or check Ollama logs)", CB_OPEN_SECS),
             }),
         )
@@ -254,11 +259,7 @@ async fn insight(
     }
 
     if let Err(e) = check_json_depth(&body.snapshot, 64) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: e }),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e })).into_response();
     }
 
     let snapshot_str = match serde_json::to_string(&body.snapshot) {
@@ -320,13 +321,7 @@ async fn insight(
                 .into_response();
         }
     };
-    (
-        StatusCode::OK,
-        Json(InsightResponse {
-            text,
-        }),
-    )
-        .into_response()
+    (StatusCode::OK, Json(InsightResponse { text })).into_response()
 }
 
 fn check_json_depth(value: &serde_json::Value, max_depth: usize) -> Result<(), String> {

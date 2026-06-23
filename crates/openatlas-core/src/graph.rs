@@ -66,11 +66,21 @@ impl WorldGraph {
         })
     }
 
-    pub fn events(&self) -> &HashMap<Uuid, WorldEvent> { &self.events }
-    pub fn world_state(&self) -> &HashMap<Domain, WorldState> { &self.world_state }
-    pub fn entity_nodes(&self) -> &HashMap<Uuid, EntityNode> { &self.entity_nodes }
-    pub fn causal_edges(&self) -> &[CausalEdge] { &self.causal_edges }
-    pub fn signals(&self) -> &[Signal] { &self.signals }
+    pub fn events(&self) -> &HashMap<Uuid, WorldEvent> {
+        &self.events
+    }
+    pub fn world_state(&self) -> &HashMap<Domain, WorldState> {
+        &self.world_state
+    }
+    pub fn entity_nodes(&self) -> &HashMap<Uuid, EntityNode> {
+        &self.entity_nodes
+    }
+    pub fn causal_edges(&self) -> &[CausalEdge] {
+        &self.causal_edges
+    }
+    pub fn signals(&self) -> &[Signal] {
+        &self.signals
+    }
 
     /// Ingest reducer. Returns signals raised for this event.
     pub fn ingest_event(&mut self, event: WorldEvent) -> Result<Vec<Signal>, CoreError> {
@@ -184,7 +194,10 @@ impl WorldGraph {
     }
 
     fn prune_causal_edges(&mut self) {
-        let excess = self.causal_edges.len().saturating_sub(self.causal_edge_ring_size);
+        let excess = self
+            .causal_edges
+            .len()
+            .saturating_sub(self.causal_edge_ring_size);
         if excess > 0 {
             self.causal_edges.drain(..excess);
         }
@@ -226,7 +239,10 @@ impl WorldGraph {
         let aggregate = self.domain_aggregates.entry(*domain).or_default();
         aggregate.event_count = aggregate.event_count.saturating_add(1);
         aggregate.total_severity += severity_score;
-        debug_assert!(aggregate.total_severity.is_finite(), "total_severity overflowed to Inf");
+        debug_assert!(
+            aggregate.total_severity.is_finite(),
+            "total_severity overflowed to Inf"
+        );
         if !aggregate.total_severity.is_finite() {
             aggregate.total_severity = f64::MAX;
         }

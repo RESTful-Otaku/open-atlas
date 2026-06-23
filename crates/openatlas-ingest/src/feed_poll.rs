@@ -54,7 +54,8 @@ pub fn save_poll_config(file: &FeedPollConfigFile) -> Result<()> {
     let body = serde_json::to_string_pretty(file).context("serialize feed poll config")?;
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, &body).with_context(|| format!("write {}", tmp.display()))?;
-    fs::rename(&tmp, &path).with_context(|| format!("rename {} -> {}", tmp.display(), path.display()))?;
+    fs::rename(&tmp, &path)
+        .with_context(|| format!("rename {} -> {}", tmp.display(), path.display()))?;
     Ok(())
 }
 

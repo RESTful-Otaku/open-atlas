@@ -107,7 +107,7 @@ fn empty_state() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{trend_glyph, trend_label, empty_state};
+    use super::{empty_state, trend_glyph, trend_label};
 
     #[test]
     fn trend_glyph_up() {

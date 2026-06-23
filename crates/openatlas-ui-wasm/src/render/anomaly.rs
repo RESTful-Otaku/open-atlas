@@ -34,7 +34,11 @@ pub(super) fn render(document: &Document, state: &UiState) -> Result<(), JsValue
         let color = domain_color(&signal.domain);
         let pct = severity_percent(signal.score);
         let short_event = escape_html(
-            signal.event_id.split('-').next().unwrap_or(&signal.event_id),
+            signal
+                .event_id
+                .split('-')
+                .next()
+                .unwrap_or(&signal.event_id),
         );
         let domain = escape_html(&signal.domain);
         let reason = escape_html(&signal.reason);
