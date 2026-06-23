@@ -129,8 +129,7 @@ mod tests {
 
     #[test]
     fn parse_state_with_domain() {
-        let cli =
-            Cli::try_parse_from(["openatlas", "state", "--domain", "energy"]).unwrap();
+        let cli = Cli::try_parse_from(["openatlas", "state", "--domain", "energy"]).unwrap();
         assert!(matches!(cli.command, Command::State { domain: Some(_) }));
     }
 
@@ -210,8 +209,7 @@ mod tests {
 
     #[test]
     fn database_override() {
-        let cli =
-            Cli::try_parse_from(["openatlas", "--database", "custom_db", "state"]).unwrap();
+        let cli = Cli::try_parse_from(["openatlas", "--database", "custom_db", "state"]).unwrap();
         assert_eq!(cli.database, "custom_db");
     }
 

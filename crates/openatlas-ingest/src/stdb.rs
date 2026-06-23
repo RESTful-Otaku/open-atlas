@@ -200,7 +200,11 @@ impl StdbClient {
         // STDB returns business errors as non-2xx (often 530), body may be `{"error":"..."}`.
         let error_msg = serde_json::from_str::<serde_json::Value>(&body)
             .ok()
-            .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(|s| s.to_owned()))
+            .and_then(|v| {
+                v.get("error")
+                    .and_then(|e| e.as_str())
+                    .map(|s| s.to_owned())
+            })
             .unwrap_or_else(|| body.clone());
         if error_msg.contains("duplicate event id") {
             debug!(reducer, "duplicate event id (idempotent)");
@@ -384,7 +388,9 @@ mod tests {
     #[test]
     fn ingest_args_layout_is_stable() {
         let args = ingest_args(&sample_event(), "usgs", "https://usgs.gov/").unwrap();
-        let arr = args.as_array().expect("ingest_args SQL value is a JSON array");
+        let arr = args
+            .as_array()
+            .expect("ingest_args SQL value is a JSON array");
         assert_eq!(arr.len(), 8, "reducer takes 8 positional arguments");
         assert_eq!(
             arr[0].as_u64(),

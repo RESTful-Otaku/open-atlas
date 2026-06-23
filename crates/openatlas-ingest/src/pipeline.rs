@@ -165,7 +165,11 @@ mod tests {
 
     #[test]
     fn stdb_batch_chunk_within_module_max() {
-        const { assert!(STDB_BATCH_CHUNK <= 128); }
-        const { assert!(STDB_BATCH_CHUNK > 0); }
+        const {
+            assert!(STDB_BATCH_CHUNK <= 128);
+        }
+        const {
+            assert!(STDB_BATCH_CHUNK > 0);
+        }
     }
 }

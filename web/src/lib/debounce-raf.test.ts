@@ -1,5 +1,10 @@
 import { describe, expect, test, mock, beforeEach, afterEach } from "bun:test";
 
+const origRaf = globalThis.requestAnimationFrame;
+const origCancelRaf = globalThis.cancelAnimationFrame;
+const origSetTimeout = globalThis.setTimeout;
+const origClearTimeout = globalThis.clearTimeout;
+
 describe("debounce-raf", () => {
   let rafCalls: Array<() => void> = [];
   let rafCounter = 0;
@@ -37,13 +42,13 @@ describe("debounce-raf", () => {
 
   afterEach(() => {
     // @ts-ignore
-    delete globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = origRaf;
     // @ts-ignore
-    delete globalThis.cancelAnimationFrame;
+    globalThis.cancelAnimationFrame = origCancelRaf;
     // @ts-ignore
-    delete globalThis.setTimeout;
+    globalThis.setTimeout = origSetTimeout;
     // @ts-ignore
-    delete globalThis.clearTimeout;
+    globalThis.clearTimeout = origClearTimeout;
   });
 
   describe("rafCoalesce", () => {

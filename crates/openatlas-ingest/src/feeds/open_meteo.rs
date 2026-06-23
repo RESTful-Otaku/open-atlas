@@ -1,5 +1,3 @@
-
-
 use std::time::Duration;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -103,9 +101,8 @@ async fn fetch(client: Client) -> anyhow::Result<Vec<openatlas_core::WorldEvent>
         let Ok(naive) = NaiveDateTime::parse_from_str(&current.time, "%Y-%m-%dT%H:%M") else {
             continue;
         };
-        let timestamp =
-            DateTime::from_naive_utc_and_offset(naive, Utc)
-                - chrono::Duration::seconds(utc_offset_seconds);
+        let timestamp = DateTime::from_naive_utc_and_offset(naive, Utc)
+            - chrono::Duration::seconds(utc_offset_seconds);
         let wind = current.wind_speed_10m.unwrap_or(0.0);
         let precipitation = current.precipitation.unwrap_or(0.0);
         let severity_score = (ratio_severity(wind, WIND_SATURATION_KMH)
@@ -151,8 +148,9 @@ mod tests {
             + ratio_severity(precip, PRECIP_SATURATION_MM))
         .clamp(0.0, 1.0);
         let external_key = format!("{}-{}", tag, time);
-        let location = location_from_coords(lat, lon, vec![tag.to_owned(), "open-meteo".to_owned()])
-            .expect("valid location");
+        let location =
+            location_from_coords(lat, lon, vec![tag.to_owned(), "open-meteo".to_owned()])
+                .expect("valid location");
         ObservationDraft::new(external_key, timestamp, Domain::Climate, severity)
             .field("temperature_2m", temp)
             .field("wind_speed_10m", wind)
@@ -168,7 +166,16 @@ mod tests {
             NaiveDateTime::parse_from_str("2024-06-15T14:00", "%Y-%m-%dT%H:%M").unwrap(),
             Utc,
         );
-        let draft = make_region_draft("tokyo", 35.6762, 139.6503, 12.0, 0.0, 28.5, "2024-06-15T14:00", ts);
+        let draft = make_region_draft(
+            "tokyo",
+            35.6762,
+            139.6503,
+            12.0,
+            0.0,
+            28.5,
+            "2024-06-15T14:00",
+            ts,
+        );
         let events = drafts_to_events("open-meteo", SOURCE_URL, vec![draft]);
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].domain, Domain::Climate);
@@ -180,7 +187,16 @@ mod tests {
             NaiveDateTime::parse_from_str("2024-06-15T14:00", "%Y-%m-%dT%H:%M").unwrap(),
             Utc,
         );
-        let draft = make_region_draft("new-york", 40.7128, -74.0060, 8.0, 0.5, 22.0, "2024-06-15T14:00", ts);
+        let draft = make_region_draft(
+            "new-york",
+            40.7128,
+            -74.0060,
+            8.0,
+            0.5,
+            22.0,
+            "2024-06-15T14:00",
+            ts,
+        );
         let events = drafts_to_events("open-meteo", SOURCE_URL, vec![draft]);
         let event = &events[0];
         assert!(event.location.is_some());
@@ -196,9 +212,36 @@ mod tests {
             Utc,
         );
         let drafts = vec![
-            make_region_draft("tokyo", 35.6762, 139.6503, 120.0, 30.0, 28.0, "2024-06-15T14:00", ts),
-            make_region_draft("london", 51.5072, -0.1276, 5.0, 0.0, 15.0, "2024-06-15T14:00", ts),
-            make_region_draft("sao-paulo", -23.5505, -46.6333, 60.0, 10.0, 32.0, "2024-06-15T14:00", ts),
+            make_region_draft(
+                "tokyo",
+                35.6762,
+                139.6503,
+                120.0,
+                30.0,
+                28.0,
+                "2024-06-15T14:00",
+                ts,
+            ),
+            make_region_draft(
+                "london",
+                51.5072,
+                -0.1276,
+                5.0,
+                0.0,
+                15.0,
+                "2024-06-15T14:00",
+                ts,
+            ),
+            make_region_draft(
+                "sao-paulo",
+                -23.5505,
+                -46.6333,
+                60.0,
+                10.0,
+                32.0,
+                "2024-06-15T14:00",
+                ts,
+            ),
         ];
         let events = drafts_to_events("open-meteo", SOURCE_URL, drafts);
         for event in &events {

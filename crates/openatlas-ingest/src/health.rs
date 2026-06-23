@@ -298,7 +298,13 @@ mod tests {
     async fn record_feed_failure_updates_counts() {
         let state = test_state();
         insert_feed(&state, "test-feed").await;
-        record_feed_failure(&state, "test-feed", "timeout".into(), Duration::from_secs(30)).await;
+        record_feed_failure(
+            &state,
+            "test-feed",
+            "timeout".into(),
+            Duration::from_secs(30),
+        )
+        .await;
         let map = state.feed_runtime.read().await;
         let feed = map.get("test-feed").unwrap();
         assert_eq!(feed.failure_count, 1);
@@ -468,10 +474,7 @@ mod tests {
         assert_eq!(deserialized.name, "test-feed");
         assert_eq!(deserialized.success_count, 42);
         assert_eq!(deserialized.consecutive_failures, 1);
-        assert_eq!(
-            deserialized.last_error.as_deref(),
-            Some("oops")
-        );
+        assert_eq!(deserialized.last_error.as_deref(), Some("oops"));
     }
 
     #[test]
@@ -514,5 +517,3 @@ mod tests {
         assert!(json.contains("live"));
     }
 }
-
-

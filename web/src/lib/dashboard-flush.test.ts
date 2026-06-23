@@ -22,6 +22,14 @@ let rafIdCounter = 0;
 let idleIdCounter = 0;
 let timeoutIdCounter = 0;
 
+const origRaf = globalThis.requestAnimationFrame;
+const origCancelRaf = globalThis.cancelAnimationFrame;
+const origRic = globalThis.requestIdleCallback;
+const origCancelRic = globalThis.cancelIdleCallback;
+const origPerf = globalThis.performance;
+const origSetTimeout = globalThis.setTimeout;
+const origClearTimeout = globalThis.clearTimeout;
+
 function clearAllTimers(): void {
   rafCallbacks = [];
   idleCallbacks = [];
@@ -88,6 +96,13 @@ beforeEach(async () => {
 
 afterEach(() => {
   clearAllTimers();
+  globalThis.requestAnimationFrame = origRaf;
+  globalThis.cancelAnimationFrame = origCancelRaf;
+  globalThis.requestIdleCallback = origRic;
+  globalThis.cancelIdleCallback = origCancelRic;
+  globalThis.performance = origPerf;
+  globalThis.setTimeout = origSetTimeout;
+  globalThis.clearTimeout = origClearTimeout;
 });
 
 describe("dashboard-flush unit tests", () => {

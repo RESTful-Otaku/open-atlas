@@ -156,8 +156,7 @@ mod tests {
 
     #[test]
     fn simulator_catalog_covers_all_domains() {
-        let domains: std::collections::HashSet<_> =
-            SIMULATORS.iter().map(|s| s.domain).collect();
+        let domains: std::collections::HashSet<_> = SIMULATORS.iter().map(|s| s.domain).collect();
         for d in Domain::ALL.iter() {
             assert!(domains.contains(d), "missing simulator for {:?}", d);
         }

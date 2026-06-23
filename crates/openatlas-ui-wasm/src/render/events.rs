@@ -84,7 +84,7 @@ fn empty_state() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{short_id, short_time, empty_state};
+    use super::{empty_state, short_id, short_time};
 
     #[test]
     fn short_id_returns_first_segment() {
@@ -118,34 +118,22 @@ mod tests {
 
     #[test]
     fn short_time_extracts_hh_mm_ss() {
-        assert_eq!(
-            short_time("2024-06-01T14:30:00Z"),
-            "14:30:00Z"
-        );
+        assert_eq!(short_time("2024-06-01T14:30:00Z"), "14:30:00Z");
     }
 
     #[test]
     fn short_time_with_fractional() {
-        assert_eq!(
-            short_time("2024-06-01T08:15:30.123456Z"),
-            "08:15:30"
-        );
+        assert_eq!(short_time("2024-06-01T08:15:30.123456Z"), "08:15:30");
     }
 
     #[test]
     fn short_time_with_timezone_offset() {
-        assert_eq!(
-            short_time("2024-06-01T10:00:00+02:00"),
-            "10:00:00+02:00"
-        );
+        assert_eq!(short_time("2024-06-01T10:00:00+02:00"), "10:00:00+02:00");
     }
 
     #[test]
     fn short_time_no_timezone() {
-        assert_eq!(
-            short_time("2024-06-01T12:00:00"),
-            "12:00:00"
-        );
+        assert_eq!(short_time("2024-06-01T12:00:00"), "12:00:00");
     }
 
     #[test]

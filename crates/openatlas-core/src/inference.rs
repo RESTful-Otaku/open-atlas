@@ -1,5 +1,3 @@
-
-
 use crate::{
     domain::Domain,
     event::{Prediction, Signal, WorldEvent, WorldState},
@@ -209,7 +207,9 @@ mod tests {
         for len in 0..20 {
             let mut events = Vec::with_capacity(len);
             for _ in 0..len {
-                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let severity = (rng % 1000) as f64 / 1000.0;
                 events.push(sample_event(severity));
             }
@@ -236,11 +236,8 @@ mod tests {
         let event = sample_event(0.95);
         let events = vec![event.clone()];
 
-        let signals = std::thread::scope(|s| {
-            s.spawn(|| engine.detect_anomaly(&events))
-                .join()
-                .unwrap()
-        });
+        let signals =
+            std::thread::scope(|s| s.spawn(|| engine.detect_anomaly(&events)).join().unwrap());
 
         assert_eq!(signals.len(), 1);
         assert_eq!(signals[0].event_id, event.id);

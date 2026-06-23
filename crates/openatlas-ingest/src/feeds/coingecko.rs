@@ -1,5 +1,3 @@
-
-
 use std::{collections::HashMap, time::Duration};
 
 use chrono::Utc;
@@ -65,7 +63,12 @@ mod tests {
     use super::*;
     use crate::feeds::normalize::{drafts_to_events, ObservationDraft};
 
-    fn make_asset_draft(asset: &str, price: f64, change: f64, now: chrono::DateTime<Utc>) -> ObservationDraft {
+    fn make_asset_draft(
+        asset: &str,
+        price: f64,
+        change: f64,
+        now: chrono::DateTime<Utc>,
+    ) -> ObservationDraft {
         let severity = crate::validate::clamp_severity(
             (change.abs() / DAILY_SWING_SATURATION_PCT).clamp(0.0, 1.0),
         );

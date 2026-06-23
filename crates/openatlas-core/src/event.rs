@@ -1,5 +1,3 @@
-
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -24,7 +22,11 @@ impl Location {
         if !(-180.0..=180.0).contains(&lon) {
             return Err(CoreError::InvalidConfig(format!("lon {lon} out of range")));
         }
-        Ok(Self { lat, lon, region_tags })
+        Ok(Self {
+            lat,
+            lon,
+            region_tags,
+        })
     }
 }
 

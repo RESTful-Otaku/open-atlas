@@ -22,7 +22,11 @@ fn estimate_json_size(v: &Value) -> usize {
     match v {
         Value::Null => 4,
         Value::Bool(b) => {
-            if *b { 4 } else { 5 }
+            if *b {
+                4
+            } else {
+                5
+            }
         }
         Value::Number(n) => n.to_string().len(),
         Value::String(s) => s.len() + 2,
