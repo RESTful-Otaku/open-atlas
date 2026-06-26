@@ -8,7 +8,7 @@ export function shouldCompact(n: number): boolean {
   return Number.isFinite(n) && Math.abs(n) >= K;
 }
 
-export function formatFullNumber(n: number): string {
+function formatFullNumber(n: number): string {
   if (!Number.isFinite(n)) return "—";
   return new Intl.NumberFormat("en-US").format(Math.trunc(n));
 }

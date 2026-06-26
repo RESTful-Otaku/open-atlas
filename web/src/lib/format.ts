@@ -1,15 +1,11 @@
 
 
-export function fmtInt(value: number): string {
-  return new Intl.NumberFormat("en-US").format(Math.trunc(value));
-}
-
 export function fmtFixed(value: number, digits: number): string {
   if (!Number.isFinite(value)) return "—";
   return value.toFixed(digits);
 }
 
-export function clamp(value: number, min: number, max: number): number {
+function clamp(value: number, min: number, max: number): number {
   if (Number.isNaN(value)) return min;
   if (value < min) return min;
   if (value > max) return max;
