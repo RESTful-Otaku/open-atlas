@@ -17,10 +17,6 @@ import {
   MAX_SIGNALS,
 } from "./data-limits";
 import { DOMAIN_CATALOG } from "./colors";
-import {
-  loadSelectedHubDomain,
-  saveSelectedHubDomain,
-} from "./hub-filter-persist";
 import type {
   ConnectionState,
   UiCausalEdge,
@@ -32,7 +28,33 @@ import type {
   UiWorldState,
 } from "./types";
 
+const HUB_DOMAIN_FILTER_KEY = "openatlas-hub-domain-filter:v1";
+
 const VALID_HUB_DOMAINS = new Set(DOMAIN_CATALOG.map((d) => d.id));
+
+function loadSelectedHubDomain(): string | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(HUB_DOMAIN_FILTER_KEY);
+    if (!raw || raw === "null") return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function saveSelectedHubDomain(domain: string | null): void {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    if (domain === null) {
+      sessionStorage.removeItem(HUB_DOMAIN_FILTER_KEY);
+    } else {
+      sessionStorage.setItem(HUB_DOMAIN_FILTER_KEY, domain);
+    }
+  } catch {
+    /* quota */
+  }
+}
 
 function initialSelectedHubDomain(): string | null {
   const raw = loadSelectedHubDomain();
