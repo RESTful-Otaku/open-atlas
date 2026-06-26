@@ -69,11 +69,7 @@ export type OpsPollingOptions = {
   verboseLogs?: boolean;
 };
 
-<<<<<<< HEAD
-
-=======
 /** Start backoff-polling while Settings console is open/expanded. */
->>>>>>> 4a07e08 (fix: backoff polling, globe import, reactivity fixes, map defaults)
 export function acquireOpsPolling(options: OpsPollingOptions = {}): () => void {
   const verboseLogs = options.verboseLogs ?? true;
   pollConsumers += 1;

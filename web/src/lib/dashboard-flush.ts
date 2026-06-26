@@ -37,22 +37,7 @@ function scheduleFlushTick(): void {
   const elapsed = performance.now() - lastFlushAt;
   const wait = Math.max(0, minFlushIntervalMs() - elapsed);
   const runSoon = (): void => {
-<<<<<<< HEAD
-
-    if (HAS_IDLE_CALLBACK) {
-      flushIdle = requestIdleCallback(
-        () => {
-          flushIdle = undefined;
-          flushRaf = requestAnimationFrame(runFlush);
-        },
-        { timeout: 120 },
-      );
-    } else {
-      flushRaf = requestAnimationFrame(runFlush);
-    }
-=======
     flushRaf = requestAnimationFrame(runFlush);
->>>>>>> 4a07e08 (fix: backoff polling, globe import, reactivity fixes, map defaults)
   };
   if (wait <= 0) {
     runSoon();
