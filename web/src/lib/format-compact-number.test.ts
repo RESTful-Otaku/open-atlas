@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import {
   formatCompactNumber,
-  formatFullNumber,
   shouldCompact,
 } from "./format-compact-number";
 
@@ -58,16 +57,5 @@ describe("formatCompactNumber", () => {
   test("raw string for hover tooltip", () => {
     expect(formatCompactNumber(111100).raw).toBe("111,100");
     expect(formatCompactNumber(1110000000).raw).toBe("1,110,000,000");
-  });
-});
-
-describe("formatFullNumber", () => {
-  test("locale grouping", () => {
-    expect(formatFullNumber(111100)).toBe("111,100");
-    expect(formatFullNumber(1110000000)).toBe("1,110,000,000");
-  });
-
-  test("non-finite", () => {
-    expect(formatFullNumber(Number.NaN)).toBe("—");
   });
 });
