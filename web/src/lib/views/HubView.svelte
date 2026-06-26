@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Download, FileText, Sparkles } from "@lucide/svelte";
 
-  import { useNarrativeSubscription } from "../narrative-subscription";
+  import { onMount } from "svelte";
+  import { acquireNarrativeSubscription } from "../connection.svelte";
   import { dashboard } from "../state.svelte";
   import { buildHubTiles, computeThreatIndex } from "../hub";
   import { llmSnapshotCounts } from "../llm-snapshot";
@@ -25,7 +26,7 @@
   import HubOverviewCharts from "./HubOverviewCharts.svelte";
   import DataPipelineBanner from "../components/DataPipelineBanner.svelte";
 
-  useNarrativeSubscription();
+  onMount(() => acquireNarrativeSubscription());
 
   const tiles = $derived(
     buildHubTiles(

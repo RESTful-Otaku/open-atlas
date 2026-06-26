@@ -11,7 +11,4 @@ export const NARRATIVE_SUBSCRIPTION_QUERIES: readonly string[] = [
   "SELECT * FROM event_narrative",
 ];
 
-export const DASHBOARD_SUBSCRIPTION_QUERIES: readonly string[] = [
-  ...CORE_SUBSCRIPTION_QUERIES,
-  ...NARRATIVE_SUBSCRIPTION_QUERIES,
-];
+

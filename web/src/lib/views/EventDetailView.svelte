@@ -2,12 +2,13 @@
   import { ArrowLeft, Activity, Clock, MapPin } from "@lucide/svelte";
 
   import { DOMAIN_STREAM_EXPLANATION } from "../event-domain-copy";
+  import { onMount } from "svelte";
   import { router, navigate } from "../router.svelte";
-  import { useNarrativeSubscription } from "../narrative-subscription";
   import { dashboardData } from "../dashboard-revision.svelte";
   import { dashboard, lookupEventById, setSelectedDomain } from "../state.svelte";
+  import { acquireNarrativeSubscription } from "../connection.svelte";
 
-  useNarrativeSubscription();
+  onMount(() => acquireNarrativeSubscription());
   import { domainColor, domainLabel } from "../colors";
   import { signalsForEvent } from "../map/event-map-hover";
   import {
