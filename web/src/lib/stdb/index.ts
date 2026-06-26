@@ -9,28 +9,16 @@ import {
   DbConnectionBuilder as __DbConnectionBuilder,
   DbConnectionImpl as __DbConnectionImpl,
   SubscriptionBuilderImpl as __SubscriptionBuilderImpl,
-  TypeBuilder as __TypeBuilder,
-  Uuid as __Uuid,
-  convertToAccessorMap as __convertToAccessorMap,
-  makeQueryBuilder as __makeQueryBuilder,
-  procedureSchema as __procedureSchema,
   procedures as __procedures,
   reducerSchema as __reducerSchema,
   reducers as __reducers,
   schema as __schema,
   t as __t,
   table as __table,
-  type AlgebraicTypeType as __AlgebraicTypeType,
   type DbConnectionConfig as __DbConnectionConfig,
-  type ErrorContextInterface as __ErrorContextInterface,
-  type Event as __Event,
   type EventContextInterface as __EventContextInterface,
   type Infer as __Infer,
-  type QueryBuilder as __QueryBuilder,
-  type ReducerEventContextInterface as __ReducerEventContextInterface,
   type RemoteModule as __RemoteModule,
-  type SubscriptionEventContextInterface as __SubscriptionEventContextInterface,
-  type SubscriptionHandleImpl as __SubscriptionHandleImpl,
 } from "spacetimedb";
 
 import IngestEventReducer from "./ingest_event_reducer";
@@ -139,28 +127,14 @@ const REMOTE_MODULE = {
   typeof proceduresSchema
 >;
 
-
-export const tables: __QueryBuilder<typeof tablesSchema.schemaType> = __makeQueryBuilder(tablesSchema.schemaType);
-
-
-export const reducers = __convertToAccessorMap(reducersSchema.reducersType.reducers);
-
-
+/** The context type returned in callbacks for all possible events. */
 export type EventContext = __EventContextInterface<typeof REMOTE_MODULE>;
 
-export type ReducerEventContext = __ReducerEventContextInterface<typeof REMOTE_MODULE>;
+/** Builder class to configure a new subscription to the remote SpacetimeDB instance. */
+class SubscriptionBuilder extends __SubscriptionBuilderImpl<typeof REMOTE_MODULE> {}
 
-export type SubscriptionEventContext = __SubscriptionEventContextInterface<typeof REMOTE_MODULE>;
-
-export type ErrorContext = __ErrorContextInterface<typeof REMOTE_MODULE>;
-
-export type SubscriptionHandle = __SubscriptionHandleImpl<typeof REMOTE_MODULE>;
-
-
-export class SubscriptionBuilder extends __SubscriptionBuilderImpl<typeof REMOTE_MODULE> {}
-
-
-export class DbConnectionBuilder extends __DbConnectionBuilder<DbConnection> {}
+/** Builder class to configure a new database connection to the remote SpacetimeDB instance. */
+class DbConnectionBuilder extends __DbConnectionBuilder<DbConnection> {}
 
 
 export class DbConnection extends __DbConnectionImpl<typeof REMOTE_MODULE> {

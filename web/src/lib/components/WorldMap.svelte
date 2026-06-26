@@ -401,10 +401,7 @@
     simDate.toISOString().slice(0, 16).replace("T", " "),
   );
 
-<<<<<<< HEAD
-=======
   /** Events shown on map layers (24h replay, fallback to all). */
->>>>>>> 4a07e08 (fix: backoff polling, globe import, reactivity fixes, map defaults)
   const mapDisplayEvents = $derived.by(() => {
     void dashboardData.revision;
     const out = eventsForMapDisplay(dashboard.events, simUtcMs);

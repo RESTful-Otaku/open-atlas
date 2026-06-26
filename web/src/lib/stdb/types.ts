@@ -54,25 +54,12 @@ export const EventNarrative = __t.object("EventNarrative", {
 });
 export type EventNarrative = __Infer<typeof EventNarrative>;
 
-export const LastEventInDomain = __t.object("LastEventInDomain", {
-  domain: __t.u8(),
-  eventId: __t.u64(),
-  ordinal: __t.u64(),
-});
-export type LastEventInDomain = __Infer<typeof LastEventInDomain>;
-
 export const Location = __t.object("Location", {
   lat: __t.f64(),
   lon: __t.f64(),
   regionTags: __t.array(__t.string()),
 });
 export type Location = __Infer<typeof Location>;
-
-export const OrdinalCounter = __t.object("OrdinalCounter", {
-  id: __t.u8(),
-  value: __t.u64(),
-});
-export type OrdinalCounter = __Infer<typeof OrdinalCounter>;
 
 export const Signal = __t.object("Signal", {
   id: __t.u64(),
