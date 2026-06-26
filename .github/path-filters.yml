@@ -4,7 +4,6 @@
 shared:
   - '.github/**'
   - 'scripts/ci/**'
-  - 'scripts/test-all.sh'
   - 'scripts/check-no-secrets-in-git.sh'
   - 'scripts/e2e-qa.sh'
   - 'VERSION'
