@@ -38,12 +38,12 @@ describe("map-sim-time", () => {
     expect(got.map((e) => e.id).sort()).toEqual(["a", "l"]);
   });
 
-  test("eventsForMapDisplay falls back to 7d window when 24h and anchor are empty", () => {
+  test("eventsForMapDisplay returns all events when all timestamps are unparseable", () => {
     const sim = Date.parse("2026-04-21T18:00:00Z");
-    const recent = ev("r", "2026-04-20T12:00:00Z");
-    const old = ev("o", "2026-01-01T12:00:00Z");
-    const got = eventsForMapDisplay([recent, old], sim);
-    expect(got.map((e) => e.id)).toEqual(["r"]);
+    const bad1 = ev("b1", "not-a-timestamp");
+    const bad2 = ev("b2", "also-bad");
+    const got = eventsForMapDisplay([bad1, bad2], sim);
+    expect(got.map((e) => e.id)).toEqual(["b1", "b2"]);
   });
 
   test("mapUses7dFallback is false when anchor 24h window has events", () => {

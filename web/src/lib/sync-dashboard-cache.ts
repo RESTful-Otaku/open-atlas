@@ -4,6 +4,7 @@ import { bumpDashboardRevision, bumpDomainsRevision } from "./dashboard-revision
 import { invalidateDomainEventsCache } from "./domain-events-cache";
 import { sameOrderedEvents, sameOrderedIds } from "./buffer-trim";
 import { invalidateGeoEventIndex } from "./geo-event-index";
+import { parseEventMs } from "./map/map-sim-time";
 import { trimEventsByRetention } from "./event-retention-trim";
 import {
   MAX_CAUSAL_EDGES,
@@ -121,7 +122,7 @@ export function sortAndTrimDashboardBuffers(options?: {
   /** When true, sort/trim and bump viz revision even if no pending stream patches. */
   publish?: boolean;
 }): void {
-  const { streamDirty, domainsDirty: pendingDomains } =
+  const { streamDirty, domainsDirty: pendingDomains, eventsDirty, signalsDirty, edgesDirty, narrativesDirty } =
     flushPendingDashboardPatches();
   const severityDirty = flushPendingSeverityUpdates();
   const publish =
@@ -131,46 +132,63 @@ export function sortAndTrimDashboardBuffers(options?: {
   let streamChanged = streamDirty;
   let domainsChanged = pendingDomains || severityDirty;
 
-  const nextEvents = trimEventsByRetention(dashboard.events);
-  if (!sameOrderedEvents(dashboard.events, nextEvents)) {
-    dashboard.events = nextEvents;
-    streamChanged = true;
+  const force = options?.publish ?? false;
+
+  if (eventsDirty || force) {
+    const events = dashboard.events;
+    let maxEventMs = 0;
+    for (let i = 0; i < events.length; i++) {
+      const t = parseEventMs(events[i].timestamp);
+      if (t !== null && t > maxEventMs) maxEventMs = t;
+    }
+    const nowMs = maxEventMs > 0 ? maxEventMs : Date.now();
+    const nextEvents = trimEventsByRetention(events, { nowMs });
+    if (!sameOrderedEvents(dashboard.events, nextEvents)) {
+      dashboard.events = nextEvents;
+      streamChanged = true;
+    }
   }
 
-  const nextSignals = [...dashboard.recentSignals]
-    .sort((a, b) => Number(b.id) - Number(a.id))
-    .slice(0, MAX_SIGNALS);
-  if (!sameOrderedIds(dashboard.recentSignals, nextSignals)) {
-    dashboard.recentSignals = nextSignals;
-    streamChanged = true;
+  if (signalsDirty || force) {
+    const nextSignals = [...dashboard.recentSignals]
+      .sort((a, b) => Number(b.id) - Number(a.id))
+      .slice(0, MAX_SIGNALS);
+    if (!sameOrderedIds(dashboard.recentSignals, nextSignals)) {
+      dashboard.recentSignals = nextSignals;
+      streamChanged = true;
+    }
   }
 
-  const nextEdges = [...dashboard.recentCausalEdges]
-    .sort((a, b) => Number(b.id) - Number(a.id))
-    .slice(0, MAX_CAUSAL_EDGES);
-  if (!sameOrderedIds(dashboard.recentCausalEdges, nextEdges)) {
-    dashboard.recentCausalEdges = nextEdges;
-    streamChanged = true;
+  if (edgesDirty || force) {
+    const nextEdges = [...dashboard.recentCausalEdges]
+      .sort((a, b) => Number(b.id) - Number(a.id))
+      .slice(0, MAX_CAUSAL_EDGES);
+    if (!sameOrderedIds(dashboard.recentCausalEdges, nextEdges)) {
+      dashboard.recentCausalEdges = nextEdges;
+      streamChanged = true;
+    }
   }
 
-  const narratives = Object.values(dashboard.eventNarratives)
-    .sort((a, b) => {
-      const da = Date.parse(a.updated_at);
-      const db = Date.parse(b.updated_at);
-      return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
-    })
-    .slice(0, MAX_EVENT_NARRATIVES);
-  const nextNarratives = Object.fromEntries(
-    narratives.map((n) => [n.event_id, n]),
-  );
-  const narrKeys = Object.keys(dashboard.eventNarratives);
-  const nextKeys = Object.keys(nextNarratives);
-  let narrChanged =
-    narrKeys.length !== nextKeys.length ||
-    narrKeys.some((k) => dashboard.eventNarratives[k] !== nextNarratives[k]);
-  if (narrChanged) {
-    dashboard.eventNarratives = nextNarratives;
-    streamChanged = true;
+  if (narrativesDirty || force) {
+    const narratives = Object.values(dashboard.eventNarratives)
+      .sort((a, b) => {
+        const da = Date.parse(a.updated_at);
+        const db = Date.parse(b.updated_at);
+        return (isNaN(db) ? 0 : db) - (isNaN(da) ? 0 : da);
+      })
+      .slice(0, MAX_EVENT_NARRATIVES);
+    const nextNarratives = Object.fromEntries(
+      narratives.map((n) => [n.event_id, n]),
+    );
+    const narrKeys = Object.keys(dashboard.eventNarratives);
+    const nextKeys = Object.keys(nextNarratives);
+    let narrChanged =
+      narrKeys.length !== nextKeys.length ||
+      narrKeys.some((k) => dashboard.eventNarratives[k] !== nextNarratives[k]);
+    if (narrChanged) {
+      dashboard.eventNarratives = nextNarratives;
+      streamChanged = true;
+    }
   }
 
   if (!streamChanged && !domainsChanged) return;

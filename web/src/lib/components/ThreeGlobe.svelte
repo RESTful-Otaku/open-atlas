@@ -315,6 +315,9 @@
     if (!g || document.hidden) return;
 
     const windowed = eventsForMapDisplay(dashboard.events, simUtcMs);
+    if (dashboard.events.length > 0 && windowed.length === 0) {
+      console.debug("openatlas globe: eventsForMapDisplay returned 0 from %d events", dashboard.events.length);
+    }
     const geoIdx = getGeoEventIndex(windowed);
     const fp = globeLayerFingerprint({
       revision: dashboardData.revision,

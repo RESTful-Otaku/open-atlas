@@ -198,11 +198,39 @@
 
   <HubOverviewCharts />
 
-  <div class="hub-grid">
-    {#each tiles as tile (tile.id)}
-      <HubTile {tile} />
-    {/each}
-  </div>
+  {#if dashboard.dataMode !== "demo" && dashboard.connection === "connecting"}
+    <div class="hub-connecting" aria-live="polite">
+      <div class="connecting-spinner" aria-hidden="true"></div>
+      <span>Connecting to SpacetimeDB…</span>
+    </div>
+  {:else if dashboard.dataMode !== "demo" && dashboard.connection === "offline"}
+    <div class="hub-connecting is-offline" aria-live="polite">
+      <span>SpacetimeDB connection lost.</span>
+      <a href="#/settings" class="hub-connecting-link">Check settings</a>
+    </div>
+  {:else if tiles.length > 0}
+    <div class="hub-grid">
+      {#each tiles as tile (tile.id)}
+        <HubTile {tile} />
+      {/each}
+    </div>
+  {:else}
+    <div class="hub-empty">
+      <div class="skeleton-grid">
+        {#each Array(8) as _}
+          <div class="skeleton-card">
+            <div class="skeleton-line w-40"></div>
+            <div class="skeleton-line w-25"></div>
+            <div class="skeleton-line w-60 skeleton-metric"></div>
+            <div class="skeleton-row">
+              <div class="skeleton-line w-20 pill"></div>
+              <div class="skeleton-line w-30 pill"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   {#if briefingOpen}
     <aside class="hub-briefing" aria-label="Daily briefing" aria-busy={briefingLoading}>
@@ -281,23 +309,6 @@
   {/if}
 
 
-  {#if tiles.length === 0}
-    <div class="hub-empty">
-      <div class="skeleton-grid">
-        {#each Array(8) as _}
-          <div class="skeleton-card">
-            <div class="skeleton-line w-40"></div>
-            <div class="skeleton-line w-25"></div>
-            <div class="skeleton-line w-60 skeleton-metric"></div>
-            <div class="skeleton-row">
-              <div class="skeleton-line w-20 pill"></div>
-              <div class="skeleton-line w-30 pill"></div>
-            </div>
-          </div>
-        {/each}
-      </div>
-    </div>
-  {/if}
 </section>
 
 <style>
@@ -481,6 +492,32 @@
     color: var(--accent);
     text-decoration: underline;
     cursor: pointer;
+  }
+  .hub-connecting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-8);
+    color: var(--text-2);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .hub-connecting.is-offline {
+    color: var(--status-err);
+  }
+  .connecting-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .hub-connecting-link {
+    color: var(--accent);
+    text-decoration: underline;
+    margin-left: var(--space-1);
   }
   .hub-empty {
     padding-top: 8px;

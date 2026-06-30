@@ -150,7 +150,17 @@
     </div>
   </header>
 
-  {#if event}
+  {#if dashboard.dataMode !== "demo" && dashboard.connection === "connecting"}
+    <div class="ed-connecting" aria-live="polite">
+      <div class="connecting-spinner" aria-hidden="true"></div>
+      <span>Connecting to SpacetimeDB…</span>
+    </div>
+  {:else if dashboard.dataMode !== "demo" && dashboard.connection === "offline" && !event}
+    <div class="ed-connecting is-offline" aria-live="polite">
+      <span>SpacetimeDB connection lost.</span>
+      <a href="#/settings" class="connecting-link">Check settings</a>
+    </div>
+  {:else if event}
     <div class="ed-grid">
       <article class="ed-main">
         <div
@@ -757,5 +767,31 @@
     border: 1px solid var(--border-1);
     border-radius: var(--radius-xs);
     padding: 1px 6px;
+  }
+  .ed-connecting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-8);
+    color: var(--text-2);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .ed-connecting.is-offline {
+    color: var(--status-err);
+  }
+  .connecting-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .connecting-link {
+    color: var(--accent);
+    text-decoration: underline;
+    margin-left: var(--space-1);
   }
 </style>

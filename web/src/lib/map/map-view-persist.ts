@@ -53,7 +53,7 @@ function currentSimMinOfDay(): number {
 }
 
 export function defaultMapDomainSet(): Set<string> {
-  return new Set();
+  return new Set(ALL_IDS);
 }
 
 export function allDomainIds(): readonly string[] {

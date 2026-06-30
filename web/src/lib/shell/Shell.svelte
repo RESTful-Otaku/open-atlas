@@ -17,8 +17,11 @@
     enableDemoModeAndReload,
     exitDemoModeAndReload,
   } from "../demo-mode";
-  import { refreshFeedLive } from "../feed-live.svelte";
-  import { refreshRemoteReadiness } from "../readiness.svelte";
+  import { refreshFeedLive, feedLive } from "../feed-live.svelte";
+  import { refreshRemoteReadiness, readiness } from "../readiness.svelte";
+  import { createBackoffPoll } from "../poll-with-backoff";
+  import { notifySuccess, notifyWarning } from "../notify/notify";
+  import { NOTIFY_CODES } from "../notify/notify-codes";
   import { prefetchView } from "../view-loaders";
 
   let { class: className = "" }: { class?: string } = $props();
@@ -37,40 +40,94 @@
     };
     window.addEventListener("keydown", onKey);
 
-    let readinessPoll: number | undefined;
-    let feedPoll: number | undefined;
+    const readinessBackoff = createBackoffPoll(
+      async () => {
+        if (dashboard.dataMode === "demo") return true;
+        await refreshRemoteReadiness();
+        return readiness.ingestCheckErr === null && readiness.ingestReady !== false;
+      },
+      {
+        name: "readiness",
+        intervalMs: 60_000,
+        baseBackoffMs: 5_000,
+        maxBackoffMs: 300_000,
+        notifyAfterFailures: 3,
+        onBackoffChange(backingOff, failures, nextPollMs) {
+          if (backingOff) {
+            notifyWarning({
+              code: NOTIFY_CODES.INGEST_UNREACHABLE,
+              title: "Ingest / LLM polling backed off",
+              message: `${failures} consecutive failures — next poll in ${Math.round(nextPollMs / 1000)}s`,
+              detail: "Readiness probes to ingest and LLM services are failing.",
+              action: "Check that openatlas-ingest and openatlas-llm are running.",
+              timeoutMs: 10_000,
+              dedupeKey: "readiness-backoff",
+              source: "ingest",
+            });
+          } else {
+            notifySuccess({
+              code: NOTIFY_CODES.INGEST_UNREACHABLE,
+              title: "Ingest / LLM reachable again",
+              message: "Readiness probes recovered — resuming normal polling interval.",
+              timeoutMs: 5_000,
+              dedupeKey: "readiness-recover",
+              source: "ingest",
+            });
+          }
+        },
+      },
+    );
 
-    const startBackgroundPolls = (): void => {
-      if (readinessPoll !== undefined) return;
-      if (dashboard.dataMode !== "demo") {
-        void refreshRemoteReadiness().catch(() => {});
-      }
-      void refreshFeedLive().catch(() => {});
-      readinessPoll = window.setInterval(
-        () => void refreshRemoteReadiness().catch(() => {}),
-        60_000,
-      );
-      feedPoll = window.setInterval(() => void refreshFeedLive().catch(() => {}), 60_000);
-    };
-
-    const stopBackgroundPolls = (): void => {
-      if (readinessPoll !== undefined) {
-        clearInterval(readinessPoll);
-        readinessPoll = undefined;
-      }
-      if (feedPoll !== undefined) {
-        clearInterval(feedPoll);
-        feedPoll = undefined;
-      }
-    };
+    const feedBackoff = createBackoffPoll(
+      async () => {
+        await refreshFeedLive();
+        return feedLive.error === null;
+      },
+      {
+        name: "feed-catalog",
+        intervalMs: 60_000,
+        baseBackoffMs: 5_000,
+        maxBackoffMs: 300_000,
+        notifyAfterFailures: 3,
+        onBackoffChange(backingOff, failures, nextPollMs) {
+          if (backingOff) {
+            notifyWarning({
+              code: NOTIFY_CODES.FEED_POLL_FAIL,
+              title: "Feed catalog polling backed off",
+              message: `${failures} consecutive failures — next poll in ${Math.round(nextPollMs / 1000)}s`,
+              detail: "The /feeds endpoint is not responding.",
+              action: "Check that openatlas-ingest is running.",
+              timeoutMs: 10_000,
+              dedupeKey: "feed-backoff",
+              source: "ingest",
+            });
+          } else {
+            notifySuccess({
+              code: NOTIFY_CODES.FEED_POLL_FAIL,
+              title: "Feed catalog reachable again",
+              message: "Feed catalog polling recovered — resuming normal interval.",
+              timeoutMs: 5_000,
+              dedupeKey: "feed-recover",
+              source: "ingest",
+            });
+          }
+        },
+      },
+    );
 
     const onVisibility = (): void => {
-      if (document.hidden) stopBackgroundPolls();
-      else startBackgroundPolls();
+      if (document.hidden) {
+        readinessBackoff.stop();
+        feedBackoff.stop();
+      } else {
+        readinessBackoff.start();
+        feedBackoff.start();
+      }
     };
 
     document.addEventListener("visibilitychange", onVisibility);
-    if (!document.hidden) startBackgroundPolls();
+    readinessBackoff.start();
+    feedBackoff.start();
 
     prefetchView("/matrix/:id");
     prefetchView("/settings");
@@ -79,7 +136,8 @@
       unsubLayout();
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("visibilitychange", onVisibility);
-      stopBackgroundPolls();
+      readinessBackoff.stop();
+      feedBackoff.stop();
     };
   });
 
