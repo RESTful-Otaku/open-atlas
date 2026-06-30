@@ -7,7 +7,7 @@ import type { EChartsOption } from "echarts";
 import type { DeskProfile } from "./domain-desk-types";
 import type { DataMode } from "../../data-source-copy";
 import { deskGeoNote } from "../../data-source-copy";
-import type { UiCausalEdge, UiEvent, UiWorldState } from "../../types";
+import type { UiCausalEdge, UiEvent, UiEventHourBucket, UiWorldState } from "../../types";
 import {
   chartGridLine,
   chartItemBorder,
@@ -34,12 +34,24 @@ function pseudoRng(seed: number): () => number {
   };
 }
 
-function hourBuckets(events: readonly UiEvent[]): number[] {
+function hourBuckets(
+  events: readonly UiEvent[],
+  eventHourBuckets?: Record<string, UiEventHourBucket>,
+  domainId?: string,
+): number[] {
   const h = new Array(24).fill(0);
-  for (const e of events) {
-    const t = Date.parse(e.timestamp);
-    if (!Number.isFinite(t)) continue;
-    h[new Date(t).getUTCHours()] += 1;
+  if (eventHourBuckets && Object.keys(eventHourBuckets).length > 0) {
+    for (const hb of Object.values(eventHourBuckets)) {
+      if (domainId !== undefined && hb.domain !== domainId) continue;
+      const hour = new Date(hb.utc_hour_bin * 1000).getUTCHours();
+      h[hour] += hb.event_count;
+    }
+  } else {
+    for (const e of events) {
+      const t = Date.parse(e.timestamp);
+      if (!Number.isFinite(t)) continue;
+      h[new Date(t).getUTCHours()] += 1;
+    }
   }
   return h;
 }
@@ -94,8 +106,13 @@ export function rollingStressLine(
   };
 }
 
-export function hourOfDayBars(events: readonly UiEvent[], accent: string): EChartsOption {
-  const data = hourBuckets(events);
+export function hourOfDayBars(
+  events: readonly UiEvent[],
+  accent: string,
+  eventHourBuckets?: Record<string, UiEventHourBucket>,
+  domainId?: string,
+): EChartsOption {
+  const data = hourBuckets(events, eventHourBuckets, domainId);
   return {
     backgroundColor: "transparent",
     tooltip: { trigger: "axis" },
@@ -1294,8 +1311,10 @@ export function domainSeverityBoxplot(
 export function domainPictorialHourArrivals(
   events: readonly UiEvent[],
   accent: string,
+  eventHourBuckets?: Record<string, UiEventHourBucket>,
+  domainId?: string,
 ): EChartsOption {
-  const data = hourBuckets(events);
+  const data = hourBuckets(events, eventHourBuckets, domainId);
   const max = Math.max(1, ...data);
   return {
     backgroundColor: "transparent",
@@ -1435,6 +1454,7 @@ interface DeskPackParams {
   domainId: string;
   accent: string;
   events: readonly UiEvent[];
+  eventHourBuckets?: Record<string, UiEventHourBucket>;
   severityHistory: readonly number[];
   causalEdges: readonly UiCausalEdge[];
   state?: UiWorldState;
@@ -1557,9 +1577,9 @@ function buildAdditionalPanels(
   domainId: string,
   p: DeskPackParams,
 ): DeskChartPanel[] {
-  const { accent, events, severityHistory } = p;
+  const { accent, events, eventHourBuckets, severityHistory } = p;
   const heat = () => deskTertiaryHeatmapWeekHour(events, accent);
-  const hour = () => hourOfDayBars(events, accent);
+  const hour = () => hourOfDayBars(events, accent, eventHourBuckets, domainId);
   const sankey = () => deskTertiarySankeyStages(events, accent);
   const roll = () => rollOrSpark(severityHistory, events, accent);
   const gauge = () => domainGaugeRiskIndex(p.state, accent);
@@ -1585,7 +1605,7 @@ function buildAdditionalPanels(
       return [
         { title: "Ring stress trajectory", option: roll() },
         { title: "Week × hour (UTC)", option: heat() },
-        { title: "Hour arrivals · pictorial strip", option: domainPictorialHourArrivals(events, accent) },
+        { title: "Hour arrivals · pictorial strip", option: domainPictorialHourArrivals(events, accent, eventHourBuckets, domainId) },
         {
           title: "Ordinal lanes · theme river",
           option: deskTertiaryThemeRiverOrdinal(domainId, events, accent),
@@ -1648,7 +1668,7 @@ function buildAdditionalPanels(
         { title: "Ring stress trajectory", option: roll() },
         { title: "Arrivals · UTC hour", option: hour() },
         { title: "Risk gauge · world state", option: gauge() },
-        { title: "Hour arrivals · pictorial strip", option: domainPictorialHourArrivals(events, accent) },
+        { title: "Hour arrivals · pictorial strip", option: domainPictorialHourArrivals(events, accent, eventHourBuckets, domainId) },
       ];
     case "demographics":
       return [
@@ -1686,6 +1706,7 @@ export function deskChartPack(
     domainId: string;
     accent: string;
     events: readonly UiEvent[];
+    eventHourBuckets?: Record<string, UiEventHourBucket>;
     severityHistory: readonly number[];
     causalEdges?: readonly UiCausalEdge[];
     state?: UiWorldState;
@@ -1706,6 +1727,7 @@ export function deskChartPack(
     domainId,
     accent,
     events,
+    eventHourBuckets: params.eventHourBuckets,
     severityHistory,
     causalEdges,
     state,

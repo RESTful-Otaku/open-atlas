@@ -8,7 +8,7 @@
   import type { DeskProfile } from "./domain-desk-types";
   import { deskChartPack, type DeskChartPanel } from "./domain-desk-charts";
   import type { DataMode } from "../../data-source-copy";
-  import type { UiCausalEdge, UiEvent, UiWorldState } from "../../types";
+  import type { UiCausalEdge, UiEvent, UiEventHourBucket, UiWorldState } from "../../types";
   import {
     clearSavedLayout,
     cycleSpan,
@@ -32,6 +32,7 @@
     domainId: string;
     accent: string;
     events: readonly UiEvent[];
+    eventHourBuckets?: Record<string, UiEventHourBucket>;
     severityHistory: readonly number[];
     /** Edges touching this domain — used for cyber force graph. */
     causalEdges?: readonly UiCausalEdge[];
@@ -43,6 +44,7 @@
     domainId,
     accent,
     events,
+    eventHourBuckets = undefined,
     severityHistory,
     causalEdges = [],
     worldState,
@@ -57,6 +59,7 @@
         domainId,
         accent,
         events,
+        eventHourBuckets,
         severityHistory,
         causalEdges,
         state: worldState,

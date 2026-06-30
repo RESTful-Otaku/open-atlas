@@ -70,4 +70,13 @@ export interface UiEventNarrative {
   readonly updated_at: string;
 }
 
+export interface UiEventHourBucket {
+  bucket_key: string;
+  domain: string;
+  utc_hour_bin: number;
+  event_count: number;
+  total_severity: number;
+  updated_at: string;
+}
+
 export type ConnectionState = "connecting" | "live" | "offline";

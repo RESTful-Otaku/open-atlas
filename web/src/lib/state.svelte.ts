@@ -2,6 +2,7 @@ import type {
   CausalEdge,
   DomainInsight,
   Event,
+  EventHourBucket,
   EventNarrative,
   Signal,
   WorldStateRow,
@@ -22,6 +23,7 @@ import type {
   UiCausalEdge,
   UiDomainInsight,
   UiEvent,
+  UiEventHourBucket,
   UiEventNarrative,
   UiPredictedDisruption,
   UiSignal,
@@ -80,6 +82,7 @@ export const dashboard = $state({
   domainInsights: {} as Record<string, UiDomainInsight>,
   eventNarratives: {} as Record<string, UiEventNarrative>,
   selectedDomain: initialSelectedHubDomain(),
+  eventHourBuckets: {} as Record<string, UiEventHourBucket>,
   connection: "connecting" as ConnectionState,
   connectionLastError: null as string | null,
   autoReconnectAttempt: 0,
@@ -276,6 +279,20 @@ function projectDomainInsight(row: DomainInsight): UiDomainInsight {
   };
 }
 
+function projectEventHourBucket(row: EventHourBucket): UiEventHourBucket {
+  return {
+    bucket_key: row.bucketKey,
+    domain: domainIdFromTag(row.domain),
+    utc_hour_bin: Number(row.utcHourBin),
+    event_count: Number(row.eventCount),
+    total_severity: row.totalSeverity,
+    updated_at: row.updatedAt.toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Batched mutations (hydrate / bulk STDB apply)
+// ---------------------------------------------------------------------------
 
 let batchDepth = 0;
 let batchEvents: UiEvent[] | null = null;
@@ -284,6 +301,7 @@ let batchCausalEdges: UiCausalEdge[] | null = null;
 let batchNarratives: Record<string, UiEventNarrative> | null = null;
 let batchDomainState: Record<string, UiWorldState> | null = null;
 let batchDomainInsights: Record<string, UiDomainInsight> | null = null;
+let batchHourBuckets: Record<string, UiEventHourBucket> | null = null;
 const batchSeverityEvents: UiEvent[] = [];
 
 
@@ -296,6 +314,7 @@ export function beginDashboardBatch(): void {
     batchNarratives = {};
     batchDomainState = {};
     batchDomainInsights = {};
+    batchHourBuckets = {};
     batchSeverityEvents.length = 0;
   }
 }
@@ -332,6 +351,10 @@ export function endDashboardBatch(): void {
   if (batchDomainInsights !== null) {
     dashboard.domainInsights = batchDomainInsights;
     batchDomainInsights = null;
+  }
+  if (batchHourBuckets !== null) {
+    dashboard.eventHourBuckets = batchHourBuckets;
+    batchHourBuckets = null;
   }
   flushPendingSeverityUpdates();
 }
@@ -371,6 +394,7 @@ const pendingEventDeletes = new Set<string>();
 const pendingSignalDeletes = new Set<string>();
 const pendingCausalDeletes = new Set<string>();
 const pendingNarratives = new Map<string, UiEventNarrative>();
+const pendingHourBuckets: Record<string, UiEventHourBucket> = {};
 
 export type PendingDashboardFlush = {
   streamDirty: boolean;
@@ -499,6 +523,17 @@ export function flushPendingDashboardPatches(): PendingDashboardFlush {
       delete pendingDomainInsights[k];
     }
     domainsDirty = true;
+  }
+
+  if (Object.keys(pendingHourBuckets).length > 0) {
+    dashboard.eventHourBuckets = {
+      ...dashboard.eventHourBuckets,
+      ...pendingHourBuckets,
+    };
+    for (const k of Object.keys(pendingHourBuckets)) {
+      delete pendingHourBuckets[k];
+    }
+    streamDirty = true;
   }
 
   return { streamDirty, domainsDirty, eventsDirty, signalsDirty, edgesDirty, narrativesDirty };
@@ -743,6 +778,15 @@ export function applyEventNarrative(row: EventNarrative): void {
     return;
   }
   pendingNarratives.set(next.event_id, next);
+}
+
+export function applyEventHourBucket(row: EventHourBucket): void {
+  const next = projectEventHourBucket(row);
+  if (batchHourBuckets !== null) {
+    batchHourBuckets[next.bucket_key] = next;
+    return;
+  }
+  pendingHourBuckets[next.bucket_key] = next;
 }
 
 export function removeEventNarrative(eventId: bigint): void {

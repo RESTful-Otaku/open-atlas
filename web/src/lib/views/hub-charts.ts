@@ -4,7 +4,7 @@
 
 import type { EChartsOption } from "echarts";
 import { DOMAIN_CATALOG, domainColor, domainLabel } from "../colors";
-import type { UiEvent, UiWorldState } from "../types";
+import type { UiEvent, UiEventHourBucket, UiWorldState } from "../types";
 import {
   chartGridLine,
   chartTextMuted,
@@ -122,13 +122,23 @@ export function hubEventSharePie(events: readonly UiEvent[]): EChartsOption {
 }
 
 /** Event arrivals by UTC hour in the current buffer (line + area). */
-export function hubUtcHourIngestLine(events: readonly UiEvent[]): EChartsOption {
+export function hubUtcHourIngestLine(
+  events: readonly UiEvent[],
+  eventHourBuckets?: Record<string, UiEventHourBucket>,
+): EChartsOption {
   const hours = Array.from({ length: 24 }, (_, h) => `${h}h`);
   const buckets = new Array(24).fill(0);
-  for (const e of events) {
-    const t = Date.parse(e.timestamp);
-    if (!Number.isFinite(t)) continue;
-    buckets[new Date(t).getUTCHours()] += 1;
+  if (eventHourBuckets && Object.keys(eventHourBuckets).length > 0) {
+    for (const hb of Object.values(eventHourBuckets)) {
+      const hour = new Date(hb.utc_hour_bin * 1000).getUTCHours();
+      buckets[hour] += hb.event_count;
+    }
+  } else {
+    for (const e of events) {
+      const t = Date.parse(e.timestamp);
+      if (!Number.isFinite(t)) continue;
+      buckets[new Date(t).getUTCHours()] += 1;
+    }
   }
   const maxY = Math.max(1, ...buckets);
 
@@ -167,18 +177,30 @@ export function hubUtcHourIngestLine(events: readonly UiEvent[]): EChartsOption 
 }
 
 /** Domain × UTC hour event counts (when events exist in the buffer). */
-export function hubActivityHeatmap(events: readonly UiEvent[]): EChartsOption {
+export function hubActivityHeatmap(
+  events: readonly UiEvent[],
+  eventHourBuckets?: Record<string, UiEventHourBucket>,
+): EChartsOption {
   const domains = DOMAIN_CATALOG.map((d) => d.id);
   const hours = Array.from({ length: 24 }, (_, h) => `${h}h`);
   const matrix = domains.map(() => new Array(24).fill(0));
   const di = new Map(domains.map((d, i) => [d, i] as const));
 
-  for (const e of events) {
-    const row = di.get(e.domain);
-    if (row === undefined) continue;
-    const t = Date.parse(e.timestamp);
-    if (!Number.isFinite(t)) continue;
-    matrix[row]![new Date(t).getUTCHours()] += 1;
+  if (eventHourBuckets && Object.keys(eventHourBuckets).length > 0) {
+    for (const hb of Object.values(eventHourBuckets)) {
+      const row = di.get(hb.domain);
+      if (row === undefined) continue;
+      const hour = new Date(hb.utc_hour_bin * 1000).getUTCHours();
+      matrix[row]![hour] += hb.event_count;
+    }
+  } else {
+    for (const e of events) {
+      const row = di.get(e.domain);
+      if (row === undefined) continue;
+      const t = Date.parse(e.timestamp);
+      if (!Number.isFinite(t)) continue;
+      matrix[row]![new Date(t).getUTCHours()] += 1;
+    }
   }
 
   const data: [number, number, number][] = [];

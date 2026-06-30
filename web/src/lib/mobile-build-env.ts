@@ -4,16 +4,26 @@ function trimUrl(raw: string | undefined): string {
   return raw?.trim().replace(/\/$/, "") ?? "";
 }
 
+function readEnv(key: string): string {
+  const fromMeta = import.meta.env[key as keyof ImportMeta["env"]] as string | undefined;
+  if (fromMeta) return trimUrl(fromMeta);
+  if (typeof process !== "undefined") {
+    const fromProc = (process.env as Record<string, string | undefined>)[key];
+    if (fromProc) return trimUrl(fromProc);
+  }
+  return "";
+}
+
 export function buildEnvIngestBase(): string {
-  return trimUrl(import.meta.env.VITE_INGEST_BASE as string | undefined);
+  return readEnv("VITE_INGEST_BASE");
 }
 
 export function buildEnvLlmBase(): string {
-  return trimUrl(import.meta.env.VITE_LLM_BASE as string | undefined);
+  return readEnv("VITE_LLM_BASE");
 }
 
 export function buildEnvStdbUri(): string {
-  return trimUrl(import.meta.env.VITE_STDB_URI as string | undefined);
+  return readEnv("VITE_STDB_URI");
 }
 
 export function buildEnvHasMobileRuntimeFlag(): boolean {

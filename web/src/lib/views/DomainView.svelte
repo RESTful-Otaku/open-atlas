@@ -207,6 +207,7 @@
           domainId={catalog.id}
           accent={catalog.color}
           events={domainEventsAll}
+          eventHourBuckets={dashboard.eventHourBuckets}
           severityHistory={severityHistory}
           causalEdges={relatedEdges}
           worldState={state}

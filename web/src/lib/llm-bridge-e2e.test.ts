@@ -6,7 +6,9 @@
  *   buildLlmSnapshot → requestLlmInsight → response parsing.
  */
 
-import { describe, expect, test, afterAll, mock } from "bun:test";
+import { describe, expect, test, mock, afterAll } from "bun:test";
+
+// ── Tiny mock bridge server ──
 
 const OLLAMA_MODEL = "llama3.2-test";
 
@@ -76,6 +78,26 @@ function mockBridgeHandler(req: Request): Response {
   return new Response("not found", { status: 404 });
 }
 
+// ── Support: override native-config's llmBaseUrl ──
+// Other test files (e.g. feed-config.test.ts) also mock ./native-config globally
+// with hardcoded values. We must override so llmBaseUrl reads our VITE_LLM_BASE.
+mock.module("./native-config", () => ({
+  shouldProbeIngest: () => true,
+  shouldProbeLlm: () => true,
+  ingestUrl: (path: string) => `/test${path}`,
+  llmBaseUrl: () => process.env.VITE_LLM_BASE ?? "/api/llm",
+  llmServiceConfigured: () => {
+    const b = process.env.VITE_LLM_BASE;
+    return !!(b?.startsWith("http://") || b?.startsWith("https://"));
+  },
+  isNativeApp: () => false,
+  stdbDatabaseName: () => "openatlas",
+  joinServiceUrl: (base: string, path: string) => base ? `${base}${path}` : path,
+  ingestBaseUrl: () => "",
+  ingestServiceConfigured: () => false,
+  stdbUriFromEnv: () => undefined,
+}));
+
 let serverUrl = "";
 
 const server = Bun.serve({
@@ -84,23 +106,16 @@ const server = Bun.serve({
 });
 serverUrl = `http://127.0.0.1:${server.port}`;
 
-// Mock native-config so llmBaseUrl() returns the mock server URL
-// (import.meta.env.VITE_LLM_BASE is not populated from process.env in Bun test)
-const mockNativeConfig = () => ({
-  llmBaseUrl: () => serverUrl,
-  llmServiceConfigured: () => true,
-  shouldProbeLlm: () => true,
-  joinServiceUrl: (base: string, path: string) => `${base}${path}`,
-  ingestBaseUrl: () => "",
-  ingestUrl: (path: string) => path,
-  stdbDatabaseName: () => "openatlas",
-  stdbUriFromEnv: () => undefined,
-  ingestServiceConfigured: () => false,
-  isNativeApp: () => false,
-});
-mock.module("./native-config", mockNativeConfig);
-mock.module("../native-config", mockNativeConfig);
+// Override llmBaseUrl to point at our mock server.
+// We do this by patching the module's exports before importing anything
+// that depends on it.
+// Save original env var to restore after tests
+const origViteLlmBase = process.env.VITE_LLM_BASE;
+// llmBaseUrl() reads from VITE_LLM_BASE env var. Set before
+// dynamically importing modules so the module realm picks it up.
+process.env.VITE_LLM_BASE = serverUrl;
 
+// Now actually test
 import type { LlmSnapshotInput } from "./llm-snapshot";
 import type { LlmInsightResponse } from "./llm";
 
@@ -231,6 +246,7 @@ describe("LLM bridge end-to-end pipeline", () => {
 
 describe("requestLlmInsight with mock bridge", () => {
   test("returns valid response for bridge provider", async () => {
+    // Verify the env var and llmBaseUrl
     const llm = await import("./llm");
     const snapshot: Record<string, unknown> = {
       schema: "openatlas.llm_snapshot/v1",

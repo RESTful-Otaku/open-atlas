@@ -8,23 +8,34 @@ use narrative::{
     build_domain_insight_narrative, build_narrative, NarrativeContext, NARRATIVE_SEVERITY_THRESHOLD,
 };
 
-/// Hard upper bound — the table never grows past this regardless of feed volume.
-const SIGNAL_RING_SIZE: u64 = 400;
+/// Maximum number of signals retained across all domains. The newest
+/// `SIGNAL_RING_SIZE` rows are preserved; older rows are pruned at ingest
+/// time. This is a hard upper bound — regardless of feed volume the table
+/// never grows past this.
+const SIGNAL_RING_SIZE: u64 = 50_000;
 
-const CAUSAL_EDGE_RING_SIZE: u64 = 600;
+/// Aligned with dashboard subscription caps + headroom.
+const CAUSAL_EDGE_RING_SIZE: u64 = 100_000;
 
-const EVENT_RING_SIZE: u64 = 800;
+/// Increased from 800 to hold ~24h of data at typical event rates.
+/// Time-based pruning (24h retention) is the primary eviction mechanism;
+/// this count limit is a safety net.
+const EVENT_RING_SIZE: u64 = 200_000;
 
 /// Rolling retention window; older rows are pruned on every ingest.
 const EVENT_RETENTION_HOURS: u64 = 24;
 
 const EVENT_RETENTION_MICROS: i64 = (EVENT_RETENTION_HOURS as i64) * 3600 * 1_000_000;
 
-/// Maximum events per batch reducer call.
+/// Hour-bucket aggregate retention (48h to ensure full 24h window always present).
+const BUCKET_RETENTION_HOURS: i64 = 48;
+const BUCKET_RETENTION_SECS: i64 = BUCKET_RETENTION_HOURS * 3600;
+
+/// Maximum events per `ingest_events_batch` reducer call (transaction size bound).
 const MAX_INGEST_BATCH_SIZE: usize = 128;
 
-/// Append-only ingest audit ring (private table).
-const INGEST_AUDIT_RING_SIZE: u64 = 2_000;
+/// Append-only ingest audit ring (operator / HTTP only — table is private).
+const INGEST_AUDIT_RING_SIZE: u64 = 50_000;
 
 const AUDIT_ACCEPTED: u8 = 0;
 const AUDIT_DUPLICATE: u8 = 1;
@@ -75,7 +86,24 @@ pub struct Event {
     pub ordinal: u64,
 }
 
-/// Per-domain aggregate.
+/// Hour-bucketed event count aggregate for time-based charts.
+/// One row per (domain, UTC hour). Upserted on every ingest and pruned at
+/// 48h. Allows the frontend to render 24-hour time-distribution charts
+/// (hour-of-day bars, activity heatmap, UTC-hour line) without scanning
+/// the full event ring.
+#[spacetimedb::table(name = "event_hour_bucket", accessor = event_hour_bucket, public)]
+pub struct EventHourBucket {
+    #[primary_key]
+    pub bucket_key: String,
+    pub domain: u8,
+    /// Unix seconds rounded down to the hour boundary.
+    pub utc_hour_bin: i64,
+    pub event_count: u64,
+    pub total_severity: f64,
+    pub updated_at: Timestamp,
+}
+
+/// Per-domain aggregate. One row per domain.
 #[spacetimedb::table(name = "world_state", accessor = world_state, public)]
 pub struct WorldStateRow {
     #[primary_key]
@@ -279,12 +307,23 @@ pub fn ingest_events_batch(
         }
     }
 
-    ctx.db.batch_outcome().insert(BatchOutcome {
-        id: 0,
-        accepted,
-        duplicates,
-        rejected,
-    });
+    // Write outcome counts so subscribers (ingest metrics, UI) can retrieve
+    // accurate per-batch counts without having to query the append-only audit log.
+    if ctx.db.batch_outcome().id().find(0u8).is_some() {
+        ctx.db.batch_outcome().id().update(BatchOutcome {
+            id: 0,
+            accepted,
+            duplicates,
+            rejected,
+        });
+    } else {
+        ctx.db.batch_outcome().insert(BatchOutcome {
+            id: 0,
+            accepted,
+            duplicates,
+            rejected,
+        });
+    }
 
     let insight_ts = ctx.timestamp;
     for domain in touched_domains {
@@ -378,6 +417,36 @@ enum IngestOneOutcome {
     Duplicate,
 }
 
+/// Upsert the hour-bucket aggregate for an incoming event.
+fn upsert_event_hour_bucket(
+    ctx: &ReducerContext,
+    domain: u8,
+    severity_score: f64,
+    timestamp: Timestamp,
+) {
+    let micros = timestamp.to_micros_since_unix_epoch();
+    let utc_hour_bin = (micros / 3_600_000_000) * 3_600;
+    let bucket_key = format!("{}:{}", domain, utc_hour_bin);
+
+    let existing = ctx.db.event_hour_bucket().bucket_key().find(bucket_key.clone());
+    if let Some(mut row) = existing {
+        row.event_count = row.event_count.saturating_add(1);
+        row.total_severity += severity_score;
+        row.updated_at = timestamp;
+        ctx.db.event_hour_bucket().bucket_key().update(row);
+    } else {
+        ctx.db.event_hour_bucket().insert(EventHourBucket {
+            bucket_key,
+            domain,
+            utc_hour_bin,
+            event_count: 1,
+            total_severity: severity_score,
+            updated_at: timestamp,
+        });
+    }
+}
+
+/// Core ingest logic shared by single- and batch-reducers.
 fn try_ingest_one(
     ctx: &ReducerContext,
     input: &IngestEventArgs,
@@ -417,6 +486,7 @@ fn try_ingest_one(
     });
 
     upsert_world_state(ctx, domain, severity_score, timestamp);
+    upsert_event_hour_bucket(ctx, domain, severity_score, timestamp);
 
     if severity_score >= ANOMALY_THRESHOLD {
         ctx.db.signal().insert(Signal {
@@ -669,6 +739,7 @@ fn prune_rings(ctx: &ReducerContext) {
     prune_signals(ctx);
     prune_causal_edges(ctx);
     prune_ingest_audit(ctx);
+    prune_event_hour_buckets(ctx);
 }
 
 fn prune_events(ctx: &ReducerContext) {
@@ -796,6 +867,25 @@ fn prune_causal_edges_older_than_retention(ctx: &ReducerContext) {
     }
 }
 
+/// Drop hour-bucket rows whose hour is older than `BUCKET_RETENTION_HOURS`.
+fn prune_event_hour_buckets(ctx: &ReducerContext) {
+    let now_secs = ctx
+        .timestamp
+        .to_micros_since_unix_epoch()
+        / 1_000_000;
+    let cutoff_hour = now_secs - BUCKET_RETENTION_SECS;
+    let stale: Vec<String> = ctx
+        .db
+        .event_hour_bucket()
+        .iter()
+        .filter(|b| b.utc_hour_bin < cutoff_hour)
+        .map(|b| b.bucket_key.clone())
+        .collect();
+    for key in stale {
+        ctx.db.event_hour_bucket().bucket_key().delete(key);
+    }
+}
+
 fn prune_ingest_audit(ctx: &ReducerContext) {
     let total = ctx.db.ingest_audit().count();
     if total <= INGEST_AUDIT_RING_SIZE {
@@ -861,18 +951,12 @@ mod ingest_rules_tests {
 
     #[test]
     fn ring_sizes_are_positive_and_ordered() {
-        const {
-            assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE);
-        }
-        const {
-            assert!(SIGNAL_RING_SIZE > 0);
-        }
-        const {
-            assert!(CAUSAL_EDGE_RING_SIZE > 0);
-        }
-        const {
-            assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE);
-        }
+        const { assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE); }
+        const { assert!(SIGNAL_RING_SIZE > 0); }
+        const { assert!(CAUSAL_EDGE_RING_SIZE > 0); }
+        const { assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE); }
+        const { assert!(EVENT_RING_SIZE <= INGEST_AUDIT_RING_SIZE); }
+        const { assert!(BUCKET_RETENTION_HOURS > 0); }
     }
 
     #[test]
