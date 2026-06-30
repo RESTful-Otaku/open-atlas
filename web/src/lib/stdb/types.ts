@@ -81,3 +81,13 @@ export const WorldStateRow = __t.object("WorldStateRow", {
 });
 export type WorldStateRow = __Infer<typeof WorldStateRow>;
 
+export const EventHourBucket = __t.object("EventHourBucket", {
+  bucketKey: __t.string(),
+  domain: __t.u8(),
+  utcHourBin: __t.i64(),
+  eventCount: __t.u64(),
+  totalSeverity: __t.f64(),
+  updatedAt: __t.timestamp(),
+});
+export type EventHourBucket = __Infer<typeof EventHourBucket>;
+

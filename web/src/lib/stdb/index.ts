@@ -27,6 +27,7 @@ import LinkCausalEventsReducer from "./link_causal_events_reducer";
 import CausalEdgeRow from "./causal_edge_table";
 import DomainInsightRow from "./domain_insight_table";
 import EventRow from "./event_table";
+import EventHourBucketRow from "./event_hour_bucket_table";
 import EventNarrativeRow from "./event_narrative_table";
 import SignalRow from "./signal_table";
 import WorldStateRow from "./world_state_table";
@@ -57,6 +58,17 @@ const tablesSchema = __schema({
       { name: 'domain_insight_domain_key', constraint: 'unique', columns: ['domain'] },
     ],
   }, DomainInsightRow),
+  event_hour_bucket: __table({
+    name: 'event_hour_bucket',
+    indexes: [
+      { accessor: 'bucket_key', name: 'event_hour_bucket_bucket_key_idx_btree', algorithm: 'btree', columns: [
+        'bucketKey',
+      ] },
+    ],
+    constraints: [
+      { name: 'event_hour_bucket_bucket_key_key', constraint: 'unique', columns: ['bucketKey'] },
+    ],
+  }, EventHourBucketRow),
   event: __table({
     name: 'event',
     indexes: [

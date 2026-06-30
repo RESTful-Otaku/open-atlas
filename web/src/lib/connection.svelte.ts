@@ -3,6 +3,7 @@ import {
   applyCausalEdge,
   applyDomainInsight,
   applyEvent,
+  applyEventHourBucket,
   applyEventNarrative,
   applySignal,
   applyWorldState,
@@ -317,6 +318,9 @@ function installRowHandlers(connection: DbConnection): void {
 
   db.domain_insight.onInsert(onInsert(applyDomainInsight));
   db.domain_insight.onUpdate(onUpdate(applyDomainInsight));
+
+  db.event_hour_bucket.onInsert(onInsert(applyEventHourBucket));
+  db.event_hour_bucket.onUpdate(onUpdate(applyEventHourBucket));
 }
 
 function installNarrativeRowHandlers(connection: DbConnection): void {

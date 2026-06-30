@@ -20,67 +20,67 @@ const SIMULATORS: &[Simulator] = &[
     Simulator {
         source: "weather",
         domain: Domain::Climate,
-        tick_ms: 1800,
+        tick_ms: 3000,
     },
     Simulator {
         source: "finance",
         domain: Domain::Finance,
-        tick_ms: 300,
+        tick_ms: 1000,
     },
     Simulator {
         source: "earthquake",
         domain: Domain::Seismic,
-        tick_ms: 1200,
+        tick_ms: 2000,
     },
     Simulator {
         source: "energy",
         domain: Domain::Energy,
-        tick_ms: 500,
+        tick_ms: 1500,
     },
     Simulator {
         source: "transport",
         domain: Domain::Transport,
-        tick_ms: 900,
+        tick_ms: 2000,
     },
     Simulator {
         source: "health",
         domain: Domain::Health,
-        tick_ms: 1400,
+        tick_ms: 3000,
     },
     Simulator {
         source: "geospatial",
         domain: Domain::Geospatial,
-        tick_ms: 2000,
+        tick_ms: 3500,
     },
     Simulator {
         source: "economy",
         domain: Domain::Economy,
-        tick_ms: 1100,
+        tick_ms: 2000,
     },
     Simulator {
         source: "geopolitics",
         domain: Domain::Geopolitics,
-        tick_ms: 1600,
+        tick_ms: 3000,
     },
     Simulator {
         source: "cyber",
         domain: Domain::Cyber,
-        tick_ms: 700,
+        tick_ms: 2000,
     },
     Simulator {
         source: "space",
         domain: Domain::Space,
-        tick_ms: 2200,
+        tick_ms: 4000,
     },
     Simulator {
         source: "demographics",
         domain: Domain::Demographics,
-        tick_ms: 2500,
+        tick_ms: 4000,
     },
     Simulator {
         source: "infrastructure",
         domain: Domain::Infrastructure,
-        tick_ms: 950,
+        tick_ms: 2500,
     },
 ];
 
@@ -94,9 +94,13 @@ pub fn spawn_simulators(state: AppState) {
             let jitter = Duration::from_millis(tick_ms / 4 * i as u64);
             tokio::time::sleep(jitter).await;
             let mut interval = tokio::time::interval(Duration::from_millis(tick_ms));
+            // Each simulator gets its own RNG seeded from a unique base so
+            // the coordinate stream diverges across tasks and progresses
+            // forward within each task.
+            let mut rng = rand::rngs::StdRng::seed_from_u64(42 + i as u64);
             loop {
                 interval.tick().await;
-                let event = generate_event(source, domain);
+                let event = generate_event(source, domain, &mut rng);
                 let result =
                     push_events_via_state(&state, vec![event], source, "internal://simulator")
                         .await;
@@ -110,11 +114,11 @@ pub fn spawn_simulators(state: AppState) {
 
 #[cfg(test)]
 pub(crate) fn generate_event_for_test(source: &str, domain: Domain) -> WorldEvent {
-    generate_event(source, domain)
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    generate_event(source, domain, &mut rng)
 }
 
-fn generate_event(source: &str, domain: Domain) -> WorldEvent {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+fn generate_event<R: Rng>(source: &str, domain: Domain, rng: &mut R) -> WorldEvent {
     let base_severity = match domain {
         Domain::Climate => 0.4,
         Domain::Finance => 0.5,

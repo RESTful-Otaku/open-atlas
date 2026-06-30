@@ -5,6 +5,7 @@ import type { Response as BunResponse } from "bun";
 // @ts-ignore
 globalThis.$state = (init: unknown) => init;
 
+
 let ingestHealth = true;
 let ingestReady = true;
 let ingestStatusResult = {
@@ -27,8 +28,15 @@ mock.module("./native-config", () => ({
   shouldProbeIngest: () => true,
   shouldProbeLlm: () => true,
   ingestUrl: (path: string) => `/test${path}`,
-  llmBaseUrl: () => "/api/llm",
-  llmServiceConfigured: () => false,
+  llmBaseUrl: () => {
+    const env = process.env.VITE_LLM_BASE;
+    return env || "/api/llm";
+  },
+  llmServiceConfigured: () => {
+    const env = process.env.VITE_LLM_BASE;
+    const base = env || "/api/llm";
+    return base.startsWith("http://") || base.startsWith("https://");
+  },
   isNativeApp: () => false,
   stdbDatabaseName: () => "openatlas",
   joinServiceUrl: (base: string, path: string) => base ? `${base}${path}` : path,

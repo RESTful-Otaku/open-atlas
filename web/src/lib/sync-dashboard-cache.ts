@@ -14,6 +14,7 @@ import {
   applyCausalEdge,
   applyDomainInsight,
   applyEvent,
+  applyEventHourBucket,
   applyEventNarrative,
   applySignal,
   applyWorldState,
@@ -87,6 +88,9 @@ export function hydrateDashboardFromConnection(connection: DbConnection): void {
   }
   for (const row of topNarratives(db.event_narrative.iter(), MAX_EVENT_NARRATIVES)) {
     applyEventNarrative(row);
+  }
+  for (const row of db.event_hour_bucket.iter()) {
+    applyEventHourBucket(row);
   }
 
   endDashboardBatch();

@@ -24,7 +24,7 @@
   const heatOption = $derived.by(() => {
     void dashboardData.revision;
     return memoHubHeatmap(dashboard.events, () =>
-      hubActivityHeatmap(dashboard.events),
+      hubActivityHeatmap(dashboard.events, dashboard.eventHourBuckets),
     );
   });
   const shareOption = $derived.by(() => {
@@ -36,7 +36,7 @@
   const lineOption = $derived.by(() => {
     void dashboardData.revision;
     return memoHubTimeline(dashboard.events, () =>
-      hubUtcHourIngestLine(dashboard.events),
+      hubUtcHourIngestLine(dashboard.events, dashboard.eventHourBuckets),
     );
   });
   const hasEvents = $derived.by(() => {
