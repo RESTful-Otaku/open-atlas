@@ -323,5 +323,6 @@ describe("buildLlmSnapshot → requestLlmInsight full pipeline", () => {
 });
 
 afterAll(() => {
+  process.env.VITE_LLM_BASE = origViteLlmBase;
   server.stop();
 });
