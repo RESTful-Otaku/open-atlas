@@ -8,6 +8,7 @@
   import { loadViewForPattern, peekCachedView } from "../view-loaders";
   import { refreshRemoteReadiness } from "../readiness.svelte";
   import { refreshFeedLive } from "../feed-live.svelte";
+  import { dashboard } from "../state.svelte";
 
   const entry = $derived(viewForPattern(router.match.pattern));
   let compactLayout = $state(isCompactLayout());
@@ -30,6 +31,8 @@
   onMount(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     routeFadeMs = reduced ? 0 : 180;
+    void refreshRemoteReadiness().catch(() => {});
+    void refreshFeedLive().catch(() => {});
     return subscribeMobileLayout(() => {
       compactLayout = isCompactLayout();
     });
@@ -39,10 +42,8 @@
 
   $effect(() => {
     const pattern = router.match.pattern;
+    routeKey; // re-run when parametric routes change
     const gen = ++loadGen;
-
-    void refreshRemoteReadiness().catch(() => {});
-    void refreshFeedLive().catch(() => {});
 
     const cached = peekCachedView(pattern);
     if (cached) {
@@ -85,7 +86,20 @@
 </script>
 
 {#key routeKey}
-  {#if View}
+  {#if dashboard.dataMode !== "demo" && dashboard.connection === "connecting"}
+    <div class="route-loading" aria-busy="true" aria-live="polite">
+      <div class="connecting-spinner" aria-hidden="true"></div>
+      <span class="route-loading-label">Connecting to SpacetimeDB…</span>
+    </div>
+  {:else if dashboard.dataMode !== "demo" && dashboard.connection === "offline" && !View}
+    <div class="route-loading route-loading--error" role="alert">
+      <span class="route-loading-label">SpacetimeDB offline</span>
+      <p class="route-loading-detail">
+        Cannot load {entry.title} without a database connection.
+        <a href="#/settings" class="route-loading-link">Open settings</a>
+      </p>
+    </div>
+  {:else if View}
     <div
       class="route-view"
       data-scroll={scrollMode}
@@ -146,5 +160,20 @@
     font-size: 12px;
     line-height: 1.45;
     color: var(--text-2);
+  }
+  .route-loading-link {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .connecting-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>

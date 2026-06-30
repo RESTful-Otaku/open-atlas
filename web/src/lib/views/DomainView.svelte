@@ -179,6 +179,18 @@
       </div>
     </header>
 
+    {#if dashboard.dataMode !== "demo" && dashboard.connection === "connecting"}
+      <div class="domain-connecting" aria-live="polite">
+        <div class="connecting-spinner" aria-hidden="true"></div>
+        <span>Connecting to SpacetimeDB…</span>
+      </div>
+    {:else if dashboard.dataMode !== "demo" && dashboard.connection === "offline"}
+      <div class="domain-connecting is-offline" aria-live="polite">
+        <span>SpacetimeDB connection lost.</span>
+        <a href="#/settings" class="connecting-link">Check settings</a>
+      </div>
+    {/if}
+
     <section
       class="domain-panel domain-panel-kpi"
       aria-labelledby="domain-kpi-h"
@@ -748,5 +760,31 @@
     background: var(--bg-2);
     padding: 0.1rem 0.35rem;
     border-radius: 4px;
+  }
+  .domain-connecting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    color: var(--text-2);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .domain-connecting.is-offline {
+    color: var(--status-err);
+  }
+  .connecting-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .connecting-link {
+    color: var(--accent);
+    text-decoration: underline;
+    margin-left: var(--space-1);
   }
 </style>

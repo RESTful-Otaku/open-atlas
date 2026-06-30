@@ -10,8 +10,11 @@ import { domainIdFromTag } from "./domain";
 import { notifyError } from "./notify/notify";
 import { NOTIFY_CODES } from "./notify/notify-codes";
 import {
+  MAX_CAUSAL_EDGES,
   MAX_EVENT_NARRATIVES,
+  MAX_EVENTS_HARD_CEILING,
   MAX_SEVERITY_HISTORY,
+  MAX_SIGNALS,
 } from "./data-limits";
 import { DOMAIN_CATALOG } from "./colors";
 import {
@@ -277,8 +280,8 @@ export function beginDashboardBatch(): void {
 
 
 export function endDashboardBatch(): void {
-  if (batchDepth === 0) return;
-  batchDepth -= 1;
+  if (batchDepth <= 0) return;
+  batchDepth = Math.max(0, batchDepth - 1);
   if (batchDepth > 0) return;
 
   if (batchEvents !== null) {
@@ -350,6 +353,10 @@ const pendingNarratives = new Map<string, UiEventNarrative>();
 export type PendingDashboardFlush = {
   streamDirty: boolean;
   domainsDirty: boolean;
+  eventsDirty: boolean;
+  signalsDirty: boolean;
+  edgesDirty: boolean;
+  narrativesDirty: boolean;
 };
 
 function flushPendingTrackableList<T extends { id: string }>(
@@ -412,27 +419,34 @@ function flushPendingTrackableList<T extends { id: string }>(
 export function flushPendingDashboardPatches(): PendingDashboardFlush {
   let domainsDirty = false;
   let streamDirty = false;
+  let eventsDirty = false;
+  let signalsDirty = false;
+  let edgesDirty = false;
+  let narrativesDirty = false;
 
-  streamDirty = flushPendingTrackableList(
+  eventsDirty = flushPendingTrackableList(
     pendingEventDeletes, pendingEvents, eventIdToIndex,
     () => dashboard.events,
     (l) => { dashboard.events = l; },
     rebuildEventIdIndex,
-  ) || streamDirty;
+  );
+  streamDirty ||= eventsDirty;
 
-  streamDirty = flushPendingTrackableList(
+  signalsDirty = flushPendingTrackableList(
     pendingSignalDeletes, pendingSignals, signalIdToIndex,
     () => dashboard.recentSignals,
     (l) => { dashboard.recentSignals = l; },
     rebuildSignalIdIndex,
-  ) || streamDirty;
+  );
+  streamDirty ||= signalsDirty;
 
-  streamDirty = flushPendingTrackableList(
+  edgesDirty = flushPendingTrackableList(
     pendingCausalDeletes, pendingCausalEdges, causalIdToIndex,
     () => dashboard.recentCausalEdges,
     (l) => { dashboard.recentCausalEdges = l; },
     rebuildCausalIdIndex,
-  ) || streamDirty;
+  );
+  streamDirty ||= edgesDirty;
 
   if (pendingNarratives.size > 0) {
     const merged = { ...dashboard.eventNarratives };
@@ -442,6 +456,7 @@ export function flushPendingDashboardPatches(): PendingDashboardFlush {
     pendingNarratives.clear();
     evictOldestNarratives(merged, MAX_EVENT_NARRATIVES);
     dashboard.eventNarratives = merged;
+    narrativesDirty = true;
     streamDirty = true;
   }
 
@@ -464,7 +479,7 @@ export function flushPendingDashboardPatches(): PendingDashboardFlush {
     domainsDirty = true;
   }
 
-  return { streamDirty, domainsDirty };
+  return { streamDirty, domainsDirty, eventsDirty, signalsDirty, edgesDirty, narrativesDirty };
 }
 
 function appendToSeverityHistory(
@@ -566,7 +581,9 @@ export function removeEvent(id: bigint): void {
     return;
   }
   pendingEvents.delete(key);
-  pendingEventDeletes.add(key);
+  if (pendingEventDeletes.size < MAX_EVENTS_HARD_CEILING * 2) {
+    pendingEventDeletes.add(key);
+  }
 }
 
 export function applySignal(row: Signal): void {
@@ -602,7 +619,9 @@ export function removeSignal(id: bigint): void {
     return;
   }
   pendingSignals.delete(key);
-  pendingSignalDeletes.add(key);
+  if (pendingSignalDeletes.size < MAX_SIGNALS * 2) {
+    pendingSignalDeletes.add(key);
+  }
 }
 
 export function applyCausalEdge(row: CausalEdge): void {
@@ -638,7 +657,9 @@ export function removeCausalEdge(id: bigint): void {
     return;
   }
   pendingCausalEdges.delete(key);
-  pendingCausalDeletes.add(key);
+  if (pendingCausalDeletes.size < MAX_CAUSAL_EDGES * 2) {
+    pendingCausalDeletes.add(key);
+  }
 }
 
 export function applyWorldState(row: WorldStateRow): void {

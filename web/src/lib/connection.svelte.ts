@@ -41,6 +41,8 @@ const DEFAULT_MODULE = "openatlas";
 let activeConnection: DbConnection | null = null;
 let shuttingDown = false;
 let connectionOpening = false;
+/** Set during reconnectNow() to suppress handleLostConnection from scheduling auto-reconnect. */
+let reconnectIntentional = false;
 let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectAttempts = 0;
@@ -141,6 +143,7 @@ export function reconnectNow(): void {
     return;
   }
   if (activeConnection) {
+    reconnectIntentional = true;
     try {
       activeConnection.disconnect();
     } catch {
@@ -256,7 +259,7 @@ function openConnection(): void {
 
 function onConnected(connection: DbConnection): void {
   clearConnectionTimer();
-  if (activeConnection !== null && connection !== activeConnection) return;
+  if (activeConnection === null || connection !== activeConnection) return;
   connectionOpening = false;
   reconnectAttempts = 0;
   dashboard.autoReconnectAttempt = 0;
@@ -403,7 +406,6 @@ function formatSubscriptionError(err: unknown): string {
 
 function handleLostConnection(): void {
   clearConnectionTimer();
-  connectionOpening = false;
   narrativeHandlersInstalled = false;
   narrativeSubscriptionActive = false;
   narrativeSubscriptionHandle = null;
@@ -415,6 +417,11 @@ function handleLostConnection(): void {
       } catch {
       }
   }
+  if (reconnectIntentional) {
+    reconnectIntentional = false;
+    return;
+  }
+  connectionOpening = false;
   setConnection("offline");
   scheduleAutoReconnect();
   syncReconnectUi();

@@ -9,16 +9,16 @@ import {
 } from "./map-view-persist";
 
 describe("map-view-persist", () => {
-  test("defaultMapViewState has no domains enabled", () => {
+  test("defaultMapViewState has all domains enabled", () => {
     const d = defaultMapViewState();
-    expect(d.domains.size).toBe(0);
+    expect(d.domains.size).toBe(allDomainIds().length);
     expect(d.pins).toEqual([]);
     expect(d.mode).toBe("points");
     expect(allDomainIds().length).toBeGreaterThan(0);
   });
 
   test("empty set means no domain enabled", () => {
-    const none = defaultMapViewState().domains;
+    const none = new Set<string>();
     expect(isMapDomainEnabled(none, allDomainIds()[0]!)).toBe(false);
     expect(mapDomainsActiveLabel(none)).toBe("None");
   });

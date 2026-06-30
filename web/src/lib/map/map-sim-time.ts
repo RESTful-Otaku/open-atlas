@@ -1,7 +1,6 @@
 import type { UiEvent } from "../types";
 
 const MS_24H = 86_400_000;
-const MS_7D = 7 * MS_24H;
 
 export function parseEventMs(timestamp: string): number | null {
   const t = Date.parse(timestamp);
@@ -46,15 +45,7 @@ export function eventsForMapDisplay(
     if (anchored.length > 0) return anchored;
   }
 
-  const end = simUtcMs;
-  const start = end - MS_7D;
-  const wider: UiEvent[] = [];
-  for (const e of events) {
-    const t = parseEventMs(e.timestamp);
-    if (t === null) continue;
-    if (t > start && t <= end) wider.push(e);
-  }
-  return wider;
+  return [...events];
 }
 
 export function mapUses7dFallback(

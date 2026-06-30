@@ -2,15 +2,12 @@ import { sortAndTrimDashboardBuffers } from "./sync-dashboard-cache";
 import { logDebug } from "./telemetry/log";
 import { getUpdateIntervalMs } from "./update-interval.svelte";
 
-const HAS_IDLE_CALLBACK = typeof requestIdleCallback !== "undefined";
-
 function minFlushIntervalMs(): number {
   return getUpdateIntervalMs();
 }
 
 let flushRaf = 0;
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
-let flushIdle: number | undefined;
 let flushScheduled = false;
 let lastFlushAt = 0;
 let flushPaused = false;
@@ -23,23 +20,24 @@ function runFlush(): void {
     clearTimeout(flushTimer);
     flushTimer = undefined;
   }
-  if (flushIdle !== undefined && HAS_IDLE_CALLBACK) {
-    cancelIdleCallback(flushIdle);
-    flushIdle = undefined;
-  }
   if (flushPaused) {
     flushPendingWhilePaused = true;
     return;
   }
   lastFlushAt = performance.now();
-  sortAndTrimDashboardBuffers();
-  logDebug("dashboard-flush", "trimmed dashboard buffers");
+  try {
+    sortAndTrimDashboardBuffers();
+    logDebug("dashboard-flush", "trimmed dashboard buffers");
+  } catch (err) {
+    console.error("dashboard flush failed; pending data may be lost", err);
+  }
 }
 
 function scheduleFlushTick(): void {
   const elapsed = performance.now() - lastFlushAt;
   const wait = Math.max(0, minFlushIntervalMs() - elapsed);
   const runSoon = (): void => {
+<<<<<<< HEAD
 
     if (HAS_IDLE_CALLBACK) {
       flushIdle = requestIdleCallback(
@@ -52,6 +50,9 @@ function scheduleFlushTick(): void {
     } else {
       flushRaf = requestAnimationFrame(runFlush);
     }
+=======
+    flushRaf = requestAnimationFrame(runFlush);
+>>>>>>> 4a07e08 (fix: backoff polling, globe import, reactivity fixes, map defaults)
   };
   if (wait <= 0) {
     runSoon();
@@ -81,10 +82,6 @@ export function cancelScheduledDashboardFlush(): void {
   if (flushTimer !== undefined) {
     clearTimeout(flushTimer);
     flushTimer = undefined;
-  }
-  if (flushIdle !== undefined && HAS_IDLE_CALLBACK) {
-    cancelIdleCallback(flushIdle);
-    flushIdle = undefined;
   }
   flushScheduled = false;
 }

@@ -76,7 +76,7 @@ export function buildGlobePoints(
     if (!isGeoEvent(e)) continue;
     const sev = e.severity_score;
     const w = Number.isFinite(sev) ? Math.max(0.12, sev) : 0.28;
-    const r = 0.35 + w * 0.9;
+    const r = 0.2 + w * 0.55;
     pts.push({
       kind: "event",
       lat: e.location.lat,
@@ -135,7 +135,7 @@ export function buildGlobeArcs(
       endLat: b.location.lat,
       endLng: b.location.lon,
       color: c1,
-      w: (0.45 + inf * 2.4) * 0.5,
+      w: (0.25 + inf * 1.4) * 0.5,
       id: edge.id,
       altitude: arcAltitudeForGlobe(
         a.location.lat,

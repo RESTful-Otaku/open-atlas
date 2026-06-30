@@ -90,7 +90,7 @@ export function registerCausalLayer(map: MapLibreMap): void {
         "interpolate",
         ["linear"],
         ["get", "influence"],
-        0, 0.9, 1, 2.6,
+        0, 0.6, 1, 1.6,
       ],
       "line-opacity": [
         "interpolate",
@@ -99,7 +99,7 @@ export function registerCausalLayer(map: MapLibreMap): void {
         0, 0.35, 1, 0.5, 2, 0.6, 4, 0.7, 7, 0.75,
         10, 0.8, 14, 0.85,
       ],
-      "line-blur": 0.2,
+      "line-blur": 0.1,
     },
     layout: { "line-cap": "round" },
   });
@@ -116,7 +116,7 @@ export function registerPointsLayer(map: MapLibreMap): void {
         "interpolate",
         ["linear"],
         ["zoom"],
-        0, 2, 2, 3, 5, 5, 8, 7, 12, 9, 14, 10,
+        0, 1.5, 2, 2, 5, 3.5, 8, 5, 12, 6, 14, 7,
       ],
       "circle-opacity": [
         "interpolate",
@@ -126,7 +126,7 @@ export function registerPointsLayer(map: MapLibreMap): void {
         6, 0.9, 10, 0.92, 14, 0.95,
       ],
       "circle-stroke-color": "rgba(255, 255, 255, 0.9)",
-      "circle-stroke-width": 2,
+      "circle-stroke-width": 1.5,
     },
   });
 }

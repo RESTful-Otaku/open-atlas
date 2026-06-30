@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, type Component } from "svelte";
   import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
   import { debounce, rafCoalesce } from "../debounce-raf";
   import { releaseWebGlCanvases } from "../webgl-teardown";
@@ -8,10 +8,13 @@
     dismissMapEmptyHint,
     isMapEmptyHintDismissed,
   } from "../map/map-empty-dismiss";
-  import { useNarrativeSubscription } from "../narrative-subscription";
-
-  useNarrativeSubscription();
+  import { acquireNarrativeSubscription } from "../connection.svelte";
   import { ChevronDown, Flame, Grid3x3, Layers, MapPin } from "@lucide/svelte";
+
+  $effect(() => {
+    if (embedded) return;
+    return acquireNarrativeSubscription();
+  });
 
   import {
     buildCausalLineCollection,
@@ -80,10 +83,7 @@
     registerHeatLayers,
     registerPointsLayer,
   } from "../map/register-event-layers";
-  import {
-    eventsForMapDisplay,
-    mapUses7dFallback,
-  } from "../map/map-sim-time";
+  import { eventsForMapDisplay } from "../map/map-sim-time";
   import { loadAdminBoundaries } from "../map/globe-admin-boundaries";
   import { dashboardData } from "../dashboard-revision.svelte";
   import { getGeoEventIndex } from "../geo-event-index";
@@ -347,6 +347,26 @@
     persistMapViewState();
   });
 
+  let ThreeGlobeComponent: Component | undefined | null = $state(null);
+  let globeLoadError = $state<string | null>(null);
+
+  $effect(() => {
+    if (useWebGlGlobe) {
+      import("./ThreeGlobe.svelte")
+        .then((mod) => {
+          ThreeGlobeComponent = mod.default as unknown as Component;
+          globeLoadError = null;
+        })
+        .catch((err) => {
+          globeLoadError = err instanceof Error ? err.message : String(err);
+          ThreeGlobeComponent = null;
+        });
+    } else {
+      ThreeGlobeComponent = null;
+      globeLoadError = null;
+    }
+  });
+
   function toFeatureCollection(
     events: readonly UiEvent[],
   ): GeoJSON.FeatureCollection<GeoJSON.Point> {
@@ -381,16 +401,18 @@
     simDate.toISOString().slice(0, 16).replace("T", " "),
   );
 
+<<<<<<< HEAD
+=======
+  /** Events shown on map layers (24h replay, fallback to all). */
+>>>>>>> 4a07e08 (fix: backoff polling, globe import, reactivity fixes, map defaults)
   const mapDisplayEvents = $derived.by(() => {
     void dashboardData.revision;
-    return eventsForMapDisplay(dashboard.events, simUtcMs);
+    const out = eventsForMapDisplay(dashboard.events, simUtcMs);
+    if (dashboard.events.length > 0 && out.length === 0) {
+      console.debug("openatlas map: eventsForMapDisplay returned 0 from %d events — check simUtcMs parse", dashboard.events.length);
+    }
+    return out;
   });
-  const map7dFallback = $derived.by(() => {
-    void dashboardData.revision;
-    void simUtcMs;
-    return mapUses7dFallback(dashboard.events, simUtcMs);
-  });
-
   const airFromStdb = $derived.by(() => {
     void dashboardData.revision;
     return dashboard.dataMode === "live"
@@ -1118,10 +1140,7 @@
           <CompactNumber value={locatedCount} /> geo-located point{locatedCount === 1
             ? ""
             : "s"} in
-          view · layers: {mapDomainsActiveLabel}
-          {#if map7dFallback}
-            · 7d replay window
-          {/if}
+           view · layers: {mapDomainsActiveLabel}
           {#if dashboard.selectedDomain}
             · filter: {dashboard.selectedDomain}
           {/if}
@@ -1137,12 +1156,8 @@
     >
       {@render mapFloatControls()}
       {#if useWebGlGlobe}
-        {#await import("./ThreeGlobe.svelte")}
-          <div class="map-globe-loading" role="status" aria-busy="true">
-            Loading 3D globe…
-          </div>
-        {:then { default: ThreeGlobe }}
-          <ThreeGlobe
+        {#if ThreeGlobeComponent}
+          <ThreeGlobeComponent
             {mode}
             showSolarShading={true}
             {showTerminator}
@@ -1156,12 +1171,12 @@
             {simUtcMs}
             publicTracking={trackingGlobePoints}
             trackingPathRows={publicTrackingRows}
-            onMapPointScreen={(d) => {
+            onMapPointScreen={(d: { x: number; y: number; id: string } | null) => {
               if (d) setMapPointHover(d);
               else clearMapPointHover();
             }}
             onEventPointTap={compactLayout
-              ? (d) => openEventInspectorAt(d.x, d.y, d.id)
+              ? (d: { x: number; y: number; id: string }) => openEventInspectorAt(d.x, d.y, d.id)
               : undefined}
             onMapBackgroundTap={compactLayout
               ? () => {
@@ -1171,11 +1186,15 @@
                 }
               : undefined}
           />
-        {:catch}
+        {:else if globeLoadError}
           <div class="map-globe-loading" role="alert">
             Could not load 3D globe. Use the 2D map route or refresh.
           </div>
-        {/await}
+        {:else}
+          <div class="map-globe-loading" role="status" aria-busy="true">
+            Loading 3D globe…
+          </div>
+        {/if}
       {:else}
         <div bind:this={container} class="map"></div>
       {/if}
@@ -1192,11 +1211,7 @@
           <p class="map-empty-kicker">Instrument room</p>
           <p class="map-empty-title">No geo-located events in this view</p>
           <p class="map-empty-body">
-            {#if map7dFallback}
-              Showing a 7-day replay window (no events in the last 24h at this sim time).
-            {:else}
-              Replay window is the last 24h ending at the scrubbed UTC instant.
-            {/if}
+            Showing the last 24h of events ending at the current UTC time.
             Scrub solar time,
             {#if dashboard.selectedDomain}
               clear the hub domain filter ({dashboard.selectedDomain}), or

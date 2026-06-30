@@ -7,13 +7,13 @@ import {
 } from "./map-domains-persist";
 
 describe("map-domains-persist", () => {
-  test("defaultMapDomainSet is empty (all domain layers off)", () => {
-    expect(defaultMapDomainSet().size).toBe(0);
+  test("defaultMapDomainSet has all domains enabled", () => {
+    expect(defaultMapDomainSet().size).toBe(allDomainIds().length);
     expect(allDomainIds().length).toBeGreaterThan(0);
   });
 
   test("empty set means no domain enabled", () => {
-    const none = defaultMapDomainSet();
+    const none = new Set<string>();
     expect(isMapDomainEnabled(none, allDomainIds()[0]!)).toBe(false);
     expect(mapDomainsActiveLabel(none)).toBe("None");
   });
