@@ -140,6 +140,76 @@ The AI reads files in this sequence, each building on the last:
 | Stack-specific patterns | Keep only `skills/*.md` files for your stack |
 | Agent behaviour | Edit `.opencode/agents/*.md` — scope and instructions |
 | Report templates | Edit `reports/templates/*.md` — sections and prompts |
+| Everything else | Every file is plain markdown. Change anything to match your taste. |
+
+## Why Specificity Is the Art
+
+A generic AI prompt like "write a function" produces generic code. A specific
+one like "write a function using our conventions" produces code that fits.
+The level of specificity you encode in these files is the single biggest
+determinant of output quality.
+
+### The Specificity Spectrum
+
+```
+Vague config → AI writes what it thinks is right → You fix it → Repeat
+Exact config → AI writes what you want → You review → Ship
+```
+
+Every convention you encode — every naming rule, error pattern, test structure,
+commit format — removes one decision the AI has to guess. Each guess it gets
+wrong costs you a review cycle, a fix commit, or a production bug.
+
+### For a Solo Engineer
+
+You encode *your* preferences once. Every future session inherits them. Over
+time, the guide becomes a living record of your engineering taste — what you
+value, how you structure code, what you consider "done."
+
+Start small: add your lint commands, your error handling pattern, your commit
+format. Use the guide for one week, then add what annoyed you most. Repeat.
+Each iteration pays back more than the last.
+
+### For a Team
+
+The guide becomes the shared source of truth that survives Slack messages,
+outdated wikis, and onboarding docs. When a new engineer joins, they clone the
+guide and the AI teaches them the team's conventions by *enforcing* them — not
+by documenting them in a document nobody reads.
+
+Specificity at team level means:
+- **Consistent code review**: The AI's reviewer agent checks against the same
+  rules every human reviewer uses. No more "you missed the convention" comments.
+- **Faster onboarding**: New hires produce idiomatic team code on day one, not
+  month six. The AI enforces team conventions automatically.
+- **Collective improvement**: When the team agrees on a better convention, one
+  file change updates everyone. No more "I didn't get the memo" commits.
+
+### For a Company
+
+At scale, specificity prevents fragmentation across dozens of repos and teams.
+A shared company-level guide (forked and customised per team) ensures that:
+
+- Security conventions are enforced everywhere, not just in audited repos
+- Error handling patterns are consistent across microservices
+- Logging and observability standards are built-in, not retrofit
+- Cross-team engineers can read any repo and recognise the patterns
+
+The guide becomes the company's collective engineering knowledge, encoded in
+a form that both humans and AI can use. It's the difference between hoping
+everyone follows "best practices" and knowing they do.
+
+### Practical Advice
+
+Start with the defaults in this guide. Use them for a week. Then ask:
+
+- *What did the AI get wrong that I had to fix?* → Add a convention for it.
+- *What did I have to explain more than once?* → Add it to a skill or rule.
+- *What annoyed me?* → Fix it in the config.
+
+The guide should hurt less every week. If it doesn't, you're not customising
+enough. Specificity compounds — every convention you add makes the next one
+easier to enforce, because the AI already respects the ones before it.
 
 ## Why This Exists
 
