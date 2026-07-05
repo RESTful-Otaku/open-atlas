@@ -1,0 +1,11 @@
+# AI Assistant Guide — Local-only, do not push
+# Copy these lines into your project's .gitignore to prevent the guide files
+# from being committed to remote.
+opencode-guide/
+.opencode.md
+AGENTS.md
+CLAUDE.md
+.opencode/
+rules/
+skills/
+reports/
