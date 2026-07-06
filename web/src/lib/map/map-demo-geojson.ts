@@ -140,7 +140,7 @@ function tp(
       assetClass,
       label,
       glyph: transportGlyph(mode, assetClass),
-      color: chartPalette[palette % chartPalette.length]!,
+      color: chartPalette[palette % chartPalette.length] ?? "#94a3b8",
     },
     geometry: { type: "Point", coordinates: [lon, lat] },
   };

@@ -16,13 +16,13 @@ export function clientMsToPollSecs(ms: number): number {
   for (const opt of INGEST_POLL_OPTIONS_SECS) {
     if (opt >= want) return opt;
   }
-  return INGEST_POLL_OPTIONS_SECS[INGEST_POLL_OPTIONS_SECS.length - 1]!;
+  return INGEST_POLL_OPTIONS_SECS.at(-1) ?? 14400;
 }
 
 
 export function snapToIngestPollSecs(secs: number): number {
-  const max = INGEST_POLL_OPTIONS_SECS[INGEST_POLL_OPTIONS_SECS.length - 1]!;
-  let want = Math.max(INGEST_POLL_OPTIONS_SECS[0]!, secs);
+  const max = INGEST_POLL_OPTIONS_SECS.at(-1) ?? 14400;
+  let want = Math.max(INGEST_POLL_OPTIONS_SECS[0] ?? 30, secs);
   for (const opt of INGEST_POLL_OPTIONS_SECS) {
     if (opt >= want) return opt;
   }

@@ -59,8 +59,9 @@ export function trendGlyph(trend: string): string {
 
 export function computeTrend(series: readonly number[]): "up" | "down" | "flat" | "insufficient-data" {
   if (series.length < 3) return "insufficient-data";
-  const tail = series[series.length - 1]!;
-  const head = series[series.length - 3]!;
+  const tail = series.at(-1);
+  const head = series.at(-3);
+  if (tail === undefined || head === undefined) return "insufficient-data";
   const delta = tail - head;
   if (delta > 0.05) return "up";
   if (delta < -0.05) return "down";

@@ -229,7 +229,9 @@ function quantiles(sorted: number[], p: number): number {
   const i = Math.floor(x);
   const f = x - i;
   if (i + 1 < sorted.length) {
-    return sorted[i]! + f * (sorted[i + 1]! - sorted[i]!);
+    const lo = sorted[i]!;
+    const hi = sorted[i + 1]!;
+    return lo + f * (hi - lo);
   }
   return sorted[i]!;
 }

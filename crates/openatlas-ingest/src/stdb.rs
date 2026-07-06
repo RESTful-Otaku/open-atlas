@@ -303,21 +303,7 @@ pub(crate) fn uuid_to_u64(id: Uuid) -> u64 {
 }
 
 pub(crate) fn domain_to_u8(domain: &Domain) -> u8 {
-    match domain {
-        Domain::Energy => 0,
-        Domain::Finance => 1,
-        Domain::Climate => 2,
-        Domain::Seismic => 3,
-        Domain::Transport => 4,
-        Domain::Health => 5,
-        Domain::Geospatial => 6,
-        Domain::Economy => 7,
-        Domain::Geopolitics => 8,
-        Domain::Cyber => 9,
-        Domain::Space => 10,
-        Domain::Demographics => 11,
-        Domain::Infrastructure => 12,
-    }
+    *domain as u8
 }
 
 fn timestamp_micros(ts: DateTime<Utc>) -> i64 {
@@ -343,22 +329,7 @@ mod tests {
     /// Inverse of [`domain_to_u8`]. Test-only — on the write path we
     /// never need to decode the tag back into a domain variant.
     fn u8_to_domain(tag: u8) -> Option<Domain> {
-        match tag {
-            0 => Some(Domain::Energy),
-            1 => Some(Domain::Finance),
-            2 => Some(Domain::Climate),
-            3 => Some(Domain::Seismic),
-            4 => Some(Domain::Transport),
-            5 => Some(Domain::Health),
-            6 => Some(Domain::Geospatial),
-            7 => Some(Domain::Economy),
-            8 => Some(Domain::Geopolitics),
-            9 => Some(Domain::Cyber),
-            10 => Some(Domain::Space),
-            11 => Some(Domain::Demographics),
-            12 => Some(Domain::Infrastructure),
-            _ => None,
-        }
+        Domain::ALL.get(tag as usize).copied()
     }
 
     fn sample_event() -> WorldEvent {

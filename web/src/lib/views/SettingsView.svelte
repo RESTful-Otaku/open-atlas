@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, type Component } from "svelte";
   import { Settings as SettingsIcon } from "@lucide/svelte";
 
   import { connectionErrorDisplay } from "../connection-errors";
@@ -20,10 +20,14 @@
   import LlmProvidersSettings from "./settings/LlmProvidersSettings.svelte";
   import MobileDeploymentSettings from "./settings/MobileDeploymentSettings.svelte";
   import { deploymentConfigEnabled } from "../mobile-runtime-config";
-  import {
+import {
     SETTINGS_SECTIONS,
     type SettingsSectionId,
-  } from "./settings/settings-sections";
+} from "./settings/settings-sections";
+
+function sectionIcon(id: SettingsSectionId): Component {
+  return SETTINGS_SECTIONS.find((s) => s.id === id)?.icon ?? SettingsIcon;
+}
   import { shouldProbeIngest } from "../native-config";
   import { isCompactLayout, subscribeMobileLayout } from "../mobile-layout";
   import { settingsSwipeBack } from "../settings-mobile-gestures";
@@ -509,7 +513,7 @@
 
       <SettingsCollapsibleSection
         title="SpacetimeDB stream"
-        icon={SETTINGS_SECTIONS.find((s) => s.id === "stdb")!.icon}
+        icon={sectionIcon("stdb")}
         id="stdb"
         class="settings-group"
       >
@@ -518,7 +522,7 @@
 
       <SettingsCollapsibleSection
         title="Operations console"
-        icon={SETTINGS_SECTIONS.find((s) => s.id === "ops")!.icon}
+        icon={sectionIcon("ops")}
         id="ops-console"
         class="card--wide card--ops settings-group"
       >
@@ -527,7 +531,7 @@
 
       <SettingsCollapsibleSection
         title="Appearance"
-        icon={SETTINGS_SECTIONS.find((s) => s.id === "appearance")!.icon}
+        icon={sectionIcon("appearance")}
         class="settings-group"
       >
         {@render appearanceBody()}
@@ -535,21 +539,21 @@
 
       <SettingsCollapsibleSection
         title="Demo / test data (no backend)"
-        icon={SETTINGS_SECTIONS.find((s) => s.id === "demo")!.icon}
+        icon={sectionIcon("demo")}
       >
         {@render demoBody()}
       </SettingsCollapsibleSection>
 
       <SettingsCollapsibleSection
         title="Ingest service"
-        icon={SETTINGS_SECTIONS.find((s) => s.id === "ingest")!.icon}
+        icon={sectionIcon("ingest")}
       >
         {@render ingestBody()}
       </SettingsCollapsibleSection>
 
       <SettingsCollapsibleSection
         title="LLM providers"
-        icon={SETTINGS_SECTIONS.find((s) => s.id === "llm")!.icon}
+        icon={sectionIcon("llm")}
         class="settings-group"
       >
         {@render llmBody()}
@@ -557,7 +561,7 @@
 
       <SettingsCollapsibleSection
         title="Public APIs & live feeds"
-        icon={SETTINGS_SECTIONS.find((s) => s.id === "feeds")!.icon}
+        icon={sectionIcon("feeds")}
       >
         {@render feedsBody()}
       </SettingsCollapsibleSection>

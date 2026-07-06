@@ -70,8 +70,9 @@ export function buildDeskChartStats(
   let peakHour: number | null = null;
   let peak = 0;
   for (let h = 0; h < 24; h++) {
-    if (hours[h]! > peak) {
-      peak = hours[h]!;
+    const hourCount = hours[h] ?? 0;
+    if (hourCount > peak) {
+      peak = hourCount;
       peakHour = h;
     }
   }
@@ -127,9 +128,10 @@ export function buildLlmSnapshot(input: LlmSnapshotInput): Record<string, unknow
       influence_score: e.influence_score,
     }));
   const worldRows = scope
-    ? input.domainState[scope]
-      ? [input.domainState[scope]!]
-      : []
+    ? (() => {
+        const row = input.domainState[scope];
+        return row ? [row] : [];
+      })()
     : Object.values(input.domainState);
   const world = worldRows.map((r) => ({
     domain: r.domain,
@@ -138,9 +140,10 @@ export function buildLlmSnapshot(input: LlmSnapshotInput): Record<string, unknow
     risk_index: r.risk_index,
   }));
   const insightRows = scope
-    ? input.domainInsights[scope]
-      ? [input.domainInsights[scope]!]
-      : []
+    ? (() => {
+        const row = input.domainInsights[scope];
+        return row ? [row] : [];
+      })()
     : Object.values(input.domainInsights);
   const insights = insightRows.map((d) => ({
     domain: d.domain,

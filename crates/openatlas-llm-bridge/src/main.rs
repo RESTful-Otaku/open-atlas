@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::State;
+use axum::http::header::AUTHORIZATION;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
@@ -52,6 +53,9 @@ struct Args {
     /// Upstream request timeout in seconds.
     #[arg(long, default_value = "120", env = "OPENATLAS_OLLAMA_TIMEOUT_SECS")]
     ollama_timeout_secs: u64,
+    /// Optional API key for Bearer auth on /v1/insight.
+    #[arg(long, env = "OPENATLAS_LLM_API_KEY")]
+    api_key: Option<String>,
 }
 
 struct CircuitState {
@@ -118,9 +122,10 @@ struct AppState {
     model: String,
     timeout_secs: u64,
     circuit: CircuitState,
+    api_key: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct InsightRequest {
     snapshot: Value,
     user_prompt: Option<String>,
@@ -156,34 +161,10 @@ async fn main() -> anyhow::Result<()> {
         model: args.ollama_model.clone(),
         timeout_secs: args.ollama_timeout_secs,
         circuit: CircuitState::new(),
+        api_key: args.api_key.clone(),
     });
 
-    let app = axum::Router::new()
-        .route("/health", get(health))
-        .route("/v1/ready", get(ready))
-        .route("/v1/capable", get(capable))
-        .route(
-            "/v1/insight",
-            axum::routing::post(insight).layer(RequestBodyLimitLayer::new(MAX_BODY)),
-        )
-        .with_state(state)
-        .layer(TimeoutLayer::with_status_code(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            Duration::from_secs(AXUM_TIMEOUT_SECS),
-        ))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods([
-                    axum::http::Method::GET,
-                    axum::http::Method::POST,
-                    axum::http::Method::OPTIONS,
-                ])
-                .allow_headers([
-                    axum::http::header::CONTENT_TYPE,
-                    axum::http::header::AUTHORIZATION,
-                ]),
-        );
+    let app = build_app(state);
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;
     info!(
@@ -244,8 +225,22 @@ async fn capable(State(s): State<Arc<AppState>>) -> impl IntoResponse {
 
 async fn insight(
     State(s): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<InsightRequest>,
 ) -> impl IntoResponse {
+    if let Some(key) = &s.api_key {
+        let header = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok());
+        if header != Some(&format!("Bearer {key}")) {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "unauthorized".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    }
+
     if s.circuit.is_open() {
         warn!("circuit breaker open — rejecting /v1/insight (auto-recovery pending)");
         return (
@@ -275,19 +270,11 @@ async fn insight(
         }
     };
     let snapshot_limited = truncate_chars(&snapshot_str, MAX_JSON_CHARS);
-    let user_extra = body
-        .user_prompt
-        .as_deref()
-        .map(|p| truncate_chars(p, MAX_USER_PROMPT))
-        .filter(|p| !p.is_empty());
-    let user_content = if let Some(p) = user_extra {
-        format!(
-            "TELEMETRY_JSON:\n{}\n\nOPERATOR_REQUEST:\n{}",
-            snapshot_limited, p
-        )
-    } else {
-        format!("TELEMETRY_JSON:\n{}", snapshot_limited)
-    };
+    let user_content = build_user_content(
+        &snapshot_limited,
+        body.user_prompt.as_deref(),
+        MAX_USER_PROMPT,
+    );
     let text = match ollama::chat_completion(
         &s.http,
         &s.ollama_base,
@@ -357,6 +344,46 @@ fn sanitize_error(msg: &str) -> String {
         "LLM request failed (details logged server-side)".to_string()
     } else {
         cleaned
+    }
+}
+
+fn build_app(state: Arc<AppState>) -> axum::Router {
+    axum::Router::new()
+        .route("/health", get(health))
+        .route("/v1/ready", get(ready))
+        .route("/v1/capable", get(capable))
+        .route(
+            "/v1/insight",
+            axum::routing::post(insight).layer(RequestBodyLimitLayer::new(MAX_BODY)),
+        )
+        .with_state(state)
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Duration::from_secs(AXUM_TIMEOUT_SECS),
+        ))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods([
+                    axum::http::Method::GET,
+                    axum::http::Method::POST,
+                    axum::http::Method::OPTIONS,
+                ])
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                ]),
+        )
+}
+
+fn build_user_content(snapshot: &str, user_prompt: Option<&str>, max_prompt: usize) -> String {
+    let prompt = user_prompt
+        .map(|p| truncate_chars(p, max_prompt))
+        .filter(|p| !p.is_empty());
+    if let Some(p) = prompt {
+        format!("TELEMETRY_JSON:\n{snapshot}\n\nOPERATOR_REQUEST:\n{p}")
+    } else {
+        format!("TELEMETRY_JSON:\n{snapshot}")
     }
 }
 
@@ -541,5 +568,123 @@ mod tests {
             "expected ms precision: t1={t1} t2={t2} delta={}",
             t2 - t1
         );
+    }
+
+    // --- Pure function tests ---
+
+    #[test]
+    fn check_json_depth_accepts_shallow() {
+        let v: Value = serde_json::from_str(r#"{"a": {"b": 1}}"#).unwrap();
+        assert!(check_json_depth(&v, 64).is_ok());
+    }
+
+    #[test]
+    fn check_json_depth_rejects_deeply_nested() {
+        let deep = r#"{"a": {"b": {"c": {"d": {"e": {"f": {"g": {"h": 1}}}}}}}}"#;
+        let v: Value = serde_json::from_str(deep).unwrap();
+        assert!(check_json_depth(&v, 5).is_err());
+    }
+
+    #[test]
+    fn check_json_depth_accepts_array_at_boundary() {
+        let v: Value = serde_json::from_str("[[[1]]]").unwrap();
+        assert!(check_json_depth(&v, 3).is_ok());
+    }
+
+    #[test]
+    fn check_json_depth_rejects_array_past_boundary() {
+        let v: Value = serde_json::from_str("[[[[1]]]]").unwrap();
+        assert!(check_json_depth(&v, 3).is_err());
+    }
+
+    #[test]
+    fn sanitize_error_removes_http_urls() {
+        let msg = "request to http://127.0.0.1:11434/api/tags failed";
+        let cleaned = sanitize_error(msg);
+        assert!(!cleaned.contains("http://"));
+    }
+
+    #[test]
+    fn sanitize_error_removes_https_urls() {
+        let msg = "certificate error at https://example.com";
+        let cleaned = sanitize_error(msg);
+        assert!(!cleaned.contains("https://"));
+    }
+
+    #[test]
+    fn sanitize_error_preserves_non_url_text() {
+        let msg = "timeout after 30s";
+        assert_eq!(sanitize_error(msg), msg);
+    }
+
+    #[test]
+    fn sanitize_error_returns_fallback_when_all_removed() {
+        let msg = "error at http://localhost:11434";
+        let cleaned = sanitize_error(msg);
+        assert_eq!(cleaned, "LLM request failed (details logged server-side)");
+    }
+
+    #[test]
+    fn build_user_content_without_prompt() {
+        let content = build_user_content("{\"events\":[]}", None, 4000);
+        assert_eq!(content, "TELEMETRY_JSON:\n{\"events\":[]}");
+    }
+
+    #[test]
+    fn build_user_content_with_prompt() {
+        let content = build_user_content("{\"events\":[]}", Some("What is happening?"), 4000);
+        assert!(content.contains("OPERATOR_REQUEST:\nWhat is happening?"));
+        assert!(content.contains("TELEMETRY_JSON:\n{\"events\":[]}"));
+    }
+
+    #[test]
+    fn build_user_content_truncates_long_prompt() {
+        let long = "a".repeat(100);
+        let content = build_user_content("{}", Some(&long), 10);
+        assert!(content.len() < "TELEMETRY_JSON:\n{}\n\nOPERATOR_REQUEST:\n".len() + 20);
+    }
+
+    #[test]
+    fn build_user_content_skips_empty_prompt() {
+        let content = build_user_content("{}", Some(""), 4000);
+        assert!(!content.contains("OPERATOR_REQUEST"));
+    }
+
+    // --- Auth logic tests ---
+
+    /// Helper: simulate the auth check that the insight handler performs.
+    fn auth_check(api_key: &Option<String>, headers: &axum::http::HeaderMap) -> bool {
+        if let Some(key) = api_key {
+            let header = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok());
+            header == Some(&format!("Bearer {key}"))
+        } else {
+            true
+        }
+    }
+
+    #[test]
+    fn auth_allows_without_key_when_not_configured() {
+        let headers = axum::http::HeaderMap::new();
+        assert!(auth_check(&None, &headers));
+    }
+
+    #[test]
+    fn auth_allows_with_correct_bearer() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer secret-123".parse().unwrap());
+        assert!(auth_check(&Some("secret-123".into()), &headers));
+    }
+
+    #[test]
+    fn auth_denies_with_wrong_bearer() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer wrong".parse().unwrap());
+        assert!(!auth_check(&Some("secret-123".into()), &headers));
+    }
+
+    #[test]
+    fn auth_denies_missing_header_when_key_configured() {
+        let headers = axum::http::HeaderMap::new();
+        assert!(!auth_check(&Some("secret-123".into()), &headers));
     }
 }

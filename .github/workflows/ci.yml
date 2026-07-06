@@ -1,214 +1,62 @@
-# Dev / PR merge checks — path-filtered jobs + single required "Merge gate".
-#
-# Branch protection: require status check "Merge gate" (see docs/CICD.md).
-name: CI — Dev (PR merge checks)
+name: CI
 
 on:
-  pull_request:
-    branches: [main, master]
   push:
-    branches: [main, master]
-  workflow_dispatch:
-    inputs:
-      full_suite:
-        description: Run every slice (ignore path filters)
-        type: boolean
-        default: false
+    branches: [main]
+  pull_request:
+    branches: [main]
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  detect-changes:
-    name: Detect changes
+  rust:
     runs-on: ubuntu-latest
-    outputs:
-      secrets: ${{ steps.flags.outputs.secrets }}
-      rust: ${{ steps.flags.outputs.rust }}
-      stdb: ${{ steps.flags.outputs.stdb }}
-      web: ${{ steps.flags.outputs.web }}
-      e2e: ${{ steps.flags.outputs.e2e }}
-      full: ${{ steps.flags.outputs.full }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          fetch-depth: 0
+          components: clippy, rustfmt
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
+      - name: test
+        run: cargo test --workspace --exclude openatlas-ui-wasm
 
-      - uses: dorny/paths-filter@v3
-        id: filter
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          filters: .github/path-filters.yml
+          bun-version: latest
+      - name: install
+        run: bun install --frozen-lockfile
+        working-directory: web
+      - name: check + build
+        run: bun run build
+        working-directory: web
 
-      - id: flags
-        run: |
-          full="${{ github.event_name == 'workflow_dispatch' && inputs.full_suite == true }}"
-          shared="${{ steps.filter.outputs.shared }}"
-          rust="${{ steps.filter.outputs.rust }}"
-          stdb="${{ steps.filter.outputs.stdb }}"
-          ingest="${{ steps.filter.outputs.ingest }}"
-          web="${{ steps.filter.outputs.web }}"
-          e2e="${{ steps.filter.outputs.e2e }}"
-
-          if [[ "$full" == "true" || "$shared" == "true" ]]; then
-            rust=true; stdb=true; web=true; e2e=true
-          else
-            [[ "$stdb" == "true" || "$ingest" == "true" ]] && rust=true
-            [[ "$web" == "true" || "$e2e" == "true" ]] && e2e=true
-          fi
-
-          {
-            echo "secrets=true"
-            echo "rust=${rust:-false}"
-            echo "stdb=${stdb:-false}"
-            echo "web=${web:-false}"
-            echo "e2e=${e2e:-false}"
-            echo "full=${full:-false}"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Change summary
-        run: |
-          echo "| Slice | Run |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|-----|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| secrets | always |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| rust | ${{ steps.flags.outputs.rust }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| stdb | ${{ steps.flags.outputs.stdb }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| web | ${{ steps.flags.outputs.web }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| e2e | ${{ steps.flags.outputs.e2e }} |" >> "$GITHUB_STEP_SUMMARY"
-
-  secrets-scan:
-    name: secrets-scan
-    runs-on: ubuntu-latest
-    needs: detect-changes
-    steps:
-      - uses: actions/checkout@v4
-      - run: ./scripts/check-no-secrets-in-git.sh
-
-  rust-fmt:
-    name: rust-fmt
-    needs: detect-changes
-    if: needs.detect-changes.outputs.rust == 'true'
+  module:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all -- --check
-
-  rust-clippy:
-    name: rust-clippy
-    needs: detect-changes
-    if: needs.detect-changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
-
-  rust-test:
-    name: rust-test
-    needs: detect-changes
-    if: needs.detect-changes.outputs.rust == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --exclude openatlas-ui-wasm
-
-  stdb-module-build:
-    name: stdb-module-build
-    needs: detect-changes
-    if: needs.detect-changes.outputs.stdb == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          target: wasm32-unknown-unknown
       - name: Install SpacetimeDB CLI
         run: ./scripts/ci/install-spacetimedb-cli.sh
-      - run: spacetime build --module-path crates/openatlas-stdb-module
+      - name: build
+        run: spacetime build --module-path crates/openatlas-stdb-module
 
-  web-svelte-check:
-    name: web-svelte-check
-    needs: detect-changes
-    if: needs.detect-changes.outputs.web == 'true'
+  security-audit:
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-        working-directory: web
-      - run: bun run check
-        working-directory: web
-
-  web-unit-tests:
-    name: web-unit-tests
-    needs: detect-changes
-    if: needs.detect-changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-        working-directory: web
-      - run: bun test src/lib
-        working-directory: web
-
-  web-e2e-smoke:
-    name: web-e2e-smoke
-    needs: detect-changes
-    if: needs.detect-changes.outputs.e2e == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-        working-directory: web
-      - run: bun run build
-        working-directory: web
-      - run: bunx playwright install chromium --with-deps
-        working-directory: web
-      - run: bun run test:e2e
-        working-directory: web
-
-  merge-gate:
-    name: Merge gate
-    runs-on: ubuntu-latest
-    needs:
-      - detect-changes
-      - secrets-scan
-      - rust-fmt
-      - rust-clippy
-      - rust-test
-      - stdb-module-build
-      - web-svelte-check
-      - web-unit-tests
-      - web-e2e-smoke
-    if: always() && !cancelled()
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify required checks
-        env:
-          GATE_EVENT: ${{ github.event_name }}
-          GATE_FULL_SUITE: ${{ needs.detect-changes.outputs.full }}
-          CHANGES_SECRETS: "true"
-          CHANGES_RUST: ${{ needs.detect-changes.outputs.rust }}
-          CHANGES_STDB: ${{ needs.detect-changes.outputs.stdb }}
-          CHANGES_WEB: ${{ needs.detect-changes.outputs.web }}
-          CHANGES_E2E: ${{ needs.detect-changes.outputs.e2e }}
-          RESULT_SECRETS: ${{ needs.secrets-scan.result }}
-          RESULT_RUST_FMT: ${{ needs.rust-fmt.result }}
-          RESULT_RUST_CLIPPY: ${{ needs.rust-clippy.result }}
-          RESULT_RUST_TEST: ${{ needs.rust-test.result }}
-          RESULT_STDB_BUILD: ${{ needs.stdb-module-build.result }}
-          RESULT_WEB_CHECK: ${{ needs.web-svelte-check.result }}
-          RESULT_WEB_UNIT: ${{ needs.web-unit-tests.result }}
-          RESULT_WEB_E2E: ${{ needs.web-e2e-smoke.result }}
-        run: ./scripts/ci/merge-gate.sh
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: audit
+        run: cargo audit

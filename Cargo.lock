@@ -1175,6 +1175,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "openatlas-core",
  "reqwest",
  "serde",
  "serde_json",
