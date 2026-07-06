@@ -85,15 +85,17 @@
       let col = Math.floor(((ts - bucket.start) / span) * BUCKETS);
       if (col < 0) col = 0;
       if (col >= BUCKETS) col = BUCKETS - 1;
-      totals[row]![col] += event.severity_score;
-      counts[row]![col] += 1;
+      const tRow = totals[row];
+      const cRow = counts[row];
+      if (tRow) tRow[col] = (tRow[col] ?? 0) + event.severity_score;
+      if (cRow) cRow[col] = (cRow[col] ?? 0) + 1;
     }
 
     const data: [number, number, number][] = [];
     for (let r = 0; r < DOMAIN_CATALOG.length; r += 1) {
       for (let c = 0; c < BUCKETS; c += 1) {
-        const count = counts[r]![c]!;
-        const avg = count === 0 ? 0 : totals[r]![c]! / count;
+        const count = counts[r]?.[c] ?? 0;
+        const avg = count === 0 ? 0 : (totals[r]?.[c] ?? 0) / count;
         data.push([c, r, Number(avg.toFixed(3))]);
       }
     }

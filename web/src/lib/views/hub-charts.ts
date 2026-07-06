@@ -191,7 +191,8 @@ export function hubActivityHeatmap(
       const row = di.get(hb.domain);
       if (row === undefined) continue;
       const hour = new Date(hb.utc_hour_bin * 1000).getUTCHours();
-      matrix[row]![hour] += hb.event_count;
+      const mRow = matrix[row];
+      if (mRow) mRow[hour] = (mRow[hour] ?? 0) + hb.event_count;
     }
   } else {
     for (const e of events) {
@@ -199,14 +200,15 @@ export function hubActivityHeatmap(
       if (row === undefined) continue;
       const t = Date.parse(e.timestamp);
       if (!Number.isFinite(t)) continue;
-      matrix[row]![new Date(t).getUTCHours()] += 1;
+      const mRow2 = matrix[row];
+      if (mRow2) { const h2 = new Date(t).getUTCHours(); mRow2[h2] = (mRow2[h2] ?? 0) + 1; }
     }
   }
 
   const data: [number, number, number][] = [];
   for (let r = 0; r < domains.length; r += 1) {
     for (let c = 0; c < 24; c += 1) {
-      data.push([c, r, matrix[r]![c]!]);
+      data.push([c, r, matrix[r]?.[c] ?? 0]);
     }
   }
   const maxV = Math.max(1, ...data.map((d) => d[2]));

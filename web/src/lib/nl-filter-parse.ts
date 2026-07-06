@@ -57,7 +57,7 @@ export function parseNlFilterIntent(line: string): NlFilterIntent | null {
     }
   }
   if (!domain && tokens.length === 1) {
-    domain = resolveDomainToken(tokens[0]!);
+    domain = resolveDomainToken(tokens[0] ?? "");
   }
 
   if (!domain && hours === null) return null;

@@ -63,7 +63,11 @@ export function moveId(
   const j = i + dir;
   if (j < 0 || j >= order.length) return [...order];
   const out = [...order];
-  [out[i], out[j]] = [out[j]!, out[i]!];
+  const vi = out.at(i);
+  const vj = out.at(j);
+  if (vi === undefined || vj === undefined) return [...order];
+  out[i] = vj;
+  out[j] = vi;
   return out;
 }
 

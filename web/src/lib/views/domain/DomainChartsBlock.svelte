@@ -216,7 +216,7 @@
   function onDragStart(e: DragEvent, origIndex: number): void {
     dragFromPosition = committedDisplayIndex(origIndex);
     e.dataTransfer?.setData("text/plain", String(origIndex));
-    e.dataTransfer!.effectAllowed = "move";
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
   function onDragEnd(): void {
     dragFromPosition = null;
@@ -315,7 +315,7 @@
     role="list"
     ondragover={(e) => {
       e.preventDefault();
-      e.dataTransfer!.dropEffect = "move";
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     }}
     ondragleave={onDragLeaveGrid}
   >

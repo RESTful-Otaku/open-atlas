@@ -5,10 +5,7 @@ export function sameOrderedIds(
   b: readonly { id: string }[],
 ): boolean {
   if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i]!.id !== b[i]!.id) return false;
-  }
-  return true;
+  return a.every((item, i) => b[i] !== undefined && item.id === b[i].id);
 }
 
 export function sameOrderedEvents(
@@ -16,8 +13,7 @@ export function sameOrderedEvents(
   b: readonly { id: string; ordinal: number }[],
 ): boolean {
   if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i]!.id !== b[i]!.id || a[i]!.ordinal !== b[i]!.ordinal) return false;
-  }
-  return true;
+  return a.every(
+    (item, i) => b[i] !== undefined && item.id === b[i].id && item.ordinal === b[i].ordinal,
+  );
 }

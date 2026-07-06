@@ -4,39 +4,22 @@
 use std::collections::HashMap;
 
 use anyhow::{anyhow, Context, Result};
+use openatlas_core::Domain;
 use reqwest::{Client, Url};
 use serde::Deserialize;
 use serde_json::Value;
 
-/// Maps SpacetimeDB u8 tags to domain ids. Must stay in sync with openatlas-ingest and web.
-const DOMAIN_BY_TAG: &[&str] = &[
-    "energy",
-    "finance",
-    "climate",
-    "seismic",
-    "transport",
-    "health",
-    "geospatial",
-    "economy",
-    "geopolitics",
-    "cyber",
-    "space",
-    "demographics",
-    "infrastructure",
-];
-
 pub(crate) fn domain_label(tag: u8) -> String {
-    DOMAIN_BY_TAG
+    Domain::ALL
         .get(tag as usize)
-        .copied()
-        .unwrap_or("unknown")
-        .to_owned()
+        .map(|d| d.as_str().to_owned())
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 pub(crate) fn tag_for_domain(id: &str) -> Option<u8> {
-    DOMAIN_BY_TAG
+    Domain::ALL
         .iter()
-        .position(|candidate| *candidate == id)
+        .position(|d| d.as_str() == id)
         .map(|idx| idx as u8)
 }
 
@@ -336,8 +319,9 @@ mod tests {
 
     #[test]
     fn domain_roundtrip_is_total() {
-        for (idx, name) in DOMAIN_BY_TAG.iter().enumerate() {
-            assert_eq!(domain_label(idx as u8), *name);
+        for (idx, domain) in Domain::ALL.iter().enumerate() {
+            let name = domain.as_str();
+            assert_eq!(domain_label(idx as u8), name);
             assert_eq!(tag_for_domain(name), Some(idx as u8));
         }
         assert_eq!(domain_label(250), "unknown");
@@ -381,5 +365,151 @@ mod tests {
         assert_eq!(decoded.domain_tag, 1);
         assert_eq!(decoded.event_count, 38);
         assert!((decoded.avg_severity - 0.72).abs() < 1e-9);
+    }
+
+    #[test]
+    fn signal_row_decodes_happy() {
+        let row = json!([99, 4, 0.85, "anomaly: high severity"]);
+        let decoded = decode_signal_row(row).unwrap();
+        assert_eq!(decoded.event_id, 99);
+        assert_eq!(decoded.domain_tag, 4);
+        assert!((decoded.score - 0.85).abs() < 1e-9);
+        assert_eq!(decoded.reason, "anomaly: high severity");
+    }
+
+    #[test]
+    fn signal_row_rejects_missing_fields() {
+        assert!(decode_signal_row(json!([99, 4])).is_err());
+        assert!(decode_signal_row(json!([99, 4, 0.85])).is_err());
+    }
+
+    #[test]
+    fn causal_edge_row_decodes_happy() {
+        let row = json!([1001, 1002, 0.73, 0.15]);
+        let decoded = decode_causal_edge_row(row).unwrap();
+        assert_eq!(decoded.source_event_id, 1001);
+        assert_eq!(decoded.target_event_id, 1002);
+        assert!((decoded.influence_score - 0.73).abs() < 1e-9);
+        assert!((decoded.decay_rate - 0.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn as_u64_from_number() {
+        assert_eq!(as_u64(Some(&json!(42))).unwrap(), 42);
+        assert_eq!(as_u64(Some(&json!(0))).unwrap(), 0);
+        assert_eq!(as_u64(Some(&json!(u64::MAX))).unwrap(), u64::MAX);
+    }
+
+    #[test]
+    fn as_u64_from_string() {
+        assert_eq!(as_u64(Some(&json!("42"))).unwrap(), 42);
+        assert_eq!(as_u64(Some(&json!("0"))).unwrap(), 0);
+    }
+
+    #[test]
+    fn as_u64_rejects_negative() {
+        assert!(as_u64(Some(&json!(-1))).is_err());
+    }
+
+    #[test]
+    fn as_u64_rejects_float() {
+        assert!(as_u64(Some(&json!(1.5))).is_err());
+    }
+
+    #[test]
+    fn as_u64_rejects_missing() {
+        assert!(as_u64(None).is_err());
+    }
+
+    #[test]
+    fn as_u8_happy() {
+        assert_eq!(as_u8(Some(&json!(0))).unwrap(), 0);
+        assert_eq!(as_u8(Some(&json!(255))).unwrap(), 255);
+    }
+
+    #[test]
+    fn as_u8_rejects_overflow() {
+        assert!(as_u8(Some(&json!(256))).is_err());
+    }
+
+    #[test]
+    fn as_f64_happy() {
+        assert!((as_f64(Some(&json!(3.14))).unwrap() - 3.14).abs() < 1e-9);
+        assert_eq!(as_f64(Some(&json!(42))).unwrap(), 42.0);
+    }
+
+    #[test]
+    fn as_f64_rejects_string() {
+        assert!(as_f64(Some(&json!("nan"))).is_err());
+    }
+
+    #[test]
+    fn as_f64_rejects_missing() {
+        assert!(as_f64(None).is_err());
+    }
+
+    #[test]
+    fn as_string_happy() {
+        assert_eq!(as_string(Some(&json!("hello"))).unwrap(), "hello");
+    }
+
+    #[test]
+    fn as_string_rejects_number() {
+        assert!(as_string(Some(&json!(42))).is_err());
+    }
+
+    #[test]
+    fn as_timestamp_raw_int() {
+        let ts = as_timestamp_micros(Some(&json!(1_700_000_000_000_000i64))).unwrap();
+        assert_eq!(ts, 1_700_000_000_000_000);
+    }
+
+    #[test]
+    fn as_timestamp_tagged_object() {
+        let ts = as_timestamp_micros(Some(&json!({
+            "__timestamp_micros_since_unix_epoch__": 1_700_000_000_000_000i64
+        })))
+        .unwrap();
+        assert_eq!(ts, 1_700_000_000_000_000);
+    }
+
+    #[test]
+    fn as_timestamp_array_wrapper() {
+        let ts = as_timestamp_micros(Some(&json!([1_700_000_000_000_000i64]))).unwrap();
+        assert_eq!(ts, 1_700_000_000_000_000);
+    }
+
+    #[test]
+    fn as_timestamp_string() {
+        let ts = as_timestamp_micros(Some(&json!("1700000000000000"))).unwrap();
+        assert_eq!(ts, 1_700_000_000_000_000);
+    }
+
+    #[test]
+    fn as_timestamp_rejects_missing() {
+        assert!(as_timestamp_micros(None).is_err());
+    }
+
+    #[test]
+    fn timestamp_from_map_happy() {
+        let map =
+            serde_json::from_str(r#"{"__timestamp_micros_since_unix_epoch__": 1234}"#).unwrap();
+        assert_eq!(timestamp_from_map(&map).unwrap(), 1234);
+    }
+
+    #[test]
+    fn timestamp_from_map_missing_key() {
+        let map = serde_json::from_str(r#"{"other_key": 1234}"#).unwrap();
+        assert!(timestamp_from_map(&map).is_err());
+    }
+
+    #[test]
+    fn decode_event_row_rejects_non_array() {
+        assert!(decode_event_row(json!({"not": "array"})).is_err());
+    }
+
+    #[test]
+    fn decode_event_row_rejects_short_array() {
+        assert!(decode_event_row(json!([42])).is_err());
     }
 }

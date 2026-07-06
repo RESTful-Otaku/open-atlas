@@ -8,6 +8,7 @@ license.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
+openatlas-core = { path = "../openatlas-core" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
