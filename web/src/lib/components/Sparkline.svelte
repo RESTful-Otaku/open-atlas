@@ -33,7 +33,7 @@
     const coords: string[] = [];
     for (let i = 0; i < series.length; i += 1) {
       const x = pad + step * i;
-      const normalised = (series[i]! - min) / range;
+      const normalised = ((series[i] ?? min) - min) / range;
       const y = pad + (1 - normalised) * (h - pad * 2);
       coords.push(`${x.toFixed(2)},${y.toFixed(2)}`);
     }

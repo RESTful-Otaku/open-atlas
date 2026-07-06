@@ -35,7 +35,7 @@ const BUCKET_RETENTION_SECS: i64 = BUCKET_RETENTION_HOURS * 3600;
 const MAX_INGEST_BATCH_SIZE: usize = 128;
 
 /// Append-only ingest audit ring (operator / HTTP only — table is private).
-const INGEST_AUDIT_RING_SIZE: u64 = 50_000;
+const INGEST_AUDIT_RING_SIZE: u64 = 200_000;
 
 const AUDIT_ACCEPTED: u8 = 0;
 const AUDIT_DUPLICATE: u8 = 1;
@@ -428,7 +428,11 @@ fn upsert_event_hour_bucket(
     let utc_hour_bin = (micros / 3_600_000_000) * 3_600;
     let bucket_key = format!("{}:{}", domain, utc_hour_bin);
 
-    let existing = ctx.db.event_hour_bucket().bucket_key().find(bucket_key.clone());
+    let existing = ctx
+        .db
+        .event_hour_bucket()
+        .bucket_key()
+        .find(bucket_key.clone());
     if let Some(mut row) = existing {
         row.event_count = row.event_count.saturating_add(1);
         row.total_severity += severity_score;
@@ -869,10 +873,7 @@ fn prune_causal_edges_older_than_retention(ctx: &ReducerContext) {
 
 /// Drop hour-bucket rows whose hour is older than `BUCKET_RETENTION_HOURS`.
 fn prune_event_hour_buckets(ctx: &ReducerContext) {
-    let now_secs = ctx
-        .timestamp
-        .to_micros_since_unix_epoch()
-        / 1_000_000;
+    let now_secs = ctx.timestamp.to_micros_since_unix_epoch() / 1_000_000;
     let cutoff_hour = now_secs - BUCKET_RETENTION_SECS;
     let stale: Vec<String> = ctx
         .db
@@ -951,12 +952,24 @@ mod ingest_rules_tests {
 
     #[test]
     fn ring_sizes_are_positive_and_ordered() {
-        const { assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE); }
-        const { assert!(SIGNAL_RING_SIZE > 0); }
-        const { assert!(CAUSAL_EDGE_RING_SIZE > 0); }
-        const { assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE); }
-        const { assert!(EVENT_RING_SIZE <= INGEST_AUDIT_RING_SIZE); }
-        const { assert!(BUCKET_RETENTION_HOURS > 0); }
+        const {
+            assert!(EVENT_RING_SIZE >= SIGNAL_RING_SIZE);
+        }
+        const {
+            assert!(SIGNAL_RING_SIZE > 0);
+        }
+        const {
+            assert!(CAUSAL_EDGE_RING_SIZE > 0);
+        }
+        const {
+            assert!(INGEST_AUDIT_RING_SIZE >= EVENT_RING_SIZE);
+        }
+        const {
+            assert!(EVENT_RING_SIZE <= INGEST_AUDIT_RING_SIZE);
+        }
+        const {
+            assert!(BUCKET_RETENTION_HOURS > 0);
+        }
     }
 
     #[test]

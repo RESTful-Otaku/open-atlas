@@ -75,7 +75,8 @@ function hourDomainMatrix(
     const t = Date.parse(e.timestamp);
     if (!Number.isFinite(t)) continue;
     const h = new Date(t).getUTCHours();
-    matrix[row]![h] += 1;
+    const rowArr = matrix[row];
+    if (rowArr) rowArr[h] = (rowArr[h] ?? 0) + 1;
   }
   return { hours, matrix };
 }
@@ -124,7 +125,7 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
       const data: [number, number, number][] = [];
       for (let r = 0; r < domains.length; r += 1) {
         for (let c = 0; c < 24; c += 1) {
-          data.push([c, r, matrix[r]![c]!]);
+          data.push([c, r, matrix[r]?.[c] ?? 0]);
         }
       }
       const maxV = Math.max(1, ...data.map((d) => d[2]));
@@ -281,7 +282,7 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
         }
       }
       if (links.length === 0) {
-        links.push({ source: domainLabel(domains[0]!), target: "Low", value: 1 });
+        links.push({ source: domainLabel(domains[0] ?? ""), target: "Low", value: 1 });
       }
       return {
         ...base,
@@ -307,15 +308,17 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
       );
       for (let i = 0; i < sorted.length; i += 1) {
         const slot = Math.min(slots - 1, Math.floor(i / Math.max(1, Math.ceil(sorted.length / slots))));
-        const arr = perDomain.get(sorted[i]!.domain);
+        const evt = sorted[i]!;
+        const arr = perDomain.get(evt.domain);
         if (arr) arr[slot] += 1;
       }
       const data: [string, number, string][] = [];
       for (const d of domains) {
-        const arr = perDomain.get(d)!;
+        const arr = perDomain.get(d);
+        if (!arr) continue;
         const label = domainLabel(d);
         for (let s = 0; s < slots; s += 1) {
-          data.push([slotLabels[s]!, Math.max(arr[s]!, 0.05), label]);
+          data.push([slotLabels[s]!, Math.max(arr[s] ?? 0, 0.05), label]);
         }
       }
       return {
@@ -344,7 +347,7 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
         ] as (string | number)[];
       });
       if (rows.length === 0) {
-        rows.push([domainLabel(domains[0]!), 12, 35, 10]);
+        rows.push([domainLabel(domains[0] ?? ""), 12, 35, 10]);
       }
       return {
         ...base,
@@ -421,8 +424,10 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
         };
       });
       if (series.every((s) => s.data.every((v) => v === 0)) && series.length > 0) {
-        const head = series[0]!;
-        series = [{ ...head, data: labels.map(() => 1) }, ...series.slice(1)];
+        const head = series[0];
+        if (head) {
+          series = [{ ...head, data: labels.map(() => 1) }, ...series.slice(1)];
+        }
       }
       return {
         ...base,
@@ -547,10 +552,13 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
         series: [
           {
             type: "bar",
-            data: data.map((v, i) => ({
-              value: Math.max(v, 0.5),
-              itemStyle: { color: domainColor(domains[i]!) },
-            })),
+            data: data.map((v, i) => {
+              const d = domains[i]!;
+              return {
+                value: Math.max(v, 0.5),
+                itemStyle: { color: domainColor(d) },
+              };
+            }),
           },
         ],
       };
@@ -602,11 +610,11 @@ export function matrixChartOption(kind: MatrixChartKind, ctx: MatrixChartContext
           const sorted = [...scores].sort((a, b) => a - b);
           const q = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(p * (sorted.length - 1)))];
           boxData.push([
-            sorted[0]!,
+            sorted[0] ?? 0,
             q(0.25),
             q(0.5),
             q(0.75),
-            sorted[sorted.length - 1]!,
+            sorted.at(-1) ?? 0,
           ]);
         }
       }

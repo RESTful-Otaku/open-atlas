@@ -40,10 +40,12 @@ export function buildPerDomainHeatmaps(
     const pts: [number, number, number][] = [];
     for (const e of index.byDomain.get(d.id) ?? []) {
       if (!matchesSelectedDomain(e.domain)) continue;
+      const loc = e.location;
+      if (!loc) continue;
       const w = Number.isFinite(e.severity_score)
         ? 0.25 + Math.max(0, Math.min(1, e.severity_score)) * 0.85
         : 0.45;
-      pts.push([e.location!.lat, e.location!.lon, w]);
+      pts.push([loc.lat, loc.lon, w]);
     }
     if (pts.length) {
       out.push({ domain: d.id, color: d.color, points: pts });

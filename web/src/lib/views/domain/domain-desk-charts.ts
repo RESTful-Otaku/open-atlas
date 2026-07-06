@@ -249,15 +249,16 @@ export function financeTradingChart(domainId: string, _accent: string): EChartsO
         type: "bar",
         xAxisIndex: 1,
         yAxisIndex: 1,
-        data: volume.map((v, i) => ({
-          value: v,
-          itemStyle: {
-            color:
-              ohlc[i]![1] >= ohlc[i]![0]
-                ? "rgba(34, 197, 94, 0.45)"
-                : "rgba(239, 68, 68, 0.45)",
-          },
-        })),
+        data: volume.map((v, i) => {
+          const candle = ohlc[i];
+          const isUp = candle !== undefined && candle[1] >= candle[0];
+          return {
+            value: v,
+            itemStyle: {
+              color: isUp ? "rgba(34, 197, 94, 0.45)" : "rgba(239, 68, 68, 0.45)",
+            },
+          };
+        }),
       },
     ],
   };
@@ -684,12 +685,13 @@ export function deskTertiaryHeatmapWeekHour(
     if (!Number.isFinite(t)) continue;
     const d = new Date(t).getUTCDay();
     const h = new Date(t).getUTCHours();
-    m[d]![h] += 1;
+    const mRow = m[d];
+    if (mRow) mRow[h] = (mRow[h] ?? 0) + 1;
   }
   const data: [number, number, number][] = [];
   for (let r = 0; r < 7; r += 1) {
     for (let c = 0; c < 24; c += 1) {
-      data.push([c, r, m[r]![c]!]);
+      data.push([c, r, m[r]?.[c] ?? 0]);
     }
   }
   const maxV = Math.max(1, ...data.map((x) => x[2]));
@@ -738,7 +740,7 @@ export function deskTertiaryThemeRiverOrdinal(
   for (let s = 0; s < slots; s += 1) {
     for (const L of lanes) {
       const jitter = rng() * base * 0.4;
-      data.push([labels[s]!, base + jitter, L]);
+      data.push([labels[s] ?? "", base + jitter, L]);
     }
   }
   return {
@@ -976,18 +978,18 @@ export function domainScatterEffectGeo(
   events: readonly UiEvent[],
   accent: string,
 ): EChartsOption {
-  const geo = events.filter((e) => e.location !== null);
+  const geo = events.filter((e): e is UiEvent & { location: NonNullable<UiEvent["location"]> } => e.location !== null);
   const scatterData = geo.map((e) => [
-    e.location!.lon,
-    e.location!.lat,
+    e.location.lon,
+    e.location.lat,
     Math.round(e.severity_score * 100),
   ]);
   const top = [...geo]
     .sort((a, b) => b.severity_score - a.severity_score)
     .slice(0, 4);
   const fxData = top.map((e) => [
-    e.location!.lon,
-    e.location!.lat,
+    e.location.lon,
+    e.location.lat,
     Math.round(e.severity_score * 100),
   ]);
   return {
@@ -1273,12 +1275,12 @@ export function domainSeverityBoxplot(
   if (s.length === 0) {
     box = [0, 0.2, 0.4, 0.6, 0.8];
   } else if (s.length === 1) {
-    const x = s[0]!;
+    const x = s[0] ?? 0;
     box = [x, x, x, x, x];
   } else {
     const q = (p: number) =>
-      s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))]!;
-    box = [s[0]!, q(0.25), q(0.5), q(0.75), s[s.length - 1]!];
+      s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))] ?? 0;
+    box = [s[0] ?? 0, q(0.25), q(0.5), q(0.75), s.at(-1) ?? 0];
   }
   return {
     backgroundColor: "transparent",

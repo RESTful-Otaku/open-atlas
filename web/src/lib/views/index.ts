@@ -29,7 +29,7 @@ import { DOMAIN_CATALOG } from "../colors";
 import { domainIcon } from "../domain-icons";
 import { DOMAIN_NAV_BLURB } from "./domain-nav-blurb";
 
-const DEFAULT_MATRIX_PATH = `/matrix/${MATRIX_CATALOG[0]!.id}` as const;
+const DEFAULT_MATRIX_PATH = `/matrix/${MATRIX_CATALOG[0]?.id ?? "hub"}` as const;
 
 export interface ViewCatalogEntry {
   readonly id: string;
@@ -143,7 +143,9 @@ const BY_PATTERN: ReadonlyMap<string, ViewCatalogEntry> = new Map(
 );
 
 export function viewForPattern(pattern: string): ViewCatalogEntry {
-  return BY_PATTERN.get(pattern) ?? VIEW_CATALOG[0]!;
+  const fallback = VIEW_CATALOG[0];
+  if (!fallback) throw new Error("VIEW_CATALOG is empty — at least one view must be registered");
+  return BY_PATTERN.get(pattern) ?? fallback;
 }
 
 export function hrefForNavEntry(entry: ViewCatalogEntry): string {

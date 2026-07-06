@@ -25,7 +25,9 @@ function loaderForPattern(pattern: string): () => Promise<ViewModule> {
   if (pattern.startsWith("/domain/")) {
     return () => import("./views/DomainView.svelte");
   }
-  return LOADERS[pattern] ?? LOADERS["/"]!;
+  const loader = LOADERS[pattern] ?? LOADERS["/"];
+  if (!loader) throw new Error("loaderForPattern: / loader missing from LOADERS");
+  return loader;
 }
 
 function touchCache(pattern: string, component: Component): Component {

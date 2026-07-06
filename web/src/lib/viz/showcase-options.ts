@@ -279,9 +279,10 @@ function combinedBarLine(): EChartsOption {
         name: "Shanghai/Rotterdam (line)",
         type: "line",
         yAxisIndex: 1,
-        data: portThroughputKteu.shanghai.map((v, i) =>
-          Number((v / portThroughputKteu.rotterdam[i]!).toFixed(2)),
-        ),
+        data: portThroughputKteu.shanghai.map((v, i) => {
+          const divisor = portThroughputKteu.rotterdam[i];
+          return divisor ? Number((v / divisor).toFixed(2)) : 0;
+        }),
         lineStyle: { color: "#f59e0b" },
         itemStyle: { color: "#f59e0b" },
       },

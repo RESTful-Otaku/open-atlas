@@ -209,7 +209,7 @@
   function onMDragStart(e: DragEvent, id: string): void {
     dragId = id;
     e.dataTransfer?.setData("text/plain", id);
-    e.dataTransfer!.effectAllowed = "move";
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
   function onMDragEnd(): void {
     dragId = null;
@@ -327,7 +327,7 @@
     class="matrix-grid"
     ondragover={(e) => {
       e.preventDefault();
-      e.dataTransfer!.dropEffect = "move";
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     }}
     ondragleave={layoutEdit ? onMDragLeaveGrid : undefined}
   >

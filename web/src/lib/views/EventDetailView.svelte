@@ -40,9 +40,7 @@
     event ? Boolean(dashboard.eventNarratives[event.id]) : false,
   );
   const streamExpl = $derived(
-    event && DOMAIN_STREAM_EXPLANATION[event.domain]
-      ? DOMAIN_STREAM_EXPLANATION[event.domain]!
-      : null,
+    event ? (DOMAIN_STREAM_EXPLANATION[event.domain] ?? null) : null,
   );
   const eventSignals = $derived(
     event ? signalsForEvent(event.id, dashboard.recentSignals, 20) : [],
