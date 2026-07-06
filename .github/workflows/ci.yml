@@ -46,9 +46,7 @@ jobs:
         with:
           target: wasm32-unknown-unknown
       - name: Install SpacetimeDB CLI
-        run: |
-          curl -fsSL https://github.com/clockworklabs/SpacetimeDB/releases/latest/download/spacetime-linux-x86_64.tar.gz | tar xz
-          sudo install spacetime /usr/local/bin/
+        run: ./scripts/ci/install-spacetimedb-cli.sh
       - name: build
         run: spacetime build --module-path crates/openatlas-stdb-module
 
