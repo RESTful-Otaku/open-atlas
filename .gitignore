@@ -16,6 +16,14 @@ node_modules
 **/feed-secrets.json
 !docs/feed-secrets.example.json
 
+# Local AI agent configs (opencode, Claude, Cursor, Copilot — NOT project code)
+.opencode.md
+AGENTS.md
+CLAUDE.md
+rules/
+skills/
+reports/
+
 # Local dev / toolchain caches (dev.sh, CI agents — do not publish)
 .dev/
 .cargo-local/
