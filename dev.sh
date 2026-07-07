@@ -102,6 +102,16 @@ if [[ -z "${CARGO_HOME:-}" ]]; then
     export CARGO_HOME="$CARGO_HOME_LOCAL"
 fi
 
+# Prefer rustup-managed cargo/rustc over system-installed ones (e.g. Arch's
+# /usr/bin/rustc lacks wasm32-unknown-unknown target libraries).
+if [[ -d "${HOME}/.cargo/bin" ]] && [[ ":$PATH:" != *":${HOME}/.cargo/bin:"* ]]; then
+    export PATH="${HOME}/.cargo/bin:$PATH"
+elif [[ -d "${HOME}/.cargo/bin" ]]; then
+    # Reorder if already present but after /usr/bin
+    PATH="${HOME}/.cargo/bin:${PATH//${HOME}\/.cargo\/bin:/}"
+    export PATH
+fi
+
 # ----------------------------------------------------------------------------
 # Style helpers (gum-aware)
 # ----------------------------------------------------------------------------
@@ -922,7 +932,7 @@ do_dev_web_only() {
 do_build_cargo() {
     require_cmd cargo
     style_header "🔨 Building cargo workspace"
-    spin "cargo build (release)" cargo build --workspace --exclude openatlas-ui-wasm --release
+    spin "cargo build (release)" cargo build --workspace  --release
     style_ok "cargo workspace built"
 }
 
@@ -993,12 +1003,31 @@ do_spacetime_publish() {
         do_spacetime_start
     fi
     style_header "📦 Publishing module as '${STDB_DB_NAME}'"
-    spin "spacetime publish --server http://${STDB_LISTEN_ADDR}" \
-        spacetime publish \
-            --server "http://${STDB_LISTEN_ADDR}" \
-            --module-path "$STDB_MODULE_DIR" \
-            --yes \
-            "$STDB_DB_NAME"
+    local output
+    output="$(spacetime publish \
+        --server "http://${STDB_LISTEN_ADDR}" \
+        --module-path "$STDB_MODULE_DIR" \
+        --yes \
+        "$STDB_DB_NAME" 2>&1)" || {
+        local rc=$?
+        if echo "$output" | grep -q "403\|not authorized"; then
+            style_warn "Identity mismatch — clearing local STDB data and retrying"
+            kill_stdb
+            rm -rf "$STDB_DATA_DIR"
+            do_spacetime_start
+            output="$(spacetime publish \
+                --server "http://${STDB_LISTEN_ADDR}" \
+                --module-path "$STDB_MODULE_DIR" \
+                --yes \
+                "$STDB_DB_NAME" 2>&1)" || {
+                style_err "publish failed again: $(echo "$output" | tail -3)"
+                return 1
+            }
+        else
+            style_err "publish failed: $(echo "$output" | tail -3)"
+            return $rc
+        fi
+    }
     style_ok "module '${STDB_DB_NAME}' published"
 }
 
@@ -1107,6 +1136,20 @@ start_server() {
     local stdb_target="${2:-${OPENATLAS_STDB_TARGET:-local}}"
     apply_stdb_target "$stdb_target"
 
+    # Always build + publish for local targets before checking early
+    # return, so the STDB module is never stale (schema drift prevention).
+    if [[ "$stdb_target" == "local" ]]; then
+        do_spacetime_build
+        if ! stdb_pid >/dev/null; then
+            style_warn "spacetimedb not running; starting and publishing module"
+            do_spacetime_start
+        fi
+        do_spacetime_publish
+    else
+        cloud_preflight || return 1
+    fi
+
+    # Early return only for the ingest binary, not the module.
     if server_pid >/dev/null && ingest_http_ok; then
         local running
         running="$(ingest_mode_running)"
@@ -1120,16 +1163,6 @@ start_server() {
     elif server_pid >/dev/null; then
         style_warn "stale or unhealthy ingest pid — restarting"
         stop_server
-    fi
-
-    if [[ "$stdb_target" == "local" ]]; then
-        if ! stdb_pid >/dev/null; then
-            style_warn "spacetimedb not running; starting and publishing module"
-            do_spacetime_start
-            do_spacetime_publish
-        fi
-    else
-        cloud_preflight || return 1
     fi
 
     maybe_enable_ingest_lan_bind
@@ -1697,7 +1730,7 @@ do_cli() {
 do_test() {
     require_cmd cargo
     style_header "🔬 Running tests"
-    spin "cargo test (workspace)" cargo test --workspace --exclude openatlas-ui-wasm --quiet
+    spin "cargo test (workspace)" cargo test --workspace  --quiet
     if command -v bun >/dev/null 2>&1 && [[ -d "${FRONTEND_DIR}/node_modules" ]]; then
         spin "bun test (web unit)" bash -c "cd '${FRONTEND_DIR}' && bun test src/lib"
     fi
@@ -1708,7 +1741,7 @@ do_lint() {
     require_cmd cargo
     style_header "📏 Linting"
     spin "cargo fmt --check" cargo fmt --all -- --check
-    spin "cargo clippy" cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
+    spin "cargo clippy" cargo clippy --workspace  --no-deps -- -D warnings
     style_ok "lint clean"
 }
 
