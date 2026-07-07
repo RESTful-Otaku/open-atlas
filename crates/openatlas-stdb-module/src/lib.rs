@@ -534,7 +534,16 @@ fn try_ingest_one(
         ordinal,
     });
 
-    upsert_event_recent(ctx, id, timestamp, domain, severity_score, &location, &payload_json, ordinal);
+    upsert_event_recent(
+        ctx,
+        id,
+        timestamp,
+        domain,
+        severity_score,
+        &location,
+        &payload_json,
+        ordinal,
+    );
 
     upsert_world_state(ctx, domain, severity_score, timestamp);
     upsert_event_hour_bucket(ctx, domain, severity_score, timestamp);
