@@ -4,6 +4,7 @@ import type {
   Event,
   EventHourBucket,
   EventNarrative,
+  EventRecent,
   Signal,
   WorldStateRow,
 } from "./stdb/types";
@@ -609,6 +610,16 @@ export function rebuildEventIdIndex(): void {
 
 
 export function applyEvent(row: Event): void {
+  applyEventLike(row);
+}
+
+export function applyEventRecent(row: EventRecent): void {
+  applyEventLike(row);
+}
+
+type EventLike = Event | EventRecent;
+
+function applyEventLike(row: EventLike): void {
   let next: UiEvent;
   try {
     next = projectEvent(row);

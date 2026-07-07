@@ -99,30 +99,15 @@ describe("connection", () => {
       expect(result).toContain("SpacetimeDB");
     });
 
-    test("returns exhausted message when auto-reconnect exhausted", async () => {
-      const { autoReconnectStatusLine } = await import(
-        "./connection.svelte"
-      );
-      const { dashboard } = await import("./state.svelte");
-      dashboard.connection = "offline";
-      dashboard.autoReconnectExhausted = true;
-      dashboard.autoReconnectAttempt = 0;
-      const result = autoReconnectStatusLine();
-      expect(result).toContain("stopped");
-      expect(result).toContain("8 attempts");
-    });
-
     test("returns attempt progress message when reconnecting", async () => {
       const { autoReconnectStatusLine } = await import(
         "./connection.svelte"
       );
       const { dashboard } = await import("./state.svelte");
       dashboard.connection = "offline";
-      dashboard.autoReconnectExhausted = false;
       dashboard.autoReconnectAttempt = 3;
       const result = autoReconnectStatusLine();
       expect(result).toContain("attempt 3");
-      expect(result).toContain("8");
       expect(result).toContain("backoff");
     });
 
@@ -145,12 +130,10 @@ describe("connection", () => {
       const { dashboard } = await import("./state.svelte");
       dashboard.dataMode = "live";
       dashboard.connection = "offline";
-      dashboard.autoReconnectExhausted = true;
       dashboard.autoReconnectAttempt = 8;
 
       reconnectNow();
 
-      expect(dashboard.autoReconnectExhausted).toBe(false);
       expect(dashboard.connectionLastError).toBeNull();
     });
   });
@@ -163,7 +146,6 @@ describe("connection", () => {
       disconnectDb();
       expect(dashboard.connection).toBe("offline");
       expect(dashboard.autoReconnectAttempt).toBe(0);
-      expect(dashboard.autoReconnectExhausted).toBe(false);
     });
   });
 

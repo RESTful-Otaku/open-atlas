@@ -5,6 +5,7 @@ import {
   applyEvent,
   applyEventHourBucket,
   applyEventNarrative,
+  applyEventRecent,
   applySignal,
   applyWorldState,
   removeCausalEdge,
@@ -47,9 +48,12 @@ let reconnectIntentional = false;
 let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let reconnectAttempts = 0;
-const MAX_AUTO_RECONNECT_ATTEMPTS = 8;
 const RECONNECT_BASE_MS = 2_000;
+const RECONNECT_MAX_MS = 30_000;
+const RECONNECT_MAX_ATTEMPTS = 30;
 const CONNECTION_TIMEOUT_MS = 15_000;
+/** Guards against re-entrant handleLostConnection calls */
+let lostConnectionInFlight = false;
 let narrativeHandlersInstalled = false;
 let narrativeSubscriptionActive = false;
 let narrativeSubscriptionHandle: { unsubscribe: () => void } | null = null;
@@ -59,11 +63,6 @@ let narrativeConsumerCount = 0;
 function syncReconnectUi(): void {
   dashboard.autoReconnectAttempt =
     reconnectTimer !== undefined ? reconnectAttempts : 0;
-  dashboard.autoReconnectExhausted =
-    dashboard.dataMode !== "demo" &&
-    reconnectAttempts >= MAX_AUTO_RECONNECT_ATTEMPTS &&
-    reconnectTimer === undefined &&
-    dashboard.connection === "offline";
 }
 
 function clearReconnectTimer(): void {
@@ -84,15 +83,17 @@ function clearConnectionTimer(): void {
 function scheduleAutoReconnect(): void {
   if (shuttingDown || dashboard.dataMode === "demo") return;
   if (reconnectTimer !== undefined) return;
-  if (reconnectAttempts >= MAX_AUTO_RECONNECT_ATTEMPTS) {
+  reconnectAttempts += 1;
+  if (reconnectAttempts > RECONNECT_MAX_ATTEMPTS) {
+    logStdbError(`Auto-reconnect exhausted after ${RECONNECT_MAX_ATTEMPTS} attempts`);
+    dashboard.autoReconnectExhausted = true;
     syncReconnectUi();
     return;
   }
   const delay = Math.min(
-    30_000,
+    RECONNECT_MAX_MS,
     RECONNECT_BASE_MS * 2 ** reconnectAttempts,
   );
-  reconnectAttempts += 1;
   logStdbReconnectAttempt(reconnectAttempts);
   syncReconnectUi();
   reconnectTimer = setTimeout(() => {
@@ -125,11 +126,8 @@ export function autoReconnectStatusLine(): string | null {
   if (dashboard.connection === "connecting") {
     return "Connecting to SpacetimeDB…";
   }
-  if (dashboard.autoReconnectExhausted) {
-    return `Auto-reconnect stopped after ${MAX_AUTO_RECONNECT_ATTEMPTS} attempts — use Reconnect in Settings.`;
-  }
   if (dashboard.autoReconnectAttempt > 0) {
-    return `Auto-reconnect attempt ${dashboard.autoReconnectAttempt} of ${MAX_AUTO_RECONNECT_ATTEMPTS} (exponential backoff).`;
+    return `Auto-reconnect attempt ${dashboard.autoReconnectAttempt} (exponential backoff).`;
   }
   return null;
 }
@@ -138,7 +136,6 @@ export function reconnectNow(): void {
   if (shuttingDown) return;
   clearReconnectTimer();
   reconnectAttempts = 0;
-  dashboard.autoReconnectExhausted = false;
   if (dashboard.dataMode === "demo") {
     installDemoData();
     return;
@@ -166,7 +163,6 @@ export function disconnectDb(): void {
   clearReconnectTimer();
   reconnectAttempts = 0;
   dashboard.autoReconnectAttempt = 0;
-  dashboard.autoReconnectExhausted = false;
   connectionOpening = false;
   narrativeHandlersInstalled = false;
   narrativeSubscriptionActive = false;
@@ -198,11 +194,8 @@ function openConnection(): void {
   logStdbConnecting();
   connectionTimer = setTimeout(() => {
     connectionTimer = undefined;
-    if (activeConnection) {
-      try { activeConnection.disconnect(); } catch { }
-    }
-    activeConnection = null;
-    connectionOpening = false;
+    if (!connectionOpening) return;
+    logStdbError("Connection timed out");
     setConnectionLastError("Connection timed out");
     handleLostConnection();
   }, CONNECTION_TIMEOUT_MS);
@@ -255,7 +248,6 @@ function openConnection(): void {
   }
 
   activeConnection = conn;
-  connectionOpening = false;
 }
 
 function onConnected(connection: DbConnection): void {
@@ -264,13 +256,15 @@ function onConnected(connection: DbConnection): void {
   connectionOpening = false;
   reconnectAttempts = 0;
   dashboard.autoReconnectAttempt = 0;
-  dashboard.autoReconnectExhausted = false;
   clearReconnectTimer();
   setConnectionLastError(null);
   setConnection("live");
   logStdbConnected();
   installRowHandlers(connection);
   subscribeDashboardQueries(connection);
+  if (narrativeConsumerCount > 0) {
+    ensureNarrativeSubscription();
+  }
 }
 
 let rowMutationDepth = 0;
@@ -321,6 +315,9 @@ function installRowHandlers(connection: DbConnection): void {
 
   db.event_hour_bucket.onInsert(onInsert(applyEventHourBucket));
   db.event_hour_bucket.onUpdate(onUpdate(applyEventHourBucket));
+
+  db.event_recent.onInsert(onInsert(applyEventRecent));
+  db.event_recent.onDelete(onDelete(removeEvent));
 }
 
 function installNarrativeRowHandlers(connection: DbConnection): void {
@@ -409,24 +406,30 @@ function formatSubscriptionError(err: unknown): string {
 }
 
 function handleLostConnection(): void {
-  clearConnectionTimer();
-  narrativeHandlersInstalled = false;
-  narrativeSubscriptionActive = false;
-  narrativeSubscriptionHandle = null;
-  const prev = activeConnection;
-  activeConnection = null;
-  if (prev) {
-      try {
-        prev.disconnect();
-      } catch {
-      }
+  if (lostConnectionInFlight) return;
+  lostConnectionInFlight = true;
+  try {
+    clearConnectionTimer();
+    narrativeHandlersInstalled = false;
+    narrativeSubscriptionActive = false;
+    narrativeSubscriptionHandle = null;
+    const prev = activeConnection;
+    activeConnection = null;
+    if (prev) {
+        try {
+          prev.disconnect();
+        } catch {
+        }
+    }
+    if (reconnectIntentional) {
+      reconnectIntentional = false;
+      return;
+    }
+    connectionOpening = false;
+    setConnection("offline");
+    scheduleAutoReconnect();
+    syncReconnectUi();
+  } finally {
+    lostConnectionInFlight = false;
   }
-  if (reconnectIntentional) {
-    reconnectIntentional = false;
-    return;
-  }
-  connectionOpening = false;
-  setConnection("offline");
-  scheduleAutoReconnect();
-  syncReconnectUi();
 }

@@ -1,5 +1,5 @@
 import type { DbConnection } from "./stdb";
-import type { Event, Signal, CausalEdge, EventNarrative } from "./stdb/types";
+import type { Signal, CausalEdge, EventNarrative, EventRecent } from "./stdb/types";
 import { bumpDashboardRevision, bumpDomainsRevision } from "./dashboard-revision.svelte";
 import { invalidateDomainEventsCache } from "./domain-events-cache";
 import { sameOrderedEvents, sameOrderedIds } from "./buffer-trim";
@@ -13,7 +13,7 @@ import {
   MAX_SIGNALS,
   applyCausalEdge,
   applyDomainInsight,
-  applyEvent,
+  applyEventRecent,
   applyEventHourBucket,
   applyEventNarrative,
   applySignal,
@@ -26,8 +26,8 @@ import {
   rebuildEventIdIndex,
 } from "./state.svelte";
 
-function topEventsByOrdinal(rows: Iterable<Event>, limit: number): Event[] {
-  const buf: Event[] = [];
+function topEventsByOrdinal(rows: Iterable<EventRecent>, limit: number): EventRecent[] {
+  const buf: EventRecent[] = [];
   for (const row of rows) {
     buf.push(row);
   }
@@ -71,8 +71,8 @@ export function hydrateDashboardFromConnection(connection: DbConnection): void {
   dashboard.domainInsights = {};
   dashboard.domainSeverityHistory = {};
 
-  for (const row of topEventsByOrdinal(db.event.iter(), MAX_EVENTS)) {
-    applyEvent(row);
+  for (const row of topEventsByOrdinal(db.event_recent.iter(), MAX_EVENTS)) {
+    applyEventRecent(row);
   }
   for (const row of topSignalsById(db.signal.iter(), MAX_SIGNALS)) {
     applySignal(row);

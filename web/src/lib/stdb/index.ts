@@ -29,6 +29,7 @@ import DomainInsightRow from "./domain_insight_table";
 import EventRow from "./event_table";
 import EventHourBucketRow from "./event_hour_bucket_table";
 import EventNarrativeRow from "./event_narrative_table";
+import EventRecentRow from "./event_recent_table";
 import SignalRow from "./signal_table";
 import WorldStateRow from "./world_state_table";
 
@@ -69,6 +70,17 @@ const tablesSchema = __schema({
       { name: 'event_hour_bucket_bucket_key_key', constraint: 'unique', columns: ['bucketKey'] },
     ],
   }, EventHourBucketRow),
+  event_recent: __table({
+    name: 'event_recent',
+    indexes: [
+      { accessor: 'id', name: 'event_recent_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'event_recent_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EventRecentRow),
   event: __table({
     name: 'event',
     indexes: [

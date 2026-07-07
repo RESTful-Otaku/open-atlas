@@ -37,6 +37,10 @@ const MAX_INGEST_BATCH_SIZE: usize = 128;
 /// Append-only ingest audit ring (operator / HTTP only — table is private).
 const INGEST_AUDIT_RING_SIZE: u64 = 200_000;
 
+/// Browser-facing event ring. Subscribed instead of the full `event` table to
+/// keep WebSocket sync lightweight (~300 rows vs up to 200K).
+const EVENT_RECENT_CAP: u64 = 300;
+
 const AUDIT_ACCEPTED: u8 = 0;
 const AUDIT_DUPLICATE: u8 = 1;
 const AUDIT_REJECTED: u8 = 2;
@@ -83,6 +87,20 @@ pub struct Event {
     /// JSON string keeps schema closed regardless of provider payload shapes.
     pub payload_json: String,
     /// Auto-increment ordinal, monotonically increasing.
+    pub ordinal: u64,
+}
+
+/// Browser-facing event subset. Mirrors `Event` schema but capped at
+/// `EVENT_RECENT_CAP` rows so WebSocket subscriptions stay lightweight.
+#[spacetimedb::table(name = "event_recent", accessor = event_recent, public)]
+pub struct EventRecent {
+    #[primary_key]
+    pub id: u64,
+    pub timestamp: Timestamp,
+    pub domain: u8,
+    pub severity_score: f64,
+    pub location: Option<Location>,
+    pub payload_json: String,
     pub ordinal: u64,
 }
 
@@ -450,6 +468,33 @@ fn upsert_event_hour_bucket(
     }
 }
 
+/// Upsert the browser-facing event recent table. Pruning is deferred to `prune_rings`.
+fn upsert_event_recent(
+    ctx: &ReducerContext,
+    id: u64,
+    timestamp: Timestamp,
+    domain: u8,
+    severity_score: f64,
+    location: &Option<Location>,
+    payload_json: &str,
+    ordinal: u64,
+) {
+    let row = EventRecent {
+        id,
+        timestamp,
+        domain,
+        severity_score,
+        location: location.clone(),
+        payload_json: payload_json.to_owned(),
+        ordinal,
+    };
+    if ctx.db.event_recent().id().find(id).is_some() {
+        ctx.db.event_recent().id().update(row);
+    } else {
+        ctx.db.event_recent().insert(row);
+    }
+}
+
 /// Core ingest logic shared by single- and batch-reducers.
 fn try_ingest_one(
     ctx: &ReducerContext,
@@ -488,6 +533,8 @@ fn try_ingest_one(
         payload_json: payload_json.clone(),
         ordinal,
     });
+
+    upsert_event_recent(ctx, id, timestamp, domain, severity_score, &location, &payload_json, ordinal);
 
     upsert_world_state(ctx, domain, severity_score, timestamp);
     upsert_event_hour_bucket(ctx, domain, severity_score, timestamp);
@@ -744,6 +791,7 @@ fn prune_rings(ctx: &ReducerContext) {
     prune_causal_edges(ctx);
     prune_ingest_audit(ctx);
     prune_event_hour_buckets(ctx);
+    prune_event_recent(ctx);
 }
 
 fn prune_events(ctx: &ReducerContext) {
@@ -785,6 +833,9 @@ fn prune_events_over_ring_size(ctx: &ReducerContext) {
 fn delete_event_row(ctx: &ReducerContext, id: u64) {
     if ctx.db.event_narrative().event_id().find(id).is_some() {
         ctx.db.event_narrative().event_id().delete(id);
+    }
+    if ctx.db.event_recent().id().find(id).is_some() {
+        ctx.db.event_recent().id().delete(id);
     }
     let stale_signals: Vec<u64> = ctx
         .db
@@ -897,6 +948,19 @@ fn prune_ingest_audit(ctx: &ReducerContext) {
     rows.sort_by_key(|r| r.id);
     for row in rows.into_iter().take(excess as usize) {
         ctx.db.ingest_audit().id().delete(row.id);
+    }
+}
+
+fn prune_event_recent(ctx: &ReducerContext) {
+    let total = ctx.db.event_recent().count();
+    if total <= EVENT_RECENT_CAP {
+        return;
+    }
+    let excess = total.saturating_sub(EVENT_RECENT_CAP);
+    let mut rows: Vec<EventRecent> = ctx.db.event_recent().iter().collect();
+    rows.sort_by_key(|r| r.ordinal);
+    for row in rows.into_iter().take(excess as usize) {
+        ctx.db.event_recent().id().delete(row.id);
     }
 }
 

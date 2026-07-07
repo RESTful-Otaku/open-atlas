@@ -1,6 +1,6 @@
 
 export const CORE_SUBSCRIPTION_QUERIES: readonly string[] = [
-  "SELECT * FROM event",
+  "SELECT * FROM event_recent",
   "SELECT * FROM signal",
   "SELECT * FROM causal_edge",
   "SELECT * FROM world_state",

@@ -91,3 +91,16 @@ export const EventHourBucket = __t.object("EventHourBucket", {
 });
 export type EventHourBucket = __Infer<typeof EventHourBucket>;
 
+export const EventRecent = __t.object("EventRecent", {
+  id: __t.u64(),
+  timestamp: __t.timestamp(),
+  domain: __t.u8(),
+  severityScore: __t.f64(),
+  get location() {
+    return __t.option(Location);
+  },
+  payloadJson: __t.string(),
+  ordinal: __t.u64(),
+});
+export type EventRecent = __Infer<typeof EventRecent>;
+

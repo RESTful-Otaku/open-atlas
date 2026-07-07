@@ -104,6 +104,7 @@ async function requestBridgeInsight(
       user_prompt: userPrompt?.trim() || undefined,
       cpu_only: settings.cpuOnly || undefined,
     }),
+    signal: AbortSignal.timeout(180_000),
   });
   if (!r.ok) {
     const msg = await parseApiError(r);

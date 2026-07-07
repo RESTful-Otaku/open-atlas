@@ -1,10 +1,12 @@
 
 export const CLIENT_RETENTION_MS = 86_400_000;
 
-/** Target cap after 24h trim — increased to match larger server ring (200K). */
-export const MAX_EVENTS = 10_000;
+/** Event recent ring from the STDB module — browser subscribes to this instead of the full event table. */
+export const MAX_EVENT_RECENT = 300;
+/** Target cap after 24h trim — applies to event_recent ring. */
+export const MAX_EVENTS = 300;
 /** Safety ceiling when many rows share the same second (memory guard). */
-export const MAX_EVENTS_HARD_CEILING = 20_000;
+export const MAX_EVENTS_HARD_CEILING = 600;
 
 export const MAX_SIGNALS = 5_000;
 export const MAX_CAUSAL_EDGES = 10_000;
