@@ -5,7 +5,6 @@ members = [
     "crates/openatlas-ingest",
     "crates/openatlas-stdb-module",
     "crates/openatlas-llm-bridge",
-    "crates/openatlas-ui-wasm",
 ]
 resolver = "2"
 
