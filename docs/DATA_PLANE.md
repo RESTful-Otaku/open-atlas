@@ -47,21 +47,20 @@ charting on at most ~500 events.
 
 | Location | Cap |
 |----------|-----|
-| STDB `event` retention | 24h + ring **800** max (was 50k) |
-| STDB `signal` / `causal_edge` | 24h + rings **400** / **600** |
+| STDB `event` retention | 24h + ring **200K** max |
+| STDB `event_recent` | Ring **300** (browser-facing) |
+| STDB `signal` / `causal_edge` | 24h + rings **50K** / **100K** |
 | `ingest_audit` | Private table (not synced to browser) |
-| Default WS subscription | Core tables only (no `event_narrative`) |
+| Default WS subscription | `event_recent` instead of `event` (core tables, no `event_narrative`) |
 | Narratives | Lazy subscribe when Hub / event detail / map mounts |
-| `dashboard.events` | **24h UTC retention** + count cap **800** (`MAX_EVENTS`), hard ceiling **2000** (`MAX_EVENTS_HARD_CEILING`) |
+| `dashboard.events` | **24h UTC retention** + count cap **300** (`MAX_EVENTS`), hard ceiling **600** (`MAX_EVENTS_HARD_CEILING`) |
 | Event `payload_json` | Compact keys, **8 KiB** max |
 
 ## Browser subscription vs UI trim
 
 SpacetimeDB subscriptions use full-table `SELECT *` on ring tables (see `stdb-subscriptions.ts`). The module retains up to **~800** `event` rows (plus 24h retention pruning), so the TypeScript SDK syncs that full ring on connect and on each prune — not the smaller UI projection.
 
-The browser then trims again in `sync-dashboard-cache.ts` via **`trimEventsByRetention`** (`event-retention-trim.ts`): keep events with `timestamp >= now − 24h`, newest ordinal first, capped at **`MAX_EVENTS = 800`** with a **`MAX_EVENTS_HARD_CEILING = 2000`** safety bound. Signals and causal edges use count caps aligned to STDB rings (**400** / **600**). Memory and bandwidth on first connect still scale with the **server ring (~800)** until `event_recent` (below) ships.
-
-**Planned mitigation (P0, not yet implemented):** add a browser-facing `event_recent` table (or capped view when STDB supports it) with N≈300 rows, subscribed instead of full `event`. Until then, treat R1 in [PRODUCT_ROADMAP.md](./PRODUCT_ROADMAP.md) as an accepted connect-cost tradeoff. Track implementation in [roadmap/PHASE_A_TRUST.md](./roadmap/PHASE_A_TRUST.md).
+The browser subscribes to the **`event_recent`** table (~300 rows) instead of the full event ring, so WebSocket sync is lightweight on first connect. The browser also trims again in `sync-dashboard-cache.ts` via **`trimEventsByRetention`** (`event-retention-trim.ts`): keep events with `timestamp >= now − 24h`, newest ordinal first, capped at **`MAX_EVENTS = 300`** with a **`MAX_EVENTS_HARD_CEILING = 600`** safety bound. Signals and causal edges use count caps aligned to STDB rings (**400** / **600**).
 
 ## Operator actions
 

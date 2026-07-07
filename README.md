@@ -203,10 +203,11 @@ All tables live in [`crates/openatlas-stdb-module/src/lib.rs`](crates/openatlas-
 
 | Table            | Purpose                                             |
 | ---------------- | --------------------------------------------------- |
-| `event`          | Immutable facts. Ring **800** max + **24h** retention. |
-| `signal`         | Anomaly signals. Ring **400** + 24h.                |
-| `causal_edge`    | Directed influence between events. Ring **600** + 24h. |
-| `ingest_audit`   | Ingest outcomes (private — not browser-synced). **2000** rows. |
+| `event`          | Immutable facts. Ring **200K** max + **24h** retention. |
+| `event_recent`   | Browser-facing event subset. Ring **300** — lightweight WS sync. |
+| `signal`         | Anomaly signals. Ring **50K** + 24h.                |
+| `causal_edge`    | Directed influence between events. Ring **100K** + 24h. |
+| `ingest_audit`   | Ingest outcomes (private — not browser-synced). **200K** rows. |
 | `world_state`    | Per-domain aggregate (event count, avg severity, risk). |
 | `domain_insight` | Narrative summary per domain, with source URL.      |
 | `ordinal_counter`| Monotonic sequencer for `event.ordinal` (private).  |

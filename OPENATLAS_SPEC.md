@@ -118,9 +118,6 @@ performs no I/O.
 └── dev.sh                       gum-powered developer harness
 ```
 
-`crates/openatlas-ui-wasm/` remains in the tree as historical
-reference only (excluded from the workspace) and is slated for
-removal.
 
 ---
 

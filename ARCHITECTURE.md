@@ -60,10 +60,11 @@ src/
 
 | Table              | Row cap  | Notes                                  |
 | ------------------ | -------- | -------------------------------------- |
-| `event`            | 800 + 24h | Immutable observations. `ordinal` is a monotonic u64 sequence number; `domain` is a u8 tag. |
-| `ingest_audit`     | 2 000 (private) | Ingest attempt log — not browser-subscribed. |
-| `signal`           | 400 + 24h | Anomaly signals linked to an event id. |
-| `causal_edge`      | 600 + 24h | Directed influence between two event ids. |
+| `event`            | 200K + 24h | Immutable observations. `ordinal` is a monotonic u64 sequence number; `domain` is a u8 tag. |
+| `event_recent`     | 300      | Browser-facing subset of `event`. Subscribed instead of full ring for lightweight WS sync. |
+| `ingest_audit`     | 200K (private) | Ingest attempt log — not browser-subscribed. |
+| `signal`           | 50K + 24h | Anomaly signals linked to an event id. |
+| `causal_edge`      | 100K + 24h | Directed influence between two event ids. |
 | `world_state`      | unbounded (= domain count) | Per-domain aggregate (count, avg severity, risk). |
 | `domain_insight`   | unbounded | Latest narrative per domain.          |
 | `last_event_in_domain` | unbounded | Scratch table for incremental aggregation. |

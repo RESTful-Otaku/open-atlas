@@ -30,7 +30,7 @@ Phases 1–6 in `OPENATLAS_SPEC.md` are **complete**; Phase 7 (production harden
 
 | # | Risk | Mitigation track |
 |---|------|------------------|
-| **R1** | Full-ring WS sync (~800 events) vs smaller browser-facing table | Phase A: client 24h cache at 800; `event_recent` table for connect — [PHASE_A_TRUST.md](roadmap/PHASE_A_TRUST.md) |
+| **R1** | Full-ring WS sync (~200K events) vs smaller browser-facing table | **Mitigated** — `event_recent` table implemented (300-row cap, subscribed instead of full `event` ring) — [PHASE_A_TRUST.md](roadmap/PHASE_A_TRUST.md) |
 | **R2** | Ingest admin on `:8080` | Phase A: loopback bind + API key on mutating routes — [PHASE_A_TRUST.md](roadmap/PHASE_A_TRUST.md) |
 | **R3** | Determinism not fully proven in CI | Phase A: replay harness → byte-identical STDB — [PHASE_A_TRUST.md](roadmap/PHASE_A_TRUST.md) |
 | **R4** | Domain tag duplication (4 maps) | Phase D: `domains.toml` codegen — [PHASE_D_DEPTH.md](roadmap/PHASE_D_DEPTH.md) |

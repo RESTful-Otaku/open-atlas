@@ -45,7 +45,7 @@
 | Status | Item | Notes | Code / deps |
 |--------|------|-------|-------------|
 | [x] | **Document sync ~800 vs UI trim** | Client 24h retention + 800 cap; R1 `event_recent` table still deferred | [`DATA_PLANE.md`](../DATA_PLANE.md#browser-subscription-vs-ui-trim), [`data-limits.ts`](../../web/src/lib/data-limits.ts), [`event-retention-trim.ts`](../../web/src/lib/event-retention-trim.ts) |
-| [ ] | **`event_recent` STDB table** | Cap ~300 rows for browser-facing sync | **Deferred** — schema below; needs `spacetime publish` + `spacetime generate` + dual-maintain on `ingest_event` |
+| [x] | **`event_recent` STDB table** | Cap ~300 rows for browser-facing sync | **Implemented** — table + upsert in `ingest_event`/`ingest_events_batch`, pruned in `prune_rings`, subscribed via `CORE_SUBSCRIPTION_QUERIES` |
 
 #### `event_recent` target schema (not implemented)
 

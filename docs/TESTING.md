@@ -7,7 +7,7 @@ OpenAtlas uses layered automated tests so regressions surface close to the code 
 | Goal | Command |
 |------|---------|
 | Everything (CI-like, no e2e) | `./scripts/test-all.sh` |
-| Rust only | `cargo test --workspace --exclude openatlas-ui-wasm` |
+| Rust only | `cargo test --workspace` |
 | Ingest HTTP API tests | `cargo test -p openatlas-ingest --test http_api_surface` |
 | Web unit tests | `cd web && bun test src/lib` |
 | Web typecheck | `cd web && bun run check` |

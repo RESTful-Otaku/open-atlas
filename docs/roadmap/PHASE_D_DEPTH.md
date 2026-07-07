@@ -51,7 +51,7 @@
 | Status | Item | Notes | Code / deps |
 |--------|------|-------|-------------|
 | [ ] | **`domains.toml` codegen** | Rust / TS / CSS single source | Replaces 4 hand-maintained maps |
-| [ ] | **Archive `openatlas-ui-wasm`** | Reduce confusion | [`crates/openatlas-ui-wasm`](../../crates/openatlas-ui-wasm/) |
+| [x] | **Archive `openatlas-ui-wasm`** | Removed from workspace and directory | — |
 
 ---
 
