@@ -20,8 +20,8 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
-      - run: cargo test --workspace --exclude openatlas-ui-wasm
+      - run: cargo clippy --workspace --no-deps -- -D warnings
+      - run: cargo test --workspace
       - name: Ignored feed network test
         run: cargo test -p openatlas-ingest -- --ignored --test-threads=1
         env:

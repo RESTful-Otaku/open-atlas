@@ -20,9 +20,9 @@ jobs:
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
-        run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
+        run: cargo clippy --workspace --no-deps -- -D warnings
       - name: test
-        run: cargo test --workspace --exclude openatlas-ui-wasm
+        run: cargo test --workspace
 
   web:
     runs-on: ubuntu-latest

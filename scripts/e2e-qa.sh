@@ -45,9 +45,9 @@ section() { echo ""; echo "=== $* ==="; }
 section "Rust: fmt, clippy, test"
 command -v cargo >/dev/null || die "cargo not found"
 cargo fmt --all -- --check
-cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
-cargo test --workspace --exclude openatlas-ui-wasm
+cargo clippy --workspace --no-deps -- -D warnings
 
+    cargo test --workspace
 section "Web: svelte-check + Vite build (bun)"
 command -v bun >/dev/null || die "bun not found (https://bun.sh)"
 if [[ -d web/node_modules ]]; then

@@ -40,7 +40,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --exclude openatlas-ui-wasm --no-deps -- -D warnings
+      - run: cargo clippy --workspace --no-deps -- -D warnings
 
   test:
     name: rust-test
@@ -50,4 +50,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --exclude openatlas-ui-wasm
+      - run: cargo test --workspace
