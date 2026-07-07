@@ -37,6 +37,9 @@ test.describe("Accessibility", () => {
     await expect(
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });
+    const appearanceSection = page.getByRole("button", { name: /Appearance/i });
+    await expect(appearanceSection).toBeVisible({ timeout: 10_000 });
+    await appearanceSection.click();
     const themeGroup = page.getByRole("radiogroup", { name: /Theme/i });
     await expect(themeGroup).toBeVisible({ timeout: 10_000 });
     await expect(themeGroup.getByRole("radio")).toHaveCount(3);

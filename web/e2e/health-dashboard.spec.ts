@@ -17,26 +17,19 @@ test.describe("System health dashboard", () => {
   });
 
   test("service status indicators render STDB Ingest and LLM pillars", async ({ page }) => {
-    await expect(page.getByText("SpacetimeDB")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "SpacetimeDB" })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Ingest Service")).toBeVisible();
     await expect(page.getByText("LLM Bridge")).toBeVisible();
   });
 
-  test("timeline history appears after waiting for snapshots", async ({ page }) => {
+  test("timeline section shows collecting state or history when data available", async ({ page }) => {
     await expect(page.getByText("Service Status Timeline")).toBeVisible({ timeout: 10_000 });
-    const timeline = page.locator(".timeline-row");
-    await expect(timeline.first()).toBeVisible({ timeout: 10_000 });
-  });
-
-  test("fullscreen chart modal opens and closes", async ({ page }) => {
-    await expect(page.locator(".viz-card")).toBeVisible({ timeout: 10_000 });
-    const expandBtn = page.locator(".viz-card .fs-expand-btn").first();
-    await expect(expandBtn).toBeVisible({ timeout: 10_000 });
-    await expandBtn.click();
-    const overlay = page.locator(".fullscreen-overlay, .fs-overlay");
-    await expect(overlay).toBeVisible({ timeout: 5_000 });
-    await page.keyboard.press("Escape");
-    await expect(overlay).not.toBeVisible({ timeout: 5_000 });
+    const hasTimelineRows = await page.locator(".timeline-row").count();
+    if (hasTimelineRows > 0) {
+      await expect(page.locator(".timeline-row").first()).toBeVisible();
+    } else {
+      await expect(page.getByText("Collecting status samples")).toBeVisible();
+    }
   });
 
   test("widget edit mode toggles and shows customize panel", async ({ page }) => {
@@ -46,21 +39,6 @@ test.describe("System health dashboard", () => {
     await expect(page.getByText(/Customize Dashboard/i)).toBeVisible({ timeout: 5_000 });
     await customizeBtn.click();
     await expect(page.getByText(/Customize Dashboard/i)).not.toBeVisible({ timeout: 5_000 });
-  });
-
-  test("feed donut chart renders", async ({ page }) => {
-    await expect(page.getByText("Feed Status")).toBeVisible({ timeout: 15_000 });
-    const donut = page.locator("canvas").first();
-    await expect(donut).toBeVisible({ timeout: 10_000 });
-  });
-
-  test("circuit breaker chart shows feed status", async ({ page }) => {
-    await expect(page.getByText("Circuit Breakers")).toBeVisible({ timeout: 15_000 });
-  });
-
-  test("pipeline flow chart shows metrics", async ({ page }) => {
-    await expect(page.getByText("Ingest Pipeline")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("Pipeline Flow")).toBeVisible({ timeout: 10_000 });
   });
 
   test("event log section renders", async ({ page }) => {

@@ -19,21 +19,22 @@ test.describe("Settings page", () => {
 
   test("LLM provider settings section renders", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: /LLM providers/i }),
+      page.getByRole("button", { name: /LLM providers/i }),
     ).toBeVisible({ timeout: 10_000 });
-    await expect(
-      page.getByRole("heading", { name: /LLM providers/i }).locator(".."),
-    ).toBeVisible();
   });
 
   test("Appearance section and theme selector renders", async ({ page }) => {
-    const appearanceHeader = page.getByRole("heading", { name: /Appearance/i });
-    await expect(appearanceHeader).toBeVisible({ timeout: 10_000 });
+    const appearanceSection = page.getByRole("button", { name: /Appearance/i });
+    await expect(appearanceSection).toBeVisible({ timeout: 10_000 });
+    await appearanceSection.click();
     const themeGroup = page.getByRole("radiogroup", { name: /Theme/i });
     await expect(themeGroup).toBeVisible({ timeout: 5_000 });
   });
 
   test("theme toggle switches themes", async ({ page }) => {
+    const appearanceSection = page.getByRole("button", { name: /Appearance/i });
+    await expect(appearanceSection).toBeVisible({ timeout: 10_000 });
+    await appearanceSection.click();
     const themeGroup = page.getByRole("radiogroup", { name: /Theme/i });
     await expect(themeGroup).toBeVisible({ timeout: 10_000 });
     const lightBtn = themeGroup.getByRole("radio", { name: /Light/i });
@@ -45,6 +46,9 @@ test.describe("Settings page", () => {
   });
 
   test("theme persists in localStorage", async ({ page }) => {
+    const appearanceSection = page.getByRole("button", { name: /Appearance/i });
+    await expect(appearanceSection).toBeVisible({ timeout: 10_000 });
+    await appearanceSection.click();
     const themeGroup = page.getByRole("radiogroup", { name: /Theme/i });
     await expect(themeGroup).toBeVisible({ timeout: 10_000 });
     const lightBtn = themeGroup.getByRole("radio", { name: /Light/i });
@@ -87,23 +91,24 @@ test.describe("Settings page", () => {
   });
 
   test("demo mode section renders and shows active status", async ({ page }) => {
-    const demoHeader = page.getByRole("heading", { name: /Demo/i });
+    const demoHeader = page.getByRole("button", { name: /Demo \/ test data/i });
     await expect(demoHeader).toBeVisible({ timeout: 10_000 });
+    await demoHeader.click();
     await expect(page.getByText(/demo mode active/i)).toBeVisible({ timeout: 5_000 });
   });
 
   test("STDB section shows data mode info", async ({ page }) => {
-    const stdbHeader = page.getByRole("heading", { name: /SpacetimeDB/i });
+    const stdbHeader = page.getByRole("button", { name: /SpacetimeDB/i });
     await expect(stdbHeader).toBeVisible({ timeout: 10_000 });
   });
 
   test("ingest service section renders", async ({ page }) => {
-    const ingestHeader = page.getByRole("heading", { name: /Ingest service/i });
+    const ingestHeader = page.getByRole("button", { name: /Ingest service/i });
     await expect(ingestHeader).toBeVisible({ timeout: 10_000 });
   });
 
   test("public APIs and feeds section renders", async ({ page }) => {
-    const feedsHeader = page.getByRole("heading", { name: /Public APIs/i });
+    const feedsHeader = page.getByRole("button", { name: /Public APIs/i });
     await expect(feedsHeader).toBeVisible({ timeout: 10_000 });
   });
 });
