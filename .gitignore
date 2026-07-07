@@ -18,11 +18,15 @@ node_modules
 
 # Local AI agent configs (opencode, Claude, Cursor, Copilot — NOT project code)
 .opencode.md
+.opencode/
 AGENTS.md
 CLAUDE.md
 rules/
 skills/
 reports/
+
+# Standalone guide with its own git history — not part of the workspace
+opencode-guide/
 
 # Local dev / toolchain caches (dev.sh, CI agents — do not publish)
 .dev/
