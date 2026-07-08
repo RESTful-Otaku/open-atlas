@@ -8,6 +8,9 @@ test.describe("System health dashboard", () => {
     await expect(
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByRole("heading", { level: 1, name: "System Health" }),
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("loads health page with System Health heading", async ({ page }) => {
@@ -18,8 +21,8 @@ test.describe("System health dashboard", () => {
 
   test("service status indicators render STDB Ingest and LLM pillars", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "SpacetimeDB" })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Ingest Service")).toBeVisible();
-    await expect(page.getByText("LLM Bridge")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Ingest Service" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "LLM Bridge" })).toBeVisible();
   });
 
   test("timeline section shows collecting state or history when data available", async ({ page }) => {
