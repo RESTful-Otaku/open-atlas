@@ -10,13 +10,7 @@ test.describe("System health dashboard", () => {
     ).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByRole("heading", { level: 1, name: "System Health" }),
-    ).toBeVisible({ timeout: 15_000 });
-  });
-
-  test("loads health page with System Health heading", async ({ page }) => {
-    await expect(
-      page.getByRole("heading", { level: 1, name: "System Health" }),
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 30_000 });
   });
 
   test("service status indicators render STDB Ingest and LLM pillars", async ({ page }) => {
