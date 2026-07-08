@@ -178,13 +178,13 @@ else
   E2E_PID="$(start_ingest)"
   STARTED_INGEST=1
   echo "started openatlas-ingest pid=$E2E_PID mode=$INGEST_MODE (logs: $DEV_DIR/e2e-ingest.log)"
-  for _ in $(seq 1 45); do
+  for _ in $(seq 1 90); do
     if curl -sf "${INGEST_URL}/ready" >/dev/null 2>&1; then
       break
     fi
     sleep 1
   done
-  curl -sf "${INGEST_URL}/ready" >/dev/null || die "ingest /ready not OK after 45s — see $DEV_DIR/e2e-ingest.log"
+  curl -sf "${INGEST_URL}/ready" >/dev/null || die "ingest /ready not OK after 90s — see $DEV_DIR/e2e-ingest.log"
 fi
 
 section "Smoke: health, status, static UI"

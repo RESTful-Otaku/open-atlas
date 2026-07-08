@@ -360,8 +360,13 @@
 
   function resetLayout(): void { layout = defaultLayout(); saveLayout(layout); }
 
+  let refreshStartedAt = 0;
+
   async function refreshAll(): Promise<void> {
-    if (refreshing) return;
+    if (refreshing) {
+      if (Date.now() - refreshStartedAt < 30_000) return;
+    }
+    refreshStartedAt = Date.now();
     refreshing = true;
     try {
       await Promise.all([refreshRemoteReadiness(), refreshFeedLive()]);

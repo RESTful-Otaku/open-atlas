@@ -21,6 +21,7 @@ export const readiness = $state({
 });
 
 let lastReadinessLogKey = "";
+let refreshStartedAt = 0;
 
 async function fetchIngestOk(): Promise<{
   ok: boolean | null;
@@ -114,7 +115,10 @@ export async function ensureLlmReady(deep = false): Promise<boolean> {
 
 
 export async function refreshRemoteReadiness(): Promise<void> {
-  if (readiness.readinessRefreshing) return;
+  if (readiness.readinessRefreshing) {
+    if (Date.now() - refreshStartedAt < 30_000) return;
+  }
+  refreshStartedAt = Date.now();
   readiness.readinessRefreshing = true;
   readiness.ingestCheckErr = null;
   try {
