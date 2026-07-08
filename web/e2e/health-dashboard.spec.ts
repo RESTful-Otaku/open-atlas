@@ -4,14 +4,13 @@ import { gotoDemo } from "./demo-goto";
 
 test.describe("System health dashboard", () => {
   test.beforeEach(async ({ page }) => {
-    test.setTimeout(120_000);
     await gotoDemo(page, "/health");
     await expect(
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByRole("heading", { level: 1, name: "System Health" }),
-    ).toBeVisible({ timeout: 60_000 });
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("service status indicators render STDB Ingest and LLM pillars", async ({ page }) => {

@@ -66,13 +66,12 @@ test.describe("Accessibility", () => {
   });
 
   test("health dashboard headers use proper heading levels", async ({ page }) => {
-    test.setTimeout(120_000);
     await gotoDemo(page, "/health");
     await expect(
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toHaveText("System Health", { timeout: 60_000 });
+    await expect(h1).toHaveText("System Health");
     const h2s = page.getByRole("heading", { level: 2 });
     const count = await h2s.count();
     expect(count).toBeGreaterThanOrEqual(1);

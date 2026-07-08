@@ -41,6 +41,21 @@ if (deploymentConfigEnabled()) {
   seedRuntimeConfigFromBuildEnv();
 }
 
+function shouldBootDemo(): boolean {
+  if (isDemoModeRequested()) return true;
+  if (deploymentConfigEnabled() && profileWantsDemo(loadMobileRuntimeConfig())) {
+    return true;
+  }
+  return false;
+}
+
+if (shouldBootDemo()) {
+  localStorage.setItem("openatlas-demo-mode", "1");
+  installDemoData();
+} else {
+  connectDb();
+}
+
 const app = mount(App, { target });
 
 async function hideNativeSplashWhenReady(): Promise<void> {
@@ -62,21 +77,6 @@ void initMobileShell().then(() => {
   void refreshRemoteReadiness().catch(() => {});
   return hideNativeSplashWhenReady();
 }).catch(() => {});
-
-function shouldBootDemo(): boolean {
-  if (isDemoModeRequested()) return true;
-  if (deploymentConfigEnabled() && profileWantsDemo(loadMobileRuntimeConfig())) {
-    return true;
-  }
-  return false;
-}
-
-if (shouldBootDemo()) {
-  localStorage.setItem("openatlas-demo-mode", "1");
-  installDemoData();
-} else {
-  connectDb();
-}
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

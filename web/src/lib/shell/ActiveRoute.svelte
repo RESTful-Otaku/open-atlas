@@ -59,7 +59,7 @@
     loadError = null;
 
     const loadPromise = loadViewForPattern(pattern);
-    const timeoutMs = 60_000;
+    const timeoutMs = 15_000;
     let loadTimeout: ReturnType<typeof setTimeout> | undefined;
     const timedOut = new Promise<never>((_, reject) => {
       loadTimeout = setTimeout(() => reject(new Error(`View load timed out after ${timeoutMs}ms`)), timeoutMs);
