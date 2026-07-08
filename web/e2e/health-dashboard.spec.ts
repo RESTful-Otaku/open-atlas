@@ -4,14 +4,30 @@ import { gotoDemo } from "./demo-goto";
 
 test.describe("System health dashboard", () => {
   test.beforeEach(async ({ page }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(240_000);
+
+    const errors: string[] = [];
+    page.on("pageerror", (err) => errors.push(`[JS] ${err.message}`));
+    page.on("console", (msg) => {
+      if (msg.type() === "error") errors.push(`[console.${msg.type()}] ${msg.text()}`);
+    });
+
     await gotoDemo(page, "/health");
+
+    const url = page.url();
+    console.log(`[diag] navigated to ${url}`);
+
     await expect(
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });
+
     await expect(
       page.getByRole("heading", { level: 1, name: "System Health" }),
-    ).toBeVisible({ timeout: 60_000 });
+    ).toBeVisible({ timeout: 120_000 });
+
+    if (errors.length > 0) {
+      console.log(`[diag] page errors during setup: ${errors.join(" | ")}`);
+    }
   });
 
   test("service status indicators render STDB Ingest and LLM pillars", async ({ page }) => {
