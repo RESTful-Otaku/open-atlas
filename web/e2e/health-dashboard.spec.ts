@@ -26,12 +26,17 @@ test.describe("System health dashboard", () => {
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });
 
-    await expect(
-      page.getByRole("heading", { level: 1, name: "System Health" }),
-    ).toBeVisible({ timeout: 120_000 });
-
-    if (errors.length > 0) {
-      console.log(`[diag] page errors during setup: ${errors.join(" | ")}`);
+    try {
+      await expect(
+        page.getByRole("heading", { level: 1, name: "System Health" }),
+      ).toBeVisible({ timeout: 120_000 });
+    } finally {
+      if (errors.length > 0) {
+        console.log(`[diag] page errors: ${errors.join(" | ")}`);
+      }
+      const hasH1 = await page.evaluate(() => !!document.querySelector("h1"));
+      const inner = await page.evaluate(() => document.querySelector("h1")?.innerText ?? document.body?.innerText?.slice(0, 500) ?? "empty");
+      console.log(`[diag] hasH1=${hasH1} inner=${inner.replace(/\n/g, "↵")}`);
     }
   });
 
