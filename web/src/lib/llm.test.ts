@@ -1,36 +1,16 @@
-import { describe, expect, test, mock } from "bun:test";
-
-// Ensure native-config returns bridge-disconnected behavior regardless
-// of any leaked mock from other test files
-mock.module("./native-config", () => ({
-  llmBaseUrl: () => "",
-  llmServiceConfigured: () => false,
-  shouldProbeLlm: () => false,
-  joinServiceUrl: (base: string, path: string) => `${base}${path}`,
-  ingestBaseUrl: () => "",
-  ingestUrl: (path: string) => path,
-  stdbDatabaseName: () => "openatlas",
-  stdbUriFromEnv: () => undefined,
-  ingestServiceConfigured: () => false,
-  isNativeApp: () => false,
-}));
-mock.module("../native-config", () => ({
-  llmBaseUrl: () => "",
-  llmServiceConfigured: () => false,
-  shouldProbeLlm: () => false,
-  joinServiceUrl: (base: string, path: string) => `${base}${path}`,
-  ingestBaseUrl: () => "",
-  ingestUrl: (path: string) => path,
-  stdbDatabaseName: () => "openatlas",
-  stdbUriFromEnv: () => undefined,
-  ingestServiceConfigured: () => false,
-  isNativeApp: () => false,
-}));
+import { describe, expect, test, mock, afterAll } from "bun:test";
 
 import { checkLlmBridgePing, checkLlmBridgeCapable } from "./llm";
 
+const originalFetch = globalThis.fetch;
+
+afterAll(() => {
+  globalThis.fetch = originalFetch;
+});
+
 describe("checkLlmBridgePing", () => {
   test("returns false when fetch throws (no bridge running)", async () => {
+    globalThis.fetch = mock(() => Promise.reject(new Error("fetch failed")));
     const ok = await checkLlmBridgePing();
     expect(ok).toBe(false);
   });
@@ -38,6 +18,7 @@ describe("checkLlmBridgePing", () => {
 
 describe("checkLlmBridgeCapable", () => {
   test("returns false when fetch throws (no bridge running)", async () => {
+    globalThis.fetch = mock(() => Promise.reject(new Error("fetch failed")));
     const ok = await checkLlmBridgeCapable();
     expect(ok).toBe(false);
   });
