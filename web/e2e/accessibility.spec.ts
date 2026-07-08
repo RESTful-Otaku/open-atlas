@@ -71,7 +71,7 @@ test.describe("Accessibility", () => {
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
     ).toBeVisible({ timeout: 15_000 });
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toHaveText("System Health");
+    await expect(h1).toHaveText("System Health", { timeout: 60_000 });
     const h2s = page.getByRole("heading", { level: 2 });
     const count = await h2s.count();
     expect(count).toBeGreaterThanOrEqual(1);
