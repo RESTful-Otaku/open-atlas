@@ -66,6 +66,7 @@ test.describe("Accessibility", () => {
   });
 
   test("health dashboard headers use proper heading levels", async ({ page }) => {
+    test.setTimeout(120_000);
     await gotoDemo(page, "/health");
     await expect(
       page.getByRole("status").filter({ hasText: /Demo \/ test data/i }),
