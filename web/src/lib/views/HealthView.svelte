@@ -49,7 +49,6 @@
     clearHistory,
     STATUS_COLORS,
   } from "./health-view-history";
-  import { dashboardData } from "../dashboard-revision.svelte";
   import {
     updateInterval,
     getUpdateIntervalMs,
@@ -387,6 +386,12 @@
     pollingDispose?.();
   });
 
+  // $effect(() => {
+  //   updateInterval.id;
+  //   const ms = Math.max(1_000, getUpdateIntervalMs());
+  //   const timer = setInterval(() => void refreshAll(), ms);
+  //   return () => clearInterval(timer);
+  // });
   $effect(() => {
     updateInterval.id;
     const ms = Math.max(1_000, getUpdateIntervalMs());
@@ -394,10 +399,7 @@
     return () => clearInterval(timer);
   });
 
-  $effect(() => {
-    const rev = dashboardData.revision;
-    if (rev > 0) pushHealthSnapshot();
-  });
+
 </script>
 
 <div class="health-view" class:edit-mode={editMode}>

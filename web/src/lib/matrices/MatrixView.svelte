@@ -308,17 +308,20 @@
 
   {#if matrix.tabs && matrix.tabs.length > 0}
     <nav class="matrix-tabs" aria-label={`${matrix.title} tabs`}>
-      {#each matrix.tabs as tab (tab.id)}
-        <button
-          type="button"
-          class="matrix-tab"
-          class:is-active={effectiveTab === tab.id}
-          aria-pressed={effectiveTab === tab.id}
-          onclick={() => (activeTab = tab.id)}
-        >
-          {tab.label}
-        </button>
-      {/each}
+      <div class="matrix-tablist" role="tablist">
+        {#each matrix.tabs as tab (tab.id)}
+          <button
+            type="button"
+            role="tab"
+            class="matrix-tab"
+            class:is-active={effectiveTab === tab.id}
+            aria-selected={effectiveTab === tab.id}
+            onclick={() => (activeTab = tab.id)}
+          >
+            {tab.label}
+          </button>
+        {/each}
+      </div>
     </nav>
   {/if}
 
@@ -554,14 +557,16 @@
   }
 
   .matrix-tabs {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
     padding: 2px;
     background: var(--bg-2);
     border: 1px solid var(--border-1);
     border-radius: var(--radius);
     width: fit-content;
+  }
+  .matrix-tablist {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
   }
   .matrix-tab {
     padding: 5px 10px;

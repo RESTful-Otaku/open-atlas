@@ -12,7 +12,7 @@ test.describe("Settings page", () => {
 
   test("settings loads with Settings heading", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { level: 1 }),
+      page.getByRole("heading", { level: 1, name: /Settings/i }),
     ).toBeVisible({ timeout: 10_000 });
     expect(page.url()).toContain("#/settings");
   });
@@ -37,10 +37,10 @@ test.describe("Settings page", () => {
     await appearanceSection.click();
     const themeGroup = page.getByRole("radiogroup", { name: /Theme/i });
     await expect(themeGroup).toBeVisible({ timeout: 10_000 });
-    const lightBtn = themeGroup.getByRole("radio", { name: /Light/i });
+    const lightBtn = themeGroup.getByRole("radio", { name: /^Light / });
     await lightBtn.click();
     await expect(lightBtn).toHaveAttribute("aria-checked", "true");
-    const dimBtn = themeGroup.getByRole("radio", { name: /Dim/i });
+    const dimBtn = themeGroup.getByRole("radio", { name: /^Dim / });
     await dimBtn.click();
     await expect(dimBtn).toHaveAttribute("aria-checked", "true");
   });
@@ -51,13 +51,13 @@ test.describe("Settings page", () => {
     await appearanceSection.click();
     const themeGroup = page.getByRole("radiogroup", { name: /Theme/i });
     await expect(themeGroup).toBeVisible({ timeout: 10_000 });
-    const lightBtn = themeGroup.getByRole("radio", { name: /Light/i });
+    const lightBtn = themeGroup.getByRole("radio", { name: /^Light / });
     await lightBtn.click();
     const theme = await page.evaluate(() =>
       localStorage.getItem("openatlas-theme"),
     );
     expect(theme).toBe("light");
-    const dimBtn = themeGroup.getByRole("radio", { name: /Dim/i });
+    const dimBtn = themeGroup.getByRole("radio", { name: /^Dim / });
     await dimBtn.click();
     const theme2 = await page.evaluate(() =>
       localStorage.getItem("openatlas-theme"),
@@ -98,7 +98,7 @@ test.describe("Settings page", () => {
   });
 
   test("STDB section shows data mode info", async ({ page }) => {
-    const stdbHeader = page.getByRole("button", { name: /SpacetimeDB/i });
+    const stdbHeader = page.getByRole("button", { name: "SpacetimeDB stream" });
     await expect(stdbHeader).toBeVisible({ timeout: 10_000 });
   });
 

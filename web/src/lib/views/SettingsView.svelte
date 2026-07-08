@@ -432,7 +432,7 @@ function sectionIcon(id: SettingsSectionId): Component {
         <header class="settings-mobile-list-head">
           <div class="settings-title">
             <SettingsIcon size={18} strokeWidth={1.75} />
-            <span>Settings</span>
+            <h1>Settings</h1>
           </div>
           <p class="settings-mobile-lead">
             SpacetimeDB, appearance, ingest, and API keys for operators.
@@ -492,7 +492,7 @@ function sectionIcon(id: SettingsSectionId): Component {
       <header>
         <div class="settings-title">
           <SettingsIcon size={16} strokeWidth={1.75} />
-          <span>Settings & integration</span>
+          <h1>Settings & integration</h1>
         </div>
         <p>
           The Svelte app reads live rows from <strong>SpacetimeDB</strong> in the
@@ -682,13 +682,16 @@ function sectionIcon(id: SettingsSectionId): Component {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
+  }
+  .settings-title h1 {
     font-size: 20px;
     font-weight: 600;
     color: var(--text-1);
     letter-spacing: -0.01em;
+    margin: 0;
   }
 
-  .settings-page--mobile .settings-title {
+  .settings-page--mobile .settings-title h1 {
     font-size: 22px;
   }
 

@@ -27,15 +27,16 @@ test.describe("Matrix views", () => {
   });
 
   test("tab navigation switches between overview telemetry and incidents", async ({ page }) => {
-    const telemetryTab = page.getByRole("tab", { name: /Telemetry/i });
+    const tablist = page.getByRole("tablist");
+    const telemetryTab = tablist.getByRole("tab", { name: /Telemetry/i });
     await expect(telemetryTab).toBeVisible({ timeout: 10_000 });
     await telemetryTab.click();
     await expect(page.getByText("Live telemetry")).toBeVisible({ timeout: 5_000 });
-    const incidentsTab = page.getByRole("tab", { name: /Incidents/i });
+    const incidentsTab = tablist.getByRole("tab", { name: /Incidents/i });
     await expect(incidentsTab).toBeVisible();
     await incidentsTab.click();
     await expect(page.getByText("Active flashpoints")).toBeVisible({ timeout: 5_000 });
-    const overviewTab = page.getByRole("tab", { name: /Overview/i });
+    const overviewTab = tablist.getByRole("tab", { name: /Overview/i });
     await expect(overviewTab).toBeVisible();
     await overviewTab.click();
     await expect(page.getByText("Domain snapshot")).toBeVisible({ timeout: 5_000 });
@@ -78,7 +79,8 @@ test.describe("Matrix views", () => {
   });
 
   test("signals panel renders in telemetry tab", async ({ page }) => {
-    const telemetryTab = page.getByRole("tab", { name: /Telemetry/i });
+    const tablist = page.getByRole("tablist");
+    const telemetryTab = tablist.getByRole("tab", { name: /Telemetry/i });
     await expect(telemetryTab).toBeVisible({ timeout: 10_000 });
     await telemetryTab.click();
     await expect(page.getByText("Live telemetry")).toBeVisible({ timeout: 5_000 });
