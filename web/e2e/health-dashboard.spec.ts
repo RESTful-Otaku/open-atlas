@@ -11,6 +11,11 @@ test.describe("System health dashboard", () => {
     page.on("console", (msg) => {
       if (msg.type() === "error") errors.push(`[console.${msg.type()}] ${msg.text()}`);
     });
+    page.on("requestfailed", (req) => {
+      const url = req.url().replace(/^.*\/assets\//, "assets/").replace(/^.*\//, "");
+      const f = req.failure();
+      if (f) errors.push(`[req] ${url} ${f.errorText}`);
+    });
 
     await gotoDemo(page, "/health");
 
