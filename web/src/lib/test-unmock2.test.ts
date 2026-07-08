@@ -6,7 +6,7 @@ mock.module("./native-config", () => ({
   ingestUrl: (path: string) => `/test${path}`,
   isNativeApp: () => false,
   stdbDatabaseName: () => "openatlas",
-  joinServiceUrl: (base: string, path: string) => base ? `${base}${path}` : path,
+  joinServiceUrl: (base: string, path: string) => { const p = path.startsWith("/") ? path : `/${path}`; const b = (base ?? "").trim().replace(/\/$/, ""); return b ? `${b}${p}` : p; },
   ingestBaseUrl: () => "",
   ingestServiceConfigured: () => false,
   stdbUriFromEnv: () => undefined,

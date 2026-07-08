@@ -53,6 +53,11 @@ mock.module("./native-config", () => ({
   shouldProbeIngest: () => true,
   shouldProbeLlm: () => true,
   isNativeApp: () => false,
+  joinServiceUrl: (base: string, path: string) => { const p = path.startsWith("/") ? path : `/${path}`; const b = (base ?? "").trim().replace(/\/$/, ""); return b ? `${b}${p}` : p; },
+  llmBaseUrl: () => "",
+  ingestBaseUrl: () => "",
+  ingestServiceConfigured: () => false,
+  stdbUriFromEnv: () => undefined,
 }));
 
 mock.module("./stdb-endpoint", () => ({
