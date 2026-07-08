@@ -2,7 +2,7 @@
   import { fade, fly } from "svelte/transition";
   import { Globe2, LayoutGrid, Map as MapIcon, MoreHorizontal, Settings, X } from "@lucide/svelte";
 
-  import { fadePanelBackdrop, flyFromBottom, MOTION_PANEL_MS } from "../motion/transitions";
+  import { fadePanelBackdrop, flyFromBottom } from "../motion/transitions";
 
   import { router, navigate } from "../router.svelte";
   import { DOMAIN_CATALOG } from "../colors";
@@ -32,20 +32,8 @@
     navigate(href);
   }
 
-  let domainsCloseTimer: ReturnType<typeof setTimeout> | undefined;
-
   function closeDomains(): void {
     domainsOpen = false;
-    if (domainsCloseTimer !== undefined) clearTimeout(domainsCloseTimer);
-    domainsCloseTimer = setTimeout(() => {
-      domainsPresent = false;
-      domainsCloseTimer = undefined;
-    }, MOTION_PANEL_MS + 48);
-  }
-
-  function onDomainsOutroEnd(): void {
-    if (domainsCloseTimer !== undefined) clearTimeout(domainsCloseTimer);
-    domainsCloseTimer = undefined;
     domainsPresent = false;
   }
 
@@ -77,7 +65,6 @@
     aria-hidden={!domainsOpen}
     in:fly={flyFromBottom}
     out:fly={{ ...flyFromBottom, y: 12 }}
-    onoutroend={onDomainsOutroEnd}
   >
     <header class="mobile-domains-sheet-head">
       <h2 class="mobile-domains-sheet-title">Domains</h2>

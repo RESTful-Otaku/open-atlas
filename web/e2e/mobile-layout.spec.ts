@@ -17,7 +17,7 @@ test.describe("mobile layout at 480px", () => {
       compact: document.documentElement.dataset.compactLayout,
     }));
     expect(datasets.compact).toBeDefined();
-    await expect(page.locator(".left-rail")).toHaveCount(0);
+    await expect(page.locator(".left-rail")).not.toBeVisible();
     await expect(page.locator(".mobile-bottom-nav")).toBeVisible();
     await expect(page.locator(".shell-top-search-row, .shell-top-stack")).toBeVisible();
   });

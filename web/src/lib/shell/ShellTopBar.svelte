@@ -59,7 +59,7 @@
           alt="OpenAtlas"
           decoding="async"
         />
-        <span class="shell-mobile-title" title={activeView.title}>{activeView.title}</span>
+        <span class="shell-mobile-title" title="Active view">{activeView.title}</span>
       </div>
       <div class="shell-mobile-actions">
         <ShellMobileStatus />
