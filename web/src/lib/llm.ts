@@ -44,8 +44,10 @@ export async function checkLlmBridgePing(): Promise<boolean> {
 
 
 export async function checkLlmBridgeCapable(): Promise<boolean> {
+  const base = llmBaseUrl();
+  if (!base) return false;
   try {
-    const r = await fetch(`${llmBaseUrl()}/v1/capable`, {
+    const r = await fetch(`${base}/v1/capable`, {
       method: "GET",
       signal: AbortSignal.timeout(130_000),
     });
