@@ -4,7 +4,8 @@ import "./app.css";
 
 
 import App from "./App.svelte";
-import { installRouter } from "./lib/router.svelte";
+import { installRouter, matchPath } from "./lib/router.svelte";
+import { loadViewForPattern } from "./lib/view-loaders";
 import { connectDb, disconnectDb } from "./lib/connection.svelte";
 import { installDemoData } from "./lib/demo-install.svelte";
 import { isDemoModeRequested } from "./lib/demo-mode";
@@ -55,6 +56,13 @@ if (shouldBootDemo()) {
 } else {
   connectDb();
 }
+
+const initialPattern = (() => {
+  const raw = window.location.hash || "#/";
+  const path = (raw.startsWith("#") ? raw.slice(1) : raw) || "/";
+  return matchPath(path).pattern;
+})();
+void loadViewForPattern(initialPattern).catch(() => {});
 
 const app = mount(App, { target });
 

@@ -130,6 +130,7 @@
     feedBackoff.start();
 
     prefetchView("/matrix/:id");
+    prefetchView("/health");
     prefetchView("/settings");
 
     return () => {

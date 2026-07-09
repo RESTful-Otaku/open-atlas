@@ -21,7 +21,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "bun run build && python3 -m http.server 4173 --directory dist",
+    command: "bun run build && npx serve dist -p 4173 --cors",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
