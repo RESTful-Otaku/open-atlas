@@ -434,7 +434,10 @@ mod tests {
 
     #[test]
     fn as_f64_happy() {
-        assert!((as_f64(Some(&json!(3.14))).unwrap() - 3.14).abs() < 1e-9);
+        assert!(
+            (as_f64(Some(&json!(std::f64::consts::PI))).unwrap() - std::f64::consts::PI).abs()
+                < 1e-9
+        );
         assert_eq!(as_f64(Some(&json!(42))).unwrap(), 42.0);
     }
 

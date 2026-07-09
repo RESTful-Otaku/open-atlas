@@ -57,11 +57,6 @@ pub(crate) async fn service_status(State(state): State<AppState>) -> impl IntoRe
     } else {
         None
     };
-    let stdb_audit_count = if stdb_reachable {
-        state.stdb.count_rows("ingest_audit").await
-    } else {
-        None
-    };
     let ingest_metrics = state.metrics.snapshot();
     let status = ServiceStatus {
         uptime_seconds: Utc::now()
@@ -88,7 +83,6 @@ pub(crate) async fn service_status(State(state): State<AppState>) -> impl IntoRe
             "ingest_batch_chunk": crate::pipeline::STDB_BATCH_CHUNK,
             "ingest_reducer_batch": "ingest_events_batch",
             "ingest_audit_table": "ingest_audit",
-            "stdb_audit_row_count": stdb_audit_count,
             "circuit_breaker_threshold": crate::circuit::CIRCUIT_FAILURE_THRESHOLD,
             "external_api_access": "ingest_feed_workers_only",
             "browser_reads": "spacetimedb_websocket_subscriptions",

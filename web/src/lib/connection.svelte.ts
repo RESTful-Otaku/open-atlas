@@ -90,10 +90,11 @@ function scheduleAutoReconnect(): void {
     syncReconnectUi();
     return;
   }
-  const delay = Math.min(
+  const baseDelay = Math.min(
     RECONNECT_MAX_MS,
     RECONNECT_BASE_MS * 2 ** reconnectAttempts,
   );
+  const delay = baseDelay * (0.75 + Math.random() * 0.5);
   logStdbReconnectAttempt(reconnectAttempts);
   syncReconnectUi();
   reconnectTimer = setTimeout(() => {
@@ -346,6 +347,7 @@ export function ensureNarrativeSubscription(): void {
     })
     .onError((ctx) => {
       console.warn("event_narrative subscription error", ctx);
+      narrativeSubscriptionActive = false;
     })
     .subscribe([...NARRATIVE_SUBSCRIPTION_QUERIES]);
   narrativeSubscriptionHandle = handle;
@@ -389,7 +391,6 @@ function subscribeDashboardQueries(connection: DbConnection): void {
         msg,
         "Use full SELECT * only (no ORDER BY or LIMIT). See web/src/lib/stdb-subscriptions.ts.",
       );
-      handleLostConnection();
     })
     .subscribe([...CORE_SUBSCRIPTION_QUERIES]);
 }
@@ -410,20 +411,20 @@ function handleLostConnection(): void {
   lostConnectionInFlight = true;
   try {
     clearConnectionTimer();
+    if (reconnectIntentional) {
+      reconnectIntentional = false;
+      return;
+    }
     narrativeHandlersInstalled = false;
     narrativeSubscriptionActive = false;
     narrativeSubscriptionHandle = null;
     const prev = activeConnection;
     activeConnection = null;
     if (prev) {
-        try {
-          prev.disconnect();
-        } catch {
-        }
-    }
-    if (reconnectIntentional) {
-      reconnectIntentional = false;
-      return;
+      try {
+        prev.disconnect();
+      } catch {
+      }
     }
     connectionOpening = false;
     setConnection("offline");

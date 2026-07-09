@@ -37,6 +37,6 @@ export function logStdbReconnectAttempt(attempt: number): void {
   appendOpsLog(
     "info",
     "stdb",
-    `Auto-reconnect attempt ${attempt} of 8 (exponential backoff) · last error: ${dashboard.connectionLastError ?? "none"}`,
+    `Auto-reconnect attempt ${attempt} of 30 (exponential backoff) · last error: ${dashboard.connectionLastError ?? "none"}`,
   );
 }
